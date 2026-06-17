@@ -49,6 +49,8 @@ export class AutoSync {
   private readonly engine: SyncEngine;
   private readonly config: Config;
   private readonly logger?: Logger;
+  // enabled=false 여도 강제 기동(데몬 모드 등). config.autoSync.enabled 우회.
+  private readonly forceEnabled: boolean;
 
   private watcher: FSWatcher | null = null;
   private pullTimer: NodeJS.Timeout | null = null;
@@ -63,16 +65,22 @@ export class AutoSync {
   // 정지 중에는 새 작업을 시작하지 않음.
   private stopping = false;
 
-  constructor(engine: SyncEngine, config: Config, logger?: Logger) {
+  constructor(
+    engine: SyncEngine,
+    config: Config,
+    logger?: Logger,
+    opts?: { forceEnabled?: boolean },
+  ) {
     this.engine = engine;
     this.config = config;
     this.logger = logger;
+    this.forceEnabled = opts?.forceEnabled ?? false;
   }
 
   // 시작: 1회 pull → chokidar watch + debounce push → 주기 pull 스케줄러.
   // enabled=false 면 no-op.
   async start(): Promise<void> {
-    if (!this.config.autoSync.enabled) {
+    if (!this.config.autoSync.enabled && !this.forceEnabled) {
       this.logger?.info("[autosync] disabled — not starting");
       return;
     }

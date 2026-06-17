@@ -696,7 +696,7 @@ export class SyncEngine {
     };
   }
 
-  // .mcp.json pull 적용: 원격(self 제거된 shared)을 로컬에 머지하되 로컬의 자기(claude-sync) 항목은 보존.
+  // .mcp.json pull 적용: 원격(self 제거된 shared)을 로컬에 머지하되 로컬의 자기(wormhole) 항목은 보존.
   private async applyPullMcpJson(
     key: LogicalKey,
     absPath: string,

@@ -9,7 +9,7 @@ export async function scanLocal(config: Config): Promise<ScannedFile[]> {
   const { home, targets, stateDir } = config;
 
   const ignore = [...targets.exclude];
-  // stateDir(~/.claude-sync: 백업/base 스냅샷/age-key.txt/passphrase 등)가 home 하위면
+  // stateDir(~/.wormhole: 백업/base 스냅샷/age-key.txt/passphrase 등)가 home 하위면
   // 무조건 스캔 제외 — 동기화 상태 파일/비밀이 절대 sync 대상이 되지 않게 한다.
   const relState = path.relative(home, stateDir);
   if (relState !== "" && !relState.startsWith("..") && !path.isAbsolute(relState)) {

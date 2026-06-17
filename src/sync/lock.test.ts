@@ -140,6 +140,23 @@ describe("loadOrCreateMachineId", () => {
     const exists = await fs.stat(dir).then(() => true).catch(() => false);
     assert.ok(exists, "stateDir should have been created");
   });
+
+  // machine.ts line 13: id.length > 0 가 false 인 경로 — 파일이 존재하지만 내용이 비어있음.
+  // trim 후 길이가 0 이므로 return 을 건너뛰고 새 UUID 를 생성·저장해야 한다.
+  test("machine-id 파일이 비어 있으면 새 UUID 를 생성하고 파일을 덮어쓴다", async () => {
+    const dir = path.join(tmpDir, "empty-id");
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(path.join(dir, "machine-id"), "   \n", "utf-8");
+
+    const id = await loadOrCreateMachineId(dir);
+    assert.ok(id.length > 0, "빈 파일에서 새 id 가 생성되어야 한다");
+
+    const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    assert.match(id, uuidRe, "생성된 id 는 UUID 형식이어야 한다");
+
+    const written = (await fs.readFile(path.join(dir, "machine-id"), "utf-8")).trim();
+    assert.equal(written, id, "생성된 id 가 파일에 저장되어야 한다");
+  });
 });
 
 // ---------------------------------------------------------------------------

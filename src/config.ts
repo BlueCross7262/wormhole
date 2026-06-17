@@ -42,12 +42,12 @@ const RemoteConfigSchema = z.object({
   url: z.string().min(1),
   username: z.string().default(""),
   password: z.string().default(""),
-  remoteBaseDir: z.string().default("/claude-sync"),
+  remoteBaseDir: z.string().default("/wormhole"),
 });
 
 const CryptoConfigSchema = z.object({
   // passphrase 를 읽을 환경변수 이름.
-  passphraseEnv: z.string().default("CLAUDE_SYNC_PASSPHRASE"),
+  passphraseEnv: z.string().default("WORMHOLE_PASSPHRASE"),
   // 0600 passphrase 파일 경로(빈 문자열이면 stateDir/passphrase 기본값).
   passphraseFile: z.string().default(""),
   // (선택) keychain service 이름(secret-tool, Linux/WSL2).
@@ -84,8 +84,8 @@ const RawConfigSchema = z.object({
   crypto: CryptoConfigSchema.partial().default({}),
   targets: SyncTargetsSchema.partial().default({}),
   settingsLocalKeys: z.array(z.string()).default(DEFAULT_SETTINGS_LOCAL_KEYS),
-  // 자기 자신(claude-sync) mcp 서버 이름 목록. .mcp.json 동기화 시 자기참조 제외 기준.
-  selfMcpServerNames: z.array(z.string()).default(["claude-sync"]),
+  // 자기 자신(wormhole) mcp 서버 이름 목록. .mcp.json 동기화 시 자기참조 제외 기준.
+  selfMcpServerNames: z.array(z.string()).default(["wormhole"]),
   conflictPolicy: z.enum(["preserve-both", "latest-wins", "manual"]).default("preserve-both"),
   autoSync: AutoSyncConfigSchema.partial().default({}),
   lock: LockConfigSchema.partial().default({}),
@@ -120,16 +120,16 @@ function applyEnvOverrides(raw: Record<string, unknown>): Record<string, unknown
   const result = { ...raw } as Record<string, unknown>;
 
   const remote = { ...(result["remote"] as Record<string, unknown> ?? {}) };
-  if (process.env["CLAUDE_SYNC_WEBDAV_URL"]) remote["url"] = process.env["CLAUDE_SYNC_WEBDAV_URL"];
-  if (process.env["CLAUDE_SYNC_WEBDAV_USER"]) remote["username"] = process.env["CLAUDE_SYNC_WEBDAV_USER"];
-  if (process.env["CLAUDE_SYNC_WEBDAV_PASS"]) remote["password"] = process.env["CLAUDE_SYNC_WEBDAV_PASS"];
+  if (process.env["WORMHOLE_WEBDAV_URL"]) remote["url"] = process.env["WORMHOLE_WEBDAV_URL"];
+  if (process.env["WORMHOLE_WEBDAV_USER"]) remote["username"] = process.env["WORMHOLE_WEBDAV_USER"];
+  if (process.env["WORMHOLE_WEBDAV_PASS"]) remote["password"] = process.env["WORMHOLE_WEBDAV_PASS"];
   result["remote"] = remote;
 
   // crypto: passphrase 원문은 config 에 저장하지 않는다(런타임에 env/0600파일/keychain 에서 직접 읽음).
   // 여기서는 passphrase "소스 메타"(파일 경로 / keychain service)만 오버라이드한다.
   const crypto = { ...(result["crypto"] as Record<string, unknown> ?? {}) };
-  if (process.env["CLAUDE_SYNC_PASSPHRASE_FILE"]) crypto["passphraseFile"] = process.env["CLAUDE_SYNC_PASSPHRASE_FILE"];
-  if (process.env["CLAUDE_SYNC_KEYCHAIN_SERVICE"]) crypto["keychainService"] = process.env["CLAUDE_SYNC_KEYCHAIN_SERVICE"];
+  if (process.env["WORMHOLE_PASSPHRASE_FILE"]) crypto["passphraseFile"] = process.env["WORMHOLE_PASSPHRASE_FILE"];
+  if (process.env["WORMHOLE_KEYCHAIN_SERVICE"]) crypto["keychainService"] = process.env["WORMHOLE_KEYCHAIN_SERVICE"];
   result["crypto"] = crypto;
 
   return result;
@@ -194,7 +194,7 @@ export function resolveConfig(raw: unknown): Config {
 
   const stateDir = parsed.stateDir
     ? path.resolve(expandTilde(parsed.stateDir, home))
-    : path.join(home, ".claude-sync");
+    : path.join(home, ".wormhole");
 
   const resolvedHome = parsed.home
     ? path.resolve(expandTilde(parsed.home, home))
@@ -210,8 +210,8 @@ export async function loadConfig(configPath?: string): Promise<Config> {
 
   // 설정 파일 경로 결정
   const cfgPath = configPath
-    ?? process.env["CLAUDE_SYNC_CONFIG"]
-    ?? path.join(home, ".claude-sync", "config.json");
+    ?? process.env["WORMHOLE_CONFIG"]
+    ?? path.join(home, ".wormhole", "config.json");
 
   let fileRaw: Record<string, unknown> = {};
   try {
@@ -229,7 +229,7 @@ export async function loadConfig(configPath?: string): Promise<Config> {
 
   const stateDir = parsed.stateDir
     ? path.resolve(expandTilde(parsed.stateDir, home))
-    : path.join(home, ".claude-sync");
+    : path.join(home, ".wormhole");
 
   const resolvedHome = parsed.home
     ? path.resolve(expandTilde(parsed.home, home))

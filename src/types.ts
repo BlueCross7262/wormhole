@@ -37,11 +37,11 @@ export interface RemoteConfig {
   username: string;
   /** WebDAV 비밀번호. */
   password: string;
-  /** 원격 레이아웃 루트. 예: "/claude-sync". */
+  /** 원격 레이아웃 루트. 예: "/wormhole". */
   remoteBaseDir: string;
 }
 
-/** age 자격 설정. identityKeyPath 파일 또는 env 원문(CLAUDE_SYNC_IDENTITY_KEY) 사용. */
+/** age 자격 설정. identityKeyPath 파일 또는 env 원문(WORMHOLE_IDENTITY_KEY) 사용. */
 export interface CryptoConfig {
   /** passphrase 를 읽을 환경변수 이름. */
   passphraseEnv: string;
@@ -81,7 +81,7 @@ export interface LockConfig {
 
 /** 최상위 설정. config 파일 + env 병합 후 검증된 형태. */
 export interface Config {
-  /** 로컬 상태 디렉터리(절대경로). 기본 ~/.claude-sync. */
+  /** 로컬 상태 디렉터리(절대경로). 기본 ~/.wormhole. */
   stateDir: string;
   /** os.homedir() 스냅샷(절대경로). 논리키↔OS 경로 매핑 기준. */
   home: string;
@@ -93,7 +93,7 @@ export interface Config {
   targets: SyncTargets;
   /** settings.json 에서 머신고유로 제외할 JSON dot-path 키. 빈 배열 허용. */
   settingsLocalKeys: string[];
-  /** 자기 자신(claude-sync) mcp 서버 이름 목록. .mcp.json 동기화 시 자기참조 제외 기준. */
+  /** 자기 자신(wormhole) mcp 서버 이름 목록. .mcp.json 동기화 시 자기참조 제외 기준. */
   selfMcpServerNames: string[];
   /** 충돌 기본 정책. */
   conflictPolicy: ResolvePolicy;

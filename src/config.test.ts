@@ -13,15 +13,15 @@ import {
 } from "./config.js";
 
 // ── env 격리 헬퍼 ──────────────────────────────────────────────
-// applyEnvOverrides 가 참조하는 모든 CLAUDE_SYNC_* 키 + 설정파일 경로 키.
+// applyEnvOverrides 가 참조하는 모든 WORMHOLE_* 키 + 설정파일 경로 키.
 const MANAGED_ENV_KEYS = [
-  "CLAUDE_SYNC_WEBDAV_URL",
-  "CLAUDE_SYNC_WEBDAV_USER",
-  "CLAUDE_SYNC_WEBDAV_PASS",
-  "CLAUDE_SYNC_PASSPHRASE_FILE",
-  "CLAUDE_SYNC_KEYCHAIN_SERVICE",
-  "CLAUDE_SYNC_PASSPHRASE",
-  "CLAUDE_SYNC_CONFIG",
+  "WORMHOLE_WEBDAV_URL",
+  "WORMHOLE_WEBDAV_USER",
+  "WORMHOLE_WEBDAV_PASS",
+  "WORMHOLE_PASSPHRASE_FILE",
+  "WORMHOLE_KEYCHAIN_SERVICE",
+  "WORMHOLE_PASSPHRASE",
+  "WORMHOLE_CONFIG",
 ];
 
 const savedEnv: Record<string, string | undefined> = {};
@@ -88,9 +88,9 @@ describe("loadConfig — env overrides file for remote.*", () => {
       },
     });
 
-    process.env["CLAUDE_SYNC_WEBDAV_URL"] = "https://from-env.example.com/dav";
-    process.env["CLAUDE_SYNC_WEBDAV_USER"] = "envUser";
-    process.env["CLAUDE_SYNC_WEBDAV_PASS"] = "envPass";
+    process.env["WORMHOLE_WEBDAV_URL"] = "https://from-env.example.com/dav";
+    process.env["WORMHOLE_WEBDAV_USER"] = "envUser";
+    process.env["WORMHOLE_WEBDAV_PASS"] = "envPass";
 
     const cfg = await loadConfig(cfgPath);
 
@@ -110,7 +110,7 @@ describe("loadConfig — env overrides file for remote.*", () => {
       },
     });
 
-    process.env["CLAUDE_SYNC_WEBDAV_URL"] = "https://only-url-env.example.com/dav";
+    process.env["WORMHOLE_WEBDAV_URL"] = "https://only-url-env.example.com/dav";
 
     const cfg = await loadConfig(cfgPath);
 
@@ -122,9 +122,9 @@ describe("loadConfig — env overrides file for remote.*", () => {
 
 describe("resolveConfig — env overrides injected raw for remote.*", () => {
   test("env wins over raw object remote values", () => {
-    process.env["CLAUDE_SYNC_WEBDAV_URL"] = "https://env-direct.example.com/dav";
-    process.env["CLAUDE_SYNC_WEBDAV_USER"] = "directEnvUser";
-    process.env["CLAUDE_SYNC_WEBDAV_PASS"] = "directEnvPass";
+    process.env["WORMHOLE_WEBDAV_URL"] = "https://env-direct.example.com/dav";
+    process.env["WORMHOLE_WEBDAV_USER"] = "directEnvUser";
+    process.env["WORMHOLE_WEBDAV_PASS"] = "directEnvPass";
 
     const cfg = resolveConfig({
       remote: {
@@ -151,8 +151,8 @@ describe("loadConfig — env overrides file for crypto source metadata", () => {
     });
 
     const envPassFile = path.join(tmpRoot, "env-passphrase");
-    process.env["CLAUDE_SYNC_PASSPHRASE_FILE"] = envPassFile;
-    process.env["CLAUDE_SYNC_KEYCHAIN_SERVICE"] = "env-keychain-service";
+    process.env["WORMHOLE_PASSPHRASE_FILE"] = envPassFile;
+    process.env["WORMHOLE_KEYCHAIN_SERVICE"] = "env-keychain-service";
 
     const cfg = await loadConfig(cfgPath);
 
@@ -165,7 +165,7 @@ describe("loadConfig — env overrides file for crypto source metadata", () => {
 // ── 2. absent env: file values untouched ──────────────────────
 
 describe("loadConfig — absent env leaves file values untouched", () => {
-  test("no CLAUDE_SYNC_WEBDAV_* env → file remote values preserved", async () => {
+  test("no WORMHOLE_WEBDAV_* env → file remote values preserved", async () => {
     const cfgPath = writeConfigFile({
       remote: {
         url: "https://untouched.example.com/dav",
@@ -176,7 +176,7 @@ describe("loadConfig — absent env leaves file values untouched", () => {
     });
 
     // env 는 beforeEach 에서 이미 비워짐 — 명시적 재확인.
-    assert.equal(process.env["CLAUDE_SYNC_WEBDAV_URL"], undefined);
+    assert.equal(process.env["WORMHOLE_WEBDAV_URL"], undefined);
 
     const cfg = await loadConfig(cfgPath);
 
@@ -222,9 +222,9 @@ describe("passphrase plaintext is never present on config object", () => {
   test("env passphrase set, but config carries only source metadata (no plaintext)", () => {
     // 환경변수로 실제 passphrase 평문을 넣어도 config 에 새어나오면 안 됨.
     const SECRET = "super-secret-plaintext-passphrase";
-    process.env["CLAUDE_SYNC_PASSPHRASE"] = SECRET;
-    process.env["CLAUDE_SYNC_PASSPHRASE_FILE"] = "/some/passphrase/file";
-    process.env["CLAUDE_SYNC_KEYCHAIN_SERVICE"] = "my-keychain";
+    process.env["WORMHOLE_PASSPHRASE"] = SECRET;
+    process.env["WORMHOLE_PASSPHRASE_FILE"] = "/some/passphrase/file";
+    process.env["WORMHOLE_KEYCHAIN_SERVICE"] = "my-keychain";
 
     const cfg = resolveConfig({ remote: { url: "https://x.example.com/dav" } });
 
@@ -239,7 +239,7 @@ describe("passphrase plaintext is never present on config object", () => {
     assert.ok(!("passphrase" in cfg.crypto), "crypto must not have a 'passphrase' field");
 
     // 소스 메타데이터(env 이름/파일경로/keychain service)만 존재.
-    assert.equal(cfg.crypto.passphraseEnv, "CLAUDE_SYNC_PASSPHRASE");
+    assert.equal(cfg.crypto.passphraseEnv, "WORMHOLE_PASSPHRASE");
     assert.equal(cfg.crypto.keychainService, "my-keychain");
 
     // 평문 SECRET 이 config 전체 직렬화 어디에도 등장하지 않음.
@@ -253,14 +253,14 @@ describe("passphrase plaintext is never present on config object", () => {
   test("passphraseEnv name in config, not its resolved value", () => {
     // 커스텀 env 이름을 지정하고 그 env 에 평문을 넣어도 이름만 저장.
     const SECRET = "another-plaintext";
-    process.env["CLAUDE_SYNC_PASSPHRASE"] = SECRET;
+    process.env["WORMHOLE_PASSPHRASE"] = SECRET;
 
     const cfg = resolveConfig({
       remote: { url: "https://x.example.com/dav" },
-      crypto: { passphraseEnv: "CLAUDE_SYNC_PASSPHRASE" },
+      crypto: { passphraseEnv: "WORMHOLE_PASSPHRASE" },
     });
 
-    assert.equal(cfg.crypto.passphraseEnv, "CLAUDE_SYNC_PASSPHRASE");
+    assert.equal(cfg.crypto.passphraseEnv, "WORMHOLE_PASSPHRASE");
     assert.ok(!JSON.stringify(cfg).includes(SECRET));
   });
 });
@@ -330,6 +330,18 @@ describe("tilde expansion + derived path defaults", () => {
 
     assert.equal(cfg.crypto.passphraseFile, path.resolve(cfg.stateDir, "nested", "pass"));
   });
+
+  // config.ts line 149/162: 비절대 derivedKeyPath → stateDir 기준 resolve.
+  test("relative derivedKeyPath resolves against stateDir", () => {
+    const stateDir = path.join(tmpRoot, "state-dkp-rel");
+    const cfg = resolveConfig({
+      remote: { url: "https://x.example.com/dav" },
+      stateDir,
+      crypto: { derivedKeyPath: "keys/age-key.txt" },
+    });
+
+    assert.equal(cfg.crypto.derivedKeyPath, path.resolve(cfg.stateDir, "keys", "age-key.txt"));
+  });
 });
 
 // ── 5. Zod defaults applied when omitted ──────────────────────
@@ -349,10 +361,10 @@ describe("Zod schema defaults populate omitted fields", () => {
     // remote defaults
     assert.equal(cfg.remote.username, "");
     assert.equal(cfg.remote.password, "");
-    assert.equal(cfg.remote.remoteBaseDir, "/claude-sync");
+    assert.equal(cfg.remote.remoteBaseDir, "/wormhole");
 
     // crypto defaults
-    assert.equal(cfg.crypto.passphraseEnv, "CLAUDE_SYNC_PASSPHRASE");
+    assert.equal(cfg.crypto.passphraseEnv, "WORMHOLE_PASSPHRASE");
     assert.equal(cfg.crypto.kdfN, 1 << 16);
     assert.equal(cfg.crypto.kdfR, 8);
     assert.equal(cfg.crypto.kdfP, 1);
@@ -360,7 +372,7 @@ describe("Zod schema defaults populate omitted fields", () => {
     assert.equal(cfg.crypto.keychainService, undefined);
 
     // top-level defaults
-    assert.deepEqual(cfg.selfMcpServerNames, ["claude-sync"]);
+    assert.deepEqual(cfg.selfMcpServerNames, ["wormhole"]);
     assert.equal(cfg.conflictPolicy, "preserve-both");
 
     // autoSync defaults
@@ -380,11 +392,11 @@ describe("Zod schema defaults populate omitted fields", () => {
     await assert.rejects(() => loadConfig(missing));
   });
 
-  test("CLAUDE_SYNC_CONFIG env points loadConfig at the tmp file", async () => {
+  test("WORMHOLE_CONFIG env points loadConfig at the tmp file", async () => {
     const cfgPath = writeConfigFile({ remote: { url: "https://via-env-config.example.com/dav" } });
-    process.env["CLAUDE_SYNC_CONFIG"] = cfgPath;
+    process.env["WORMHOLE_CONFIG"] = cfgPath;
 
-    // 인자 없이 호출 → CLAUDE_SYNC_CONFIG 경로 사용.
+    // 인자 없이 호출 → WORMHOLE_CONFIG 경로 사용.
     const cfg = await loadConfig();
 
     assert.equal(cfg.remote.url, "https://via-env-config.example.com/dav");

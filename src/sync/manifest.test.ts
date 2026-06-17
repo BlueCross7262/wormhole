@@ -334,7 +334,7 @@ describe("entry key set tracking", () => {
 // counter) so create/update/412 are fully deterministic with no FS/network.
 // mock-webdav.ts is deliberately NOT used here.
 
-const REMOTE_BASE = "/claude-sync";
+const REMOTE_BASE = "/wormhole";
 const MANIFEST_PATH = `${REMOTE_BASE}/manifest.json.age`;
 
 // Records each PUT the store performs, so tests can assert which CAS verb

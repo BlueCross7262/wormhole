@@ -9,7 +9,7 @@ import type { Config } from "../types.js";
 function makeConfig(home: string, overrides?: Partial<Config["targets"]> & { stateDir?: string }): Config {
   return {
     home,
-    stateDir: overrides?.stateDir ?? path.join(home, ".claude-sync"),
+    stateDir: overrides?.stateDir ?? path.join(home, ".wormhole"),
     targets: {
       include: overrides?.include ?? [".claude/**"],
       exclude: overrides?.exclude ?? [],
@@ -118,20 +118,20 @@ describe("scanLocal", () => {
 
   test("stateDir inside home is automatically excluded", async () => {
     const home = path.join(tmpDir, "statedir");
-    const stateDir = path.join(home, ".claude-sync");
+    const stateDir = path.join(home, ".wormhole");
     writeFile(path.join(home, ".claude", "CLAUDE.md"), "keep");
     writeFile(path.join(stateDir, "base.snapshot"), "state");
     writeFile(path.join(stateDir, "age-key.txt"), "age1xxx");
 
     const cfg = makeConfig(home, {
-      include: [".claude/**", ".claude-sync/**"],
+      include: [".claude/**", ".wormhole/**"],
       stateDir,
     });
     const results = await scanLocal(cfg);
     const keys = results.map((r) => r.logicalKey);
 
     assert.ok(keys.includes(".claude/CLAUDE.md"), "CLAUDE.md should be included");
-    assert.ok(!keys.some((k) => k.startsWith(".claude-sync/")), "stateDir contents must be excluded");
+    assert.ok(!keys.some((k) => k.startsWith(".wormhole/")), "stateDir contents must be excluded");
   });
 
   test("results are sorted by logicalKey ascending", async () => {

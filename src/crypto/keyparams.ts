@@ -17,7 +17,7 @@ export interface KeyParamsFile {
 }
 
 const KEYPARAMS_REMOTE = "keyparams.json";
-const SENTINEL_PLAINTEXT = "claude-sync passphrase verification v1";
+const SENTINEL_PLAINTEXT = "wormhole passphrase verification v1";
 
 // 원격 keyparams.json 은 신뢰 불가 입력 — 구조를 zod 로 검증한다.
 const KeyParamsSchema = z.object({

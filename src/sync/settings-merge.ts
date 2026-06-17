@@ -274,7 +274,7 @@ function stableNormalize(value: unknown): unknown {
 }
 
 /**
- * .mcp.json 텍스트에서 자기참조(claude-sync 등) mcpServers 엔트리를 제거한다.
+ * .mcp.json 텍스트에서 자기참조(wormhole 등) mcpServers 엔트리를 제거한다.
  * - JSON 파싱 실패 시 원본 텍스트를 그대로 반환(throw 금지)하되 hash/size 는 원본 기준으로 계산한다.
  * - 성공 시 mcpServers 객체에서 selfNames 키를 삭제하고 안정 직렬화한다.
  */
@@ -332,7 +332,7 @@ export function normalizeSettingsForSync(
 
 /**
  * pull 시 원격 shared(.mcp.json, 이미 self 제거됨)를 로컬에 머지한다.
- * - 로컬의 self mcpServers 엔트리는 항상 보존한다(기기 로컬 claude-sync 등록 유지).
+ * - 로컬의 self mcpServers 엔트리는 항상 보존한다(기기 로컬 wormhole 등록 유지).
  * - 원격의 비-self 서버 엔트리는 원격 우선으로 적용한다.
  * - 로컬 파싱 실패/부재면 원격을 기반으로 self 만 비우고 반환한다.
  * - 안정 직렬화된 텍스트를 반환한다.

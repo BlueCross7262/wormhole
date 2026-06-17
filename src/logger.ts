@@ -27,5 +27,5 @@ export function createLogger(level: LogLevel = "info", prefix?: string): Logger 
   };
 }
 
-const defaultLevel = (process.env["CLAUDE_SYNC_LOG_LEVEL"] as LogLevel | undefined) ?? "info";
+const defaultLevel = (process.env["WORMHOLE_LOG_LEVEL"] as LogLevel | undefined) ?? "info";
 export const logger: Logger = createLogger(defaultLevel);

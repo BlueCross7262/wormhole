@@ -1,14 +1,14 @@
 {
-  "_comment": "args[0]/CLAUDE_SYNC_CONFIG 는 절대경로로 지정한다(Windows: C:/Users/user/..., WSL2: /home/user/...). CLAUDE_SYNC_PASSPHRASE 를 여기 평문으로 넣는 대신 0600 권한의 passphrase 파일(<stateDir>/passphrase) 또는 keychain(secret-tool, env CLAUDE_SYNC_KEYCHAIN_SERVICE) 사용을 권장한다.",
+  "_comment": "args[0]/WORMHOLE_CONFIG 는 절대경로로 지정한다(Windows: C:/Users/user/..., WSL2: /home/user/...). WORMHOLE_PASSPHRASE 를 여기 평문으로 넣는 대신 0600 권한의 passphrase 파일(<stateDir>/passphrase) 또는 keychain(secret-tool, env WORMHOLE_KEYCHAIN_SERVICE) 사용을 권장한다.",
   "mcpServers": {
-    "claude-sync": {
+    "wormhole": {
       "command": "node",
-      "args": ["/absolute/path/to/claude-sync-mcp/dist/index.js"],
+      "args": ["/absolute/path/to/wormhole-mcp/dist/index.js"],
       "env": {
-        "CLAUDE_SYNC_CONFIG": "/absolute/path/to/config.json",
-        "CLAUDE_SYNC_WEBDAV_PASS": "your-webdav-password",
-        "CLAUDE_SYNC_PASSPHRASE": "",
-        "CLAUDE_SYNC_LOG_LEVEL": "info"
+        "WORMHOLE_CONFIG": "/absolute/path/to/config.json",
+        "WORMHOLE_WEBDAV_PASS": "your-webdav-password",
+        "WORMHOLE_PASSPHRASE": "",
+        "WORMHOLE_LOG_LEVEL": "info"
       }
     }
   }

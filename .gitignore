@@ -14,7 +14,7 @@ age-key.txt
 passphrase
 
 # 로컬 상태 디렉터리 (키 캐시 · 백업 포함)
-.claude-sync/
+.wormhole/
 
 # 실제 설정 파일 (example 만 커밋, 실제는 비밀값 포함)
 config.json

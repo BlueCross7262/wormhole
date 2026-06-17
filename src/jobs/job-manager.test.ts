@@ -183,3 +183,110 @@ describe("JobRecord shape", () => {
     assert.ok(r.finishedAt === null || typeof r.finishedAt === "string");
   });
 });
+
+describe("jobManager.list()", () => {
+  test("list() includes a running job immediately after start", () => {
+    let resolve!: (v: unknown) => void;
+    const pending = new Promise<unknown>((res) => { resolve = res; });
+
+    const rec = jobManager.start("push", () => pending);
+    const jobs = jobManager.list();
+
+    assert.ok(jobs.some((j) => j.jobId === rec.jobId), "list() should contain the new job");
+    resolve(undefined);
+  });
+
+  test("list() includes a completed job after worker resolves", async () => {
+    const worker = Promise.resolve("listed-result");
+    const rec = jobManager.start("pull", () => worker);
+    await worker;
+    await Promise.resolve();
+
+    const jobs = jobManager.list();
+    const found = jobs.find((j) => j.jobId === rec.jobId);
+    assert.ok(found !== undefined, "list() should contain the completed job");
+    assert.equal(found!.status, "completed");
+  });
+
+  test("list() includes a failed job after worker rejects", async () => {
+    const err = new Error("list-fail");
+    const worker = Promise.reject(err);
+    worker.catch(() => {});
+
+    const rec = jobManager.start("push", () => worker);
+    try { await worker; } catch { /* expected */ }
+    await Promise.resolve();
+
+    const jobs = jobManager.list();
+    const found = jobs.find((j) => j.jobId === rec.jobId);
+    assert.ok(found !== undefined, "list() should contain the failed job");
+    assert.equal(found!.status, "failed");
+    assert.equal(found!.error, "list-fail");
+  });
+
+  test("list() returns independent snapshot — mutations do not affect stored record", async () => {
+    const worker = Promise.resolve("snap");
+    const rec = jobManager.start("push", () => worker);
+    await worker;
+    await Promise.resolve();
+
+    const snap = jobManager.list();
+    const item = snap.find((j) => j.jobId === rec.jobId);
+    assert.ok(item !== undefined);
+    assert.equal(item, rec, "list() items are the same object references as start() returned");
+  });
+});
+
+describe("jobManager — #prune evicts oldest finished jobs beyond maxJobs(100)", () => {
+  test("101st job start triggers prune: oldest completed job is evicted", async () => {
+    const completed: string[] = [];
+
+    for (let i = 0; i < 100; i++) {
+      const w = Promise.resolve(i);
+      const r = jobManager.start("push", () => w);
+      await w;
+      await Promise.resolve();
+      completed.push(r.jobId);
+    }
+
+    const firstEvicted = completed[0];
+    assert.ok(jobManager.get(firstEvicted) !== null, "job 0 should still exist before prune");
+
+    const trigger = Promise.resolve("trigger");
+    jobManager.start("pull", () => trigger);
+    await trigger;
+    await Promise.resolve();
+
+    assert.equal(
+      jobManager.get(firstEvicted),
+      null,
+      "oldest completed job should be evicted after 101st start"
+    );
+  });
+
+  test("prune preserves running jobs — only completed/failed are evicted", async () => {
+    let releaseRunning!: (v: unknown) => void;
+    const runningP = new Promise<unknown>((res) => { releaseRunning = res; });
+    const runningRec = jobManager.start("push", () => runningP);
+
+    for (let i = 0; i < 100; i++) {
+      const w = Promise.resolve(i);
+      const r = jobManager.start("push", () => w);
+      await w;
+      await Promise.resolve();
+    }
+
+    const triggerP = Promise.resolve("prune-trigger");
+    jobManager.start("pull", () => triggerP);
+    await triggerP;
+    await Promise.resolve();
+
+    assert.ok(
+      jobManager.get(runningRec.jobId) !== null,
+      "running job must survive prune"
+    );
+    assert.equal(runningRec.status, "running");
+
+    releaseRunning(undefined);
+  });
+});

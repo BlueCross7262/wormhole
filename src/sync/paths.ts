@@ -6,7 +6,7 @@ import type { LogicalKey } from "../types.js";
 // settings.json 의 논리키 (home 기준 posix).
 const SETTINGS_LOGICAL_KEY: LogicalKey = ".claude/settings.json";
 
-// .mcp.json 논리키. WebDAV 원격 동기화 시 자기참조(claude-sync) mcpServers 엔트리를 제외하는 분기 기준.
+// .mcp.json 논리키. WebDAV 원격 동기화 시 자기참조(wormhole) mcpServers 엔트리를 제외하는 분기 기준.
 export const MCP_JSON_LOGICAL_KEY: LogicalKey = ".claude/.mcp.json";
 
 // absPath → logicalKey. path.relative(home, absPath) 후 sep → "/" 정규화.

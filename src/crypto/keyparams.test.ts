@@ -14,7 +14,7 @@ import { resolvePassphrase, type PassphraseSourceConfig } from "./passphrase.js"
 // 테스트 비용을 낮추기 위한 약한 KDF 파라미터(scrypt N 을 낮춰 빠르게 돌린다).
 // keyparams 의 계약(센티넬 검증/salt 라운드트립)은 파라미터 세기와 무관하다.
 const FAST: KdfParams = { N: 1 << 8, r: 8, p: 1 };
-const SENTINEL_PLAINTEXT = "claude-sync passphrase verification v1";
+const SENTINEL_PLAINTEXT = "wormhole passphrase verification v1";
 
 // ensureCryptoReady 가 실제로 호출하는 RemoteStore 표면은 getTextIfExists + putAtomic 뿐이다.
 // 네트워크 없이 메모리로 대체한다.
@@ -412,6 +412,119 @@ describe("resolvePassphrase — 주입 우선순위", () => {
   });
 });
 
+// =====================================================================
+// passphrase 모듈: 추가 에러 브랜치 커버리지
+// - readPassphraseFile 의 catch 경로(파일 읽기 오류 → null)
+// - readPassphraseFile 의 POSIX loose-permission warn 경로
+// - readKeychain 의 catch 경로(logger.debug 호출 후 null 반환)
+// =====================================================================
+
+describe("resolvePassphrase — file read error branches", () => {
+  let dir: string;
+  let savedEnv: string | undefined;
+
+  before(() => {
+    savedEnv = process.env.CS_TEST_PASSPHRASE;
+  });
+
+  after(() => {
+    if (savedEnv === undefined) delete process.env.CS_TEST_PASSPHRASE;
+    else process.env.CS_TEST_PASSPHRASE = savedEnv;
+  });
+
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), "cs-pp-err-"));
+    delete process.env.CS_TEST_PASSPHRASE;
+  });
+
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+    delete process.env.CS_TEST_PASSPHRASE;
+  });
+
+  function cfg(overrides: Partial<PassphraseSourceConfig> = {}): PassphraseSourceConfig {
+    return {
+      env: "CS_TEST_PASSPHRASE",
+      file: path.join(dir, "passphrase"),
+      ...overrides,
+    };
+  }
+
+  // readPassphraseFile catch 브랜치: stat/readFile 실패 → null 반환 → 다음 소스로.
+  // 파일이 아예 없는 경우 fs.stat 이 ENOENT 를 던지므로 catch → null → throw.
+  test("readPassphraseFile: 존재하지 않는 파일은 catch 경로(→null)를 타며 에러로 폴백", async () => {
+    const nonexistent = path.join(dir, "does-not-exist");
+    await assert.rejects(
+      resolvePassphrase(cfg({ file: nonexistent })),
+      /passphrase 를 찾을 수 없음/,
+    );
+  });
+
+  // readPassphraseFile catch 브랜치: directory 를 파일로 stat 할 수 있지만
+  // readFile 은 EISDIR 로 실패 → catch → null 반환.
+  test("readPassphraseFile: 디렉터리 경로는 readFile EISDIR → catch → null 폴백", async () => {
+    const dirPath = path.join(dir, "is-a-dir");
+    fs.mkdirSync(dirPath, { recursive: true });
+    await assert.rejects(
+      resolvePassphrase(cfg({ file: dirPath })),
+      /passphrase 를 찾을 수 없음/,
+    );
+  });
+
+  // POSIX 전용: loose-permission(0o644) warn 경로.
+  // Windows 에서는 mode 비트가 무의미하므로 skip.
+  test("readPassphraseFile: POSIX 에서 0644 파일은 warn 을 발행하지만 값은 반환한다", async () => {
+    if (process.platform === "win32") return;
+
+    const filePath = path.join(dir, "passphrase-loose");
+    fs.writeFileSync(filePath, "loose-secret\n", "utf-8");
+    fs.chmodSync(filePath, 0o644);
+
+    const warnMessages: string[] = [];
+    const logger = {
+      debug: () => {},
+      info: () => {},
+      warn: (msg: string) => { warnMessages.push(msg); },
+      error: () => {},
+    };
+
+    const res = await resolvePassphrase(cfg({ file: filePath }), logger);
+    assert.equal(res.passphrase, "loose-secret");
+    assert.equal(res.source, "file");
+    assert.ok(
+      warnMessages.some((m) => m.includes("느슨함")),
+      `warn 이 발행되지 않음. 실제 warn: ${JSON.stringify(warnMessages)}`,
+    );
+  });
+
+  // readKeychain catch 브랜치: secret-tool 미설치/실패 → logger.debug 후 null 반환.
+  // keychainService 가 있어도 env/file 이 모두 없으면 최종 throw.
+  test("readKeychain: secret-tool 실패 시 debug 로그 후 null → 최종 에러", async () => {
+    const debugMessages: string[] = [];
+    const logger = {
+      debug: (msg: string) => { debugMessages.push(msg); },
+      info: () => {},
+      warn: () => {},
+      error: () => {},
+    };
+
+    const c = cfg({
+      file: path.join(dir, "no-file"),
+      keychainService: "nonexistent-service-xyz",
+    });
+
+    await assert.rejects(
+      resolvePassphrase(c, logger),
+      /passphrase 를 찾을 수 없음/,
+    );
+    // secret-tool 실패 시 debug 메시지가 발행되어야 한다(catch 브랜치 통과 확인).
+    assert.ok(
+      debugMessages.some((m) => m.includes("keychain 조회 실패")),
+      `keychain 실패 debug 로그 없음. 실제 debug: ${JSON.stringify(debugMessages)}`,
+    );
+  });
+});
+
 describe("resolvePassphrase — keychain 폴백(플랫폼 의존)", () => {
   let dir: string;
   let saved: string | undefined;
@@ -442,7 +555,7 @@ describe("resolvePassphrase — keychain 폴백(플랫폼 의존)", () => {
     const cfg: PassphraseSourceConfig = {
       env: "CS_TEST_PASSPHRASE",
       file: path.join(dir, "does-not-exist"),
-      keychainService: "claude-sync-test-service-nonexistent",
+      keychainService: "wormhole-test-service-nonexistent",
     };
     await assert.rejects(resolvePassphrase(cfg), /passphrase 를 찾을 수 없음/);
   });

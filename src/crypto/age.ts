@@ -83,7 +83,7 @@ export class AgeCrypto {
   // 파생된 identity 를 0600 으로 캐시. 부모 디렉터리 mkdir -p.
   static async #cacheIdentity(cachePath: string, identity: string, logger?: Logger): Promise<void> {
     await fs.mkdir(path.dirname(cachePath), { recursive: true });
-    const body = `# claude-sync 파생 age 키 — passphrase 로부터 자동 생성됨. 수동 편집 금지.\n${identity}\n`;
+    const body = `# wormhole 파생 age 키 — passphrase 로부터 자동 생성됨. 수동 편집 금지.\n${identity}\n`;
     await fs.writeFile(cachePath, body, { encoding: "utf-8", mode: 0o600 });
     try {
       await fs.chmod(cachePath, 0o600);

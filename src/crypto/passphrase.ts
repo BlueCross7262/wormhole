@@ -6,7 +6,7 @@ import type { Logger } from "../types.js";
 const execFileAsync = promisify(execFile);
 
 export interface PassphraseSourceConfig {
-  // 환경변수 이름(예: "CLAUDE_SYNC_PASSPHRASE").
+  // 환경변수 이름(예: "WORMHOLE_PASSPHRASE").
   env: string;
   // 0600 권한의 passphrase 파일 경로(절대경로, 이미 tilde 확장됨).
   file: string;
@@ -88,7 +88,7 @@ async function readPassphraseFile(filePath: string, logger?: Logger): Promise<st
 }
 
 // secret-tool(libsecret) 로 keychain 조회. 미설치/미존재 시 null.
-// 조회 키: `secret-tool lookup service <service> account claude-sync`.
+// 조회 키: `secret-tool lookup service <service> account wormhole`.
 async function readKeychain(service: string, logger?: Logger): Promise<string | null> {
   try {
     const { stdout } = await execFileAsync("secret-tool", [
@@ -96,7 +96,7 @@ async function readKeychain(service: string, logger?: Logger): Promise<string | 
       "service",
       service,
       "account",
-      "claude-sync",
+      "wormhole",
     ]);
     const value = stdout.trim();
     return value === "" ? null : value;

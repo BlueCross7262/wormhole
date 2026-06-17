@@ -380,14 +380,14 @@ describe("stripSelfMcpServers", () => {
   test("removes named self server, keeps others", () => {
     const json = JSON.stringify({
       mcpServers: {
-        "claude-sync": { command: "self" },
+        "wormhole": { command: "self" },
         other: { command: "keep" },
       },
     });
-    const r = stripSelfMcpServers(json, ["claude-sync"]);
+    const r = stripSelfMcpServers(json, ["wormhole"]);
     const parsed = JSON.parse(r.text);
     assert.equal(
-      Object.prototype.hasOwnProperty.call(parsed.mcpServers, "claude-sync"),
+      Object.prototype.hasOwnProperty.call(parsed.mcpServers, "wormhole"),
       false,
     );
     assert.deepEqual(parsed.mcpServers.other, { command: "keep" });
@@ -422,11 +422,11 @@ describe("stripSelfMcpServers", () => {
   test("home tokenization applied to non-self server paths when home given", () => {
     const json = JSON.stringify({
       mcpServers: {
-        "claude-sync": { command: `${FAKE_HOME}/self` },
+        "wormhole": { command: `${FAKE_HOME}/self` },
         other: { command: `${FAKE_HOME}/bin/other` },
       },
     });
-    const r = stripSelfMcpServers(json, ["claude-sync"], FAKE_HOME);
+    const r = stripSelfMcpServers(json, ["wormhole"], FAKE_HOME);
     const parsed = JSON.parse(r.text);
     assert.equal(parsed.mcpServers.other.command, `${HOME_TOKEN}/bin/other`);
   });
@@ -437,21 +437,76 @@ describe("stripSelfMcpServers", () => {
   });
 });
 
+// -----------------------------------------------------------------------
+// settings-merge.ts 추가 브랜치 커버리지
+// -----------------------------------------------------------------------
+
+describe("isLocalKey — pat.length > segs.length branch (lines 78-80)", () => {
+  // 패턴이 경로보다 더 긴 경우 → continue(skip) → 최종 false.
+  // extractSharedSubset 을 통해 간접 호출한다.
+  test("패턴이 경로보다 길면 매칭되지 않아 키가 유지된다", () => {
+    // localKey "a.b.c" (3세그먼트)로 "a.b" (2세그먼트) 경로를 필터링하려 하면 안 된다.
+    const obj = { a: { b: 42 } };
+    const out = extractSharedSubset(obj, ["a.b.c"]);
+    // 패턴(3) > 경로 세그먼트(2) → continue → 매칭 없음 → 키 보존.
+    assert.deepEqual(out, { a: { b: 42 } });
+  });
+
+  test("패턴이 경로보다 짧거나 같으면 정상 매칭된다(대조)", () => {
+    // localKey "a.b" (2세그먼트)로 "a.b" 경로 필터링 → 제거.
+    const obj = { a: { b: 1, c: 2 } };
+    const out = extractSharedSubset(obj, ["a.b"]);
+    assert.deepEqual(out, { a: { c: 2 } });
+  });
+});
+
+describe("threeWayMerge — 양측이 동일하게 삭제한 키 (lines 92-93 both-deleted branch)", () => {
+  // 두 sides 가 base 에 있던 키를 동일하게 삭제: localChanged=true, remoteChanged=true,
+  // deepEqual(undefined, undefined)=true, hasLocal=false → out 에 포함되지 않는다.
+  test("양측이 같은 키를 base 에서 삭제하면 결과에 포함되지 않는다", () => {
+    // base 에 "gone" 키, local 과 remote 양쪽에서 삭제됨.
+    const local = { kept: 1 };
+    const remoteShared = { kept: 1 };
+    const baseShared = { kept: 1, gone: "was-here" };
+    const res = threeWayMerge(local, remoteShared, baseShared, []);
+    assert.equal(
+      Object.prototype.hasOwnProperty.call(res.merged, "gone"),
+      false,
+      "양측 동일 삭제 키는 결과에 없어야 한다",
+    );
+    assert.equal(res.hasConflict, false);
+    assert.equal(res.merged.kept, 1);
+  });
+
+  test("한쪽만 삭제하고 다른 쪽은 유지하면 삭제가 적용된다(단측 변경 경로)", () => {
+    // remote 가 삭제, local 은 base 그대로 → remote 변경 채택 → 삭제.
+    const local = { kept: 1, maybeGone: "still-here" };
+    const remoteShared = { kept: 1 };
+    const baseShared = { kept: 1, maybeGone: "still-here" };
+    const res = threeWayMerge(local, remoteShared, baseShared, []);
+    assert.equal(
+      Object.prototype.hasOwnProperty.call(res.merged, "maybeGone"),
+      false,
+    );
+    assert.equal(res.hasConflict, false);
+  });
+});
+
 describe("mergeMcpJsonForPull", () => {
   test("preserves local self server, applies remote non-self servers", () => {
     const remote = JSON.stringify({ mcpServers: { other: { command: "R" } } });
     const local = JSON.stringify({
       mcpServers: {
-        "claude-sync": { command: "local-self" },
+        "wormhole": { command: "local-self" },
         other: { command: "stale-local" },
       },
     });
-    const out = mergeMcpJsonForPull(remote, local, ["claude-sync"]);
+    const out = mergeMcpJsonForPull(remote, local, ["wormhole"]);
     const parsed = JSON.parse(out);
     // remote wins for non-self
     assert.deepEqual(parsed.mcpServers.other, { command: "R" });
     // local self preserved
-    assert.deepEqual(parsed.mcpServers["claude-sync"], {
+    assert.deepEqual(parsed.mcpServers["wormhole"], {
       command: "local-self",
     });
   });
@@ -459,17 +514,17 @@ describe("mergeMcpJsonForPull", () => {
   test("remote self entries are defensively stripped", () => {
     const remote = JSON.stringify({
       mcpServers: {
-        "claude-sync": { command: "remote-self-leaked" },
+        "wormhole": { command: "remote-self-leaked" },
         other: { command: "R" },
       },
     });
     const local = JSON.stringify({
-      mcpServers: { "claude-sync": { command: "local-self" } },
+      mcpServers: { "wormhole": { command: "local-self" } },
     });
-    const out = mergeMcpJsonForPull(remote, local, ["claude-sync"]);
+    const out = mergeMcpJsonForPull(remote, local, ["wormhole"]);
     const parsed = JSON.parse(out);
     // local self wins over any leaked remote self
-    assert.deepEqual(parsed.mcpServers["claude-sync"], {
+    assert.deepEqual(parsed.mcpServers["wormhole"], {
       command: "local-self",
     });
   });
@@ -478,7 +533,7 @@ describe("mergeMcpJsonForPull", () => {
     const remote = JSON.stringify({
       mcpServers: { other: { command: `${HOME_TOKEN}/bin/other` } },
     });
-    const out = mergeMcpJsonForPull(remote, null, ["claude-sync"], FAKE_HOME);
+    const out = mergeMcpJsonForPull(remote, null, ["wormhole"], FAKE_HOME);
     const parsed = JSON.parse(out);
     const normalize = (s: string) => s.split(/[\\/]/).join("/");
     assert.equal(
@@ -490,14 +545,14 @@ describe("mergeMcpJsonForPull", () => {
   test("null local => remote-based output with self emptied", () => {
     const remote = JSON.stringify({
       mcpServers: {
-        "claude-sync": { command: "leaked" },
+        "wormhole": { command: "leaked" },
         other: { command: "R" },
       },
     });
-    const out = mergeMcpJsonForPull(remote, null, ["claude-sync"]);
+    const out = mergeMcpJsonForPull(remote, null, ["wormhole"]);
     const parsed = JSON.parse(out);
     assert.equal(
-      Object.prototype.hasOwnProperty.call(parsed.mcpServers, "claude-sync"),
+      Object.prototype.hasOwnProperty.call(parsed.mcpServers, "wormhole"),
       false,
     );
     assert.deepEqual(parsed.mcpServers.other, { command: "R" });
@@ -505,19 +560,19 @@ describe("mergeMcpJsonForPull", () => {
 
   test("invalid local JSON treated as absent (remote-based result)", () => {
     const remote = JSON.stringify({ mcpServers: { other: { command: "R" } } });
-    const out = mergeMcpJsonForPull(remote, "{broken", ["claude-sync"]);
+    const out = mergeMcpJsonForPull(remote, "{broken", ["wormhole"]);
     const parsed = JSON.parse(out);
     assert.deepEqual(parsed.mcpServers.other, { command: "R" });
   });
 
   test("invalid remote JSON treated as empty remote", () => {
     const local = JSON.stringify({
-      mcpServers: { "claude-sync": { command: "local-self" } },
+      mcpServers: { "wormhole": { command: "local-self" } },
     });
-    const out = mergeMcpJsonForPull("{broken", local, ["claude-sync"]);
+    const out = mergeMcpJsonForPull("{broken", local, ["wormhole"]);
     const parsed = JSON.parse(out);
     // self preserved, no other servers
-    assert.deepEqual(parsed.mcpServers["claude-sync"], {
+    assert.deepEqual(parsed.mcpServers["wormhole"], {
       command: "local-self",
     });
   });
@@ -525,11 +580,11 @@ describe("mergeMcpJsonForPull", () => {
   test("creates mcpServers container when remote lacks it but local self exists", () => {
     const remote = JSON.stringify({ someTopKey: 1 });
     const local = JSON.stringify({
-      mcpServers: { "claude-sync": { command: "local-self" } },
+      mcpServers: { "wormhole": { command: "local-self" } },
     });
-    const out = mergeMcpJsonForPull(remote, local, ["claude-sync"]);
+    const out = mergeMcpJsonForPull(remote, local, ["wormhole"]);
     const parsed = JSON.parse(out);
-    assert.deepEqual(parsed.mcpServers["claude-sync"], {
+    assert.deepEqual(parsed.mcpServers["wormhole"], {
       command: "local-self",
     });
     // remote top-level key preserved (remote-first base)
@@ -548,11 +603,11 @@ describe("mergeMcpJsonForPull", () => {
     const remote = JSON.stringify({ mcpServers: { other: { command: "R" } } });
     const local = JSON.stringify({
       mcpServers: {
-        "claude-sync": { command: "self" },
+        "wormhole": { command: "self" },
         localOnly: { command: "should-not-appear" },
       },
     });
-    const out = mergeMcpJsonForPull(remote, local, ["claude-sync"]);
+    const out = mergeMcpJsonForPull(remote, local, ["wormhole"]);
     const parsed = JSON.parse(out);
     assert.equal(
       Object.prototype.hasOwnProperty.call(parsed.mcpServers, "localOnly"),
