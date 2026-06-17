@@ -1,12 +1,6 @@
 {
-  "_comment": "비밀값(WebDAV 비밀번호, passphrase)은 이 파일에 직접 입력하지 않는다. WebDAV 비밀번호는 env WORMHOLE_WEBDAV_PASS(또는 username=WORMHOLE_WEBDAV_USER, url=WORMHOLE_WEBDAV_URL), passphrase 는 env WORMHOLE_PASSPHRASE / 0600 파일 / keychain 으로 주입한다. passphrase 원문은 절대 이 파일이나 config.json 에 넣지 않는다.",
+  "_comment": "WebDAV 접속 정보(url/username/password/baseDir)는 ~/.wormhole/.env 의 인덱스 프로파일(WORMHOLE_WEBDAV_<N>_USER/_PASS/_URL/_BASEDIR)로 지정한다. MCP env 의 WORMHOLE_WEBDAV_USER 로 프로파일을 선택한다. 이 파일의 remote 섹션은 더 이상 필요하지 않으며 .env 프로파일이 우선한다. passphrase 원문은 절대 이 파일에 넣지 않는다(~/.wormhole/.env 또는 0600 파일 / keychain 사용).",
   "stateDir": "~/.wormhole",
-  "remote": {
-    "url": "https://your-webdav-server.example.com",
-    "username": "your-webdav-username",
-    "password": "",
-    "remoteBaseDir": "/wormhole"
-  },
   "crypto": {
     "_comment": "passphraseEnv: passphrase 를 읽을 환경변수 이름. passphraseFile/derivedKeyPath 는 빈 문자열이면 stateDir 기본값을 쓴다(passphraseFile=<stateDir>/passphrase, derivedKeyPath=<stateDir>/age-key.txt). kdfN 이 클수록 강하다(메모리 사용량 증가). N=65536=2^16 ≈ 64MB.",
     "passphraseEnv": "WORMHOLE_PASSPHRASE",

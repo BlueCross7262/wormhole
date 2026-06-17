@@ -114,15 +114,129 @@ function expandTilde(p: string, home: string): string {
   return p;
 }
 
+// ── .env 로더 (zero-dep 최소 파서) ────────────────────────────
+// 고정 위치 ~/.wormhole/.env 를 읽어 process.env 로 주입한다.
+// 규칙: 빈 줄·'#' 주석 무시, 첫 '=' 기준 분리, key trim,
+//       value trim 후 둘러싼 한 쌍의 ' 또는 " 제거.
+//       이미 존재하는 키는 덮어쓰지 않는다(기존 process.env 우선).
+export function loadDotEnvIntoProcess(envPath?: string): void {
+  const target = envPath ?? path.join(os.homedir(), ".wormhole", ".env");
+
+  let content: string;
+  try {
+    content = fs.readFileSync(target, "utf-8");
+  } catch (err: unknown) {
+    // 파일 없으면 조용히 skip. 그 외 오류만 전파.
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return;
+    throw err;
+  }
+
+  for (const rawLine of content.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (line === "" || line.startsWith("#")) continue;
+
+    const eq = line.indexOf("=");
+    if (eq === -1) continue;
+
+    const key = line.slice(0, eq).trim();
+    if (key === "") continue;
+
+    let value = line.slice(eq + 1).trim();
+    if (value.length >= 2) {
+      const first = value[0];
+      const last = value[value.length - 1];
+      if ((first === '"' && last === '"') || (first === "'" && last === "'")) {
+        value = value.slice(1, -1);
+      }
+    }
+
+    // 이미 설정된 키는 덮어쓰지 않음(MCP 가 준 값 우선).
+    if (process.env[key] === undefined) process.env[key] = value;
+  }
+}
+
+// ── WebDAV 프로파일 선택 ──────────────────────────────────────
+// WORMHOLE_WEBDAV_<N>_(USER|PASS|URL|BASEDIR) 인덱스 키를 스캔해
+// 프로파일 목록을 만들고, WORMHOLE_WEBDAV_USER(선택자)로 1개를 고른다.
+//   - 프로파일 0개  → null (legacy 경로로 폴백).
+//   - 프로파일 1개  → 자동 선택. 선택자가 있고 username 과 불일치면 에러.
+//   - 프로파일 2개+ → 선택자 필수. 미지정/미매칭이면 username 목록을 담은 에러.
+export function resolveWebDavProfile(
+  env: NodeJS.ProcessEnv,
+): { url: string; username: string; password: string; remoteBaseDir?: string } | null {
+  const profiles = new Map<string, Record<string, string>>();
+  const re = /^WORMHOLE_WEBDAV_(\d+)_(USER|PASS|URL|BASEDIR)$/;
+
+  for (const [key, val] of Object.entries(env)) {
+    if (val === undefined) continue;
+    const m = re.exec(key);
+    if (!m) continue;
+    const [, idx, field] = m;
+    const entry = profiles.get(idx) ?? {};
+    entry[field] = val;
+    profiles.set(idx, entry);
+  }
+
+  if (profiles.size === 0) return null;
+
+  // 인덱스 오름차순으로 정렬해 결정적 순서 보장.
+  const ordered = [...profiles.entries()].sort(
+    (a, b) => Number(a[0]) - Number(b[0]),
+  );
+  const list = ordered.map(([, e]) => ({
+    url: e["URL"] ?? "",
+    username: e["USER"] ?? "",
+    password: e["PASS"] ?? "",
+    remoteBaseDir: e["BASEDIR"],
+  }));
+
+  const selector = env["WORMHOLE_WEBDAV_USER"];
+
+  if (list.length === 1) {
+    const only = list[0];
+    if (selector !== undefined && selector !== only.username) {
+      throw new Error(
+        `WORMHOLE_WEBDAV_USER="${selector}" 가 유일한 프로파일(username="${only.username}")과 일치하지 않습니다.`,
+      );
+    }
+    return only;
+  }
+
+  // 2개 이상: 선택자 필수.
+  const usernames = list.map((p) => p.username);
+  if (selector === undefined) {
+    throw new Error(
+      `WebDAV 프로파일이 ${list.length}개 등록되어 WORMHOLE_WEBDAV_USER 선택이 필요합니다. 사용 가능한 username: ${usernames.join(", ")}`,
+    );
+  }
+  const matched = list.find((p) => p.username === selector);
+  if (!matched) {
+    throw new Error(
+      `WORMHOLE_WEBDAV_USER="${selector}" 와 일치하는 WebDAV 프로파일이 없습니다. 사용 가능한 username: ${usernames.join(", ")}`,
+    );
+  }
+  return matched;
+}
+
 // ── env 오버라이드 적용 ───────────────────────────────────────
 
 function applyEnvOverrides(raw: Record<string, unknown>): Record<string, unknown> {
   const result = { ...raw } as Record<string, unknown>;
 
   const remote = { ...(result["remote"] as Record<string, unknown> ?? {}) };
-  if (process.env["WORMHOLE_WEBDAV_URL"]) remote["url"] = process.env["WORMHOLE_WEBDAV_URL"];
-  if (process.env["WORMHOLE_WEBDAV_USER"]) remote["username"] = process.env["WORMHOLE_WEBDAV_USER"];
-  if (process.env["WORMHOLE_WEBDAV_PASS"]) remote["password"] = process.env["WORMHOLE_WEBDAV_PASS"];
+
+  // 인덱스 기반 프로파일이 있으면 그것이 remote 의 권위 소스(.env 우선).
+  const profile = resolveWebDavProfile(process.env);
+  if (profile) {
+    remote["url"] = profile.url;
+    remote["username"] = profile.username;
+    remote["password"] = profile.password;
+    if (profile.remoteBaseDir !== undefined) remote["remoteBaseDir"] = profile.remoteBaseDir;
+  } else {
+    // legacy: 직접 override (WORMHOLE_WEBDAV_USER 는 더 이상 username 직접 override 아님 — 선택자임).
+    if (process.env["WORMHOLE_WEBDAV_URL"]) remote["url"] = process.env["WORMHOLE_WEBDAV_URL"];
+    if (process.env["WORMHOLE_WEBDAV_PASS"]) remote["password"] = process.env["WORMHOLE_WEBDAV_PASS"];
+  }
   result["remote"] = remote;
 
   // crypto: passphrase 원문은 config 에 저장하지 않는다(런타임에 env/0600파일/keychain 에서 직접 읽음).
@@ -205,8 +319,12 @@ export function resolveConfig(raw: unknown): Config {
 
 // ── loadConfig (파일 + env 병합) ─────────────────────────────
 
-export async function loadConfig(configPath?: string): Promise<Config> {
+export async function loadConfig(configPath?: string, dotEnvPath?: string): Promise<Config> {
   const home = os.homedir();
+
+  // 진입부에서 ~/.wormhole/.env(또는 테스트용 override 경로)를 process.env 로 주입.
+  // 기존 process.env 키는 보존(MCP 가 준 값 우선).
+  loadDotEnvIntoProcess(dotEnvPath);
 
   // 설정 파일 경로 결정
   const cfgPath = configPath
