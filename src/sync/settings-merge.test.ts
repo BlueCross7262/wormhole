@@ -615,3 +615,185 @@ describe("mergeMcpJsonForPull", () => {
     );
   });
 });
+
+// -----------------------------------------------------------------------
+// DEFAULT_SETTINGS_LOCAL_KEYS 신규 항목: "hooks" + "statusLine.command"
+// settings.json 의 hooks.*.command / statusLine.command 에는 머신 절대
+// 인터프리터 경로(예: C:\Program Files\nodejs\node.exe)가 박혀 있어
+// ${HOME} 토큰화로 이식 불가 → 머신 로컬 처리. 단, 스크립트 파일 자체는
+// .claude/hooks/**, .claude/statusline/** include 로 동기화된다.
+// 매처(isLocalKey)는 prefix 기반: "hooks"(1세그먼트)는 hooks.* 전체 서브트리,
+// "statusLine.command"는 그 leaf 만 보호한다.
+// -----------------------------------------------------------------------
+
+// settings.json 형태를 모사하는 헬퍼(머신별 node.exe 경로 포함).
+const WIN_NODE = "C:\\Program Files\\nodejs\\node.exe";
+const LOCAL_KEYS = ["hooks", "statusLine.command"];
+
+function settingsWithHooks(
+  nodePath: string,
+  extra: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    theme: "dark",
+    hooks: {
+      PreToolUse: [
+        { matcher: "Bash", command: `${nodePath} hook.js` },
+      ],
+    },
+    statusLine: { command: `${nodePath} statusline.js` },
+    ...extra,
+  };
+}
+
+describe("settingsLocalKeys hooks/statusLine.command — push extract drops machine-local", () => {
+  test("extractSharedSubset DROPS hooks subtree and statusLine.command", () => {
+    const obj = settingsWithHooks(WIN_NODE);
+    const out = extractSharedSubset(obj, LOCAL_KEYS);
+    // hooks 서브트리 전체 제거(prefix "hooks").
+    assert.equal(
+      Object.prototype.hasOwnProperty.call(out, "hooks"),
+      false,
+      "hooks 서브트리는 공유 subset 에 새면 안 된다",
+    );
+    // statusLine.command leaf 제거되며, statusLine 은 다른 키가 없어 빈 껍데기로 생략.
+    assert.equal(
+      Object.prototype.hasOwnProperty.call(out, "statusLine"),
+      false,
+      "statusLine 은 command 뿐이라 prune 후 빈 객체로 생략된다",
+    );
+    // 공유 키는 유지.
+    assert.deepEqual(out, { theme: "dark" });
+  });
+
+  test("normalizeSettingsForSync push subset omits the machine node.exe path entirely", () => {
+    const raw = JSON.stringify(settingsWithHooks(WIN_NODE));
+    const r = normalizeSettingsForSync(raw, LOCAL_KEYS);
+    // 정규화된 push 텍스트 어디에도 머신 절대 인터프리터 경로가 없어야 한다.
+    assert.equal(
+      r.text.includes("node.exe"),
+      false,
+      "머신 node.exe 경로가 push subset 에 새면 안 된다",
+    );
+    assert.deepEqual(JSON.parse(r.text), { theme: "dark" });
+  });
+
+  test("statusLine sibling (.padding) is NOT protected — only .command is local", () => {
+    // statusLine 에 command 외 다른 키가 있으면, command 만 제거되고 padding 은 유지된다.
+    const obj = settingsWithHooks(WIN_NODE, {
+      statusLine: { command: `${WIN_NODE} statusline.js`, padding: 4 },
+    });
+    const out = extractSharedSubset(obj, LOCAL_KEYS);
+    // command leaf 제거.
+    assert.equal(
+      Object.prototype.hasOwnProperty.call(
+        out.statusLine as Record<string, unknown>,
+        "command",
+      ),
+      false,
+      "statusLine.command 는 머신 로컬 → 제거",
+    );
+    // padding 은 prefix 매칭 밖(statusLine.padding) → 보존되어 동기화.
+    assert.deepEqual(out.statusLine, { padding: 4 });
+  });
+});
+
+describe("settingsLocalKeys hooks/statusLine.command — pull merge preserves local", () => {
+  test("remote change to hooks/statusLine.command does NOT overwrite local machine values", () => {
+    // 로컬: 이 머신의 node.exe 배선.
+    const local = settingsWithHooks(WIN_NODE);
+    // 원격 공유 subset: 로컬키가 이미 추출 단계에서 빠지므로 hooks/statusLine 을 담지 않는다.
+    // 원격이 공유 키(theme)만 바꾼 상황을 모사.
+    const remoteShared = { theme: "light" };
+    const baseShared = { theme: "dark" };
+
+    const res = threeWayMerge(local, remoteShared, baseShared, LOCAL_KEYS);
+
+    // 공유 키(theme)는 원격 변경 채택.
+    assert.equal((res.merged as Record<string, unknown>).theme, "light");
+    // 머신 로컬 hooks 는 그대로 보존(원격이 건드릴 수 없음).
+    assert.deepEqual(res.merged.hooks, local.hooks);
+    // statusLine.command 도 로컬 머신 값 그대로.
+    assert.deepEqual(res.merged.statusLine, local.statusLine);
+    // 머신 node.exe 경로가 보존됨을 직접 확인.
+    assert.equal(
+      ((res.merged.statusLine as Record<string, unknown>).command as string).includes(
+        "node.exe",
+      ),
+      true,
+    );
+    // 공유 subset 에는 로컬키가 새지 않는다.
+    assert.equal(
+      Object.prototype.hasOwnProperty.call(res.sharedSubset, "hooks"),
+      false,
+    );
+    assert.equal(
+      Object.prototype.hasOwnProperty.call(res.sharedSubset, "statusLine"),
+      false,
+    );
+    assert.equal(res.hasConflict, false);
+  });
+
+  test("normalized remoteShared (post-extract) never carries hooks/statusLine.command, so local survives a full pull cycle", () => {
+    // 실제 계약: 원격 공유 subset 은 항상 push 단계에서 extractSharedSubset 으로
+    // 로컬키가 제거된 형태다. 원격 머신의 raw settings 를 동일 localKeys 로 정규화하면
+    // hooks/statusLine.command 가 빠지고, 그 정규화 결과를 remoteShared 로 머지해도
+    // 로컬 머신 배선은 보존된다.
+    const local = settingsWithHooks(WIN_NODE);
+    // 원격 머신의 raw settings(자기 머신의 /usr/bin/node 배선 포함).
+    const remoteRaw = {
+      theme: "light",
+      hooks: { PreToolUse: [{ matcher: "Bash", command: "/usr/bin/node hook.js" }] },
+      statusLine: { command: "/usr/bin/node statusline.js" },
+    };
+    // push 단계 정규화: 로컬키 제거 → remoteShared 에 hooks/statusLine 이 들어가지 않는다.
+    const remoteShared = extractSharedSubset(remoteRaw, LOCAL_KEYS);
+    assert.equal(
+      Object.prototype.hasOwnProperty.call(remoteShared, "hooks"),
+      false,
+      "정규화된 remoteShared 는 hooks 를 담지 않는다",
+    );
+    const baseShared = extractSharedSubset(settingsWithHooks(WIN_NODE), LOCAL_KEYS);
+
+    const res = threeWayMerge(local, remoteShared, baseShared, LOCAL_KEYS);
+
+    // 공유 키(theme)는 원격 변경 채택.
+    assert.equal((res.merged as Record<string, unknown>).theme, "light");
+    // 로컬 머신 배선이 보존됨(원격의 /usr/bin/node 가 새지 않음).
+    assert.deepEqual(res.merged.hooks, local.hooks);
+    assert.deepEqual(res.merged.statusLine, local.statusLine);
+    assert.equal(
+      ((res.merged.statusLine as Record<string, unknown>).command as string).includes(
+        "node.exe",
+      ),
+      true,
+    );
+  });
+
+  test("statusLine.padding (non-command sibling) is shared — remote change to it IS applied", () => {
+    // padding 은 로컬키가 아니므로 공유 영역 → 원격 변경이 반영된다.
+    // command 는 로컬 머신 값 보존, padding 만 원격 채택을 동시에 검증.
+    const local = {
+      theme: "dark",
+      statusLine: { command: `${WIN_NODE} statusline.js`, padding: 2 },
+    };
+    const remoteShared = { theme: "dark", statusLine: { padding: 8 } };
+    const baseShared = { theme: "dark", statusLine: { padding: 2 } };
+
+    const res = threeWayMerge(local, remoteShared, baseShared, LOCAL_KEYS);
+
+    const mergedStatus = res.merged.statusLine as Record<string, unknown>;
+    // command(로컬키) 는 머신 값 보존.
+    assert.equal(mergedStatus.command, `${WIN_NODE} statusline.js`);
+    // padding(공유키) 는 원격 변경 채택.
+    assert.equal(mergedStatus.padding, 8);
+    // 공유 subset 에 statusLine.padding 만 실리고 command 는 없어야 한다.
+    const sharedStatus = res.sharedSubset.statusLine as Record<string, unknown>;
+    assert.equal(sharedStatus.padding, 8);
+    assert.equal(
+      Object.prototype.hasOwnProperty.call(sharedStatus, "command"),
+      false,
+    );
+    assert.equal(res.hasConflict, false);
+  });
+});

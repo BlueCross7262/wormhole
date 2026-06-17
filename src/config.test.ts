@@ -24,6 +24,8 @@ const MANAGED_ENV_KEYS = [
   "WORMHOLE_KEYCHAIN_SERVICE",
   "WORMHOLE_PASSPHRASE",
   "WORMHOLE_CONFIG",
+  "WORMHOLE_SYNC_INCLUDE",
+  "WORMHOLE_SYNC_EXCLUDE",
 ];
 
 // 인덱스 프로파일 키(WORMHOLE_WEBDAV_<N>_USER 등)는 동적이라 별도 패턴으로 수집한다.
@@ -682,5 +684,102 @@ describe("loadConfig — .env profiles applied to remote", () => {
 
     // process.env 선택자(bob)가 .env 의 alice 를 이긴다.
     assert.equal(cfg.remote.username, "bob");
+  });
+});
+
+
+// ── 8. WORMHOLE_SYNC_INCLUDE/EXCLUDE — 가산 union 오버라이드 ───
+
+describe("loadConfig — WORMHOLE_SYNC_INCLUDE/EXCLUDE additive union", () => {
+  test("WORMHOLE_SYNC_INCLUDE adds new globs to targets.include (defaults still present)", async () => {
+    const cfgPath = writeConfigFile(minimalRaw());
+    process.env["WORMHOLE_SYNC_INCLUDE"] = ".claude/extra/**,docs/**";
+
+    const cfg = await loadConfig(cfgPath);
+
+    // 기본 include 전부 유지(가산).
+    for (const g of DEFAULT_INCLUDE) assert.ok(cfg.targets.include.includes(g), `missing default include: ${g}`);
+    // env 가 추가한 글롭이 존재.
+    assert.ok(cfg.targets.include.includes(".claude/extra/**"));
+    assert.ok(cfg.targets.include.includes("docs/**"));
+    // 기본값 + 추가값, 중복 없음.
+    assert.deepEqual(cfg.targets.include, [...DEFAULT_INCLUDE, ".claude/extra/**", "docs/**"]);
+  });
+
+  test("WORMHOLE_SYNC_EXCLUDE adds new globs AND keeps every secure default exclude (never shrinks)", async () => {
+    const cfgPath = writeConfigFile(minimalRaw());
+    process.env["WORMHOLE_SYNC_EXCLUDE"] = "**/secrets/**,*.pem";
+
+    const cfg = await loadConfig(cfgPath);
+
+    // 보안 회귀 가드: 핵심 보안 기본 제외 항목이 반드시 살아있어야 한다.
+    for (const secure of ["**/*.key", "**/*.token", ".claude/.credentials.json", ".claude/settings.local.json"]) {
+      assert.ok(cfg.targets.exclude.includes(secure), `보안 기본 제외 누락: ${secure}`);
+    }
+    // DEFAULT_EXCLUDE 전부 유지.
+    for (const g of DEFAULT_EXCLUDE) assert.ok(cfg.targets.exclude.includes(g), `missing default exclude: ${g}`);
+    // env 가 추가한 글롭이 존재.
+    assert.ok(cfg.targets.exclude.includes("**/secrets/**"));
+    assert.ok(cfg.targets.exclude.includes("*.pem"));
+    // 가산 결과 = 기본값 + 추가값.
+    assert.deepEqual(cfg.targets.exclude, [...DEFAULT_EXCLUDE, "**/secrets/**", "*.pem"]);
+  });
+
+  test("comma parsing trims spaces and drops empty segments ('a, ,b,' → ['a','b'])", async () => {
+    const cfgPath = writeConfigFile(minimalRaw());
+    process.env["WORMHOLE_SYNC_INCLUDE"] = "a, ,b,";
+
+    const cfg = await loadConfig(cfgPath);
+
+    assert.deepEqual(cfg.targets.include, [...DEFAULT_INCLUDE, "a", "b"]);
+  });
+
+  test("dedupe: an env include equal to an existing default does not duplicate", async () => {
+    const dup = DEFAULT_INCLUDE[0];
+    const cfgPath = writeConfigFile(minimalRaw());
+    process.env["WORMHOLE_SYNC_INCLUDE"] = `${dup},brand-new/**`;
+
+    const cfg = await loadConfig(cfgPath);
+
+    // 중복 default 는 한 번만, 새 글롭만 끝에 추가.
+    assert.deepEqual(cfg.targets.include, [...DEFAULT_INCLUDE, "brand-new/**"]);
+    const occurrences = cfg.targets.include.filter((g) => g === dup).length;
+    assert.equal(occurrences, 1);
+  });
+
+  test("absent env vars → targets equal config/defaults unchanged", async () => {
+    const cfgPath = writeConfigFile(minimalRaw());
+    // WORMHOLE_SYNC_* 미설정(beforeEach 가 clear).
+
+    const cfg = await loadConfig(cfgPath);
+
+    assert.deepEqual(cfg.targets.include, DEFAULT_INCLUDE);
+    assert.deepEqual(cfg.targets.exclude, DEFAULT_EXCLUDE);
+  });
+
+  test("union applies on top of config.json-provided custom targets (not just Zod defaults)", async () => {
+    const cfgPath = writeConfigFile(
+      minimalRaw({ targets: { include: ["custom/**"], exclude: ["custom-secret.key"] } }),
+    );
+    process.env["WORMHOLE_SYNC_INCLUDE"] = "added/**";
+    process.env["WORMHOLE_SYNC_EXCLUDE"] = "added-secret/**";
+
+    const cfg = await loadConfig(cfgPath);
+
+    // config.json 의 명시 targets + env 가산.
+    assert.deepEqual(cfg.targets.include, ["custom/**", "added/**"]);
+    assert.deepEqual(cfg.targets.exclude, ["custom-secret.key", "added-secret/**"]);
+  });
+
+  test("via .env FILE: WORMHOLE_SYNC_INCLUDE in a tmp .env is unioned (loadDotEnvIntoProcess integration)", async () => {
+    const cfgPath = writeConfigFile(minimalRaw());
+    const envPath = writeDotEnv("WORMHOLE_SYNC_INCLUDE=from-dotenv/**,another/**\n");
+
+    const cfg = await loadConfig(cfgPath, envPath);
+
+    // .env 가 process.env 로 주입된 뒤 union 에 반영.
+    assert.deepEqual(cfg.targets.include, [...DEFAULT_INCLUDE, "from-dotenv/**", "another/**"]);
+    // 기본 exclude 는 그대로.
+    assert.deepEqual(cfg.targets.exclude, DEFAULT_EXCLUDE);
   });
 });

@@ -13,6 +13,9 @@ export const DEFAULT_INCLUDE: string[] = [
   ".claude/agents/**",
   ".claude/commands/**",
   ".claude/.mcp.json",
+  ".claude/hooks/**",
+  ".claude/statusline/**",
+  ".claude/hud/**",
 ];
 
 export const DEFAULT_EXCLUDE: string[] = [
@@ -34,6 +37,8 @@ export const DEFAULT_SETTINGS_LOCAL_KEYS: string[] = [
   "mcpServers.*.cwd",
   "mcpServers.*.env",
   "permissions.*",
+  "hooks",
+  "statusLine.command",
 ];
 
 // ── zod 스키마 ────────────────────────────────────────────────
@@ -319,6 +324,24 @@ export function resolveConfig(raw: unknown): Config {
 
 // ── loadConfig (파일 + env 병합) ─────────────────────────────
 
+// 콤마 구분 env 값을 트림·빈문자 제거 후 배열로 파싱한다.
+// 빈/부재 값은 빈 배열 → union 에 아무것도 기여하지 않는다.
+function parseCommaList(v: string | undefined): string[] {
+  return v ? v.split(",").map((s) => s.trim()).filter(Boolean) : [];
+}
+
+// 최초 등장 순서를 보존하는 안정 dedupe.
+function dedupe(values: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const v of values) {
+    if (seen.has(v)) continue;
+    seen.add(v);
+    out.push(v);
+  }
+  return out;
+}
+
 export async function loadConfig(configPath?: string, dotEnvPath?: string): Promise<Config> {
   const home = os.homedir();
 
@@ -344,6 +367,23 @@ export async function loadConfig(configPath?: string, dotEnvPath?: string): Prom
 
   const withEnv = applyEnvOverrides(fileRaw);
   const parsed = RawConfigSchema.parse(withEnv);
+
+  // .env(또는 process.env)의 WORMHOLE_SYNC_INCLUDE/EXCLUDE 는 동기화 대상에 대해
+  // "가산 union" 으로만 작동한다(절대 replace 아님). config.json 의 보안 기본 제외
+  // (*.key, *.token, .credentials.json, settings.local.json 등)는 항상 유지되며,
+  // env 로는 기본값을 줄일 수 없다 — 줄이려면 config.json 을 직접 수정해야 한다.
+  // SyncTargetsSchema.parse 로 Zod 기본값(DEFAULT_INCLUDE/EXCLUDE)을 먼저 실체화한 뒤 union.
+  const baseTargets = SyncTargetsSchema.parse(parsed.targets);
+  parsed.targets = {
+    include: dedupe([
+      ...baseTargets.include,
+      ...parseCommaList(process.env["WORMHOLE_SYNC_INCLUDE"]),
+    ]),
+    exclude: dedupe([
+      ...baseTargets.exclude,
+      ...parseCommaList(process.env["WORMHOLE_SYNC_EXCLUDE"]),
+    ]),
+  };
 
   const stateDir = parsed.stateDir
     ? path.resolve(expandTilde(parsed.stateDir, home))
