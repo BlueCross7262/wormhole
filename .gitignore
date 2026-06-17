@@ -1,0 +1,52 @@
+# ── Dependencies ──────────────────────────────
+node_modules/
+
+# ── Build output ──────────────────────────────
+dist/
+*.tsbuildinfo
+
+# ── Secrets / 암호화 자산 (절대 커밋 금지) ──────
+# age 파생 키 · passphrase · 토큰
+*.key
+*.age
+*.token
+age-key.txt
+passphrase
+
+# 로컬 상태 디렉터리 (키 캐시 · 백업 포함)
+.claude-sync/
+
+# 실제 설정 파일 (example 만 커밋, 실제는 비밀값 포함)
+config.json
+.mcp.json
+
+# 환경변수 (example 은 유지)
+.env
+.env.*
+!.env.example
+
+# ── Logs ──────────────────────────────────────
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+logs/
+
+# ── Cache / temp ──────────────────────────────
+.cache/
+*.tmp
+*.temp
+
+# ── Editor / IDE ──────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ── OS ────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+.serena/
+.omc/
