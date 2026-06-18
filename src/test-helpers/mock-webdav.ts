@@ -36,6 +36,9 @@ function toBuffer(data: string | Buffer): Buffer {
 export class MockWebdavRemote {
   private readonly store = new Map<string, StoredObject>();
   private etagSeq = 0;
+  // path -> remaining reads that still return a WEAK etag (Apache mod_dav
+  // weak-ETag window). While weak, putIfMatch 412s under strong comparison.
+  private readonly weakReads = new Map<string, number>();
 
   /** Per-method call counters — assert idempotency / no-op behavior in tests. */
   readonly calls: MockCallCounts = {
@@ -52,6 +55,12 @@ export class MockWebdavRemote {
   private nextEtag(): string {
     this.etagSeq += 1;
     return `"etag-${this.etagSeq}"`;
+  }
+
+  // Test-only: the given path returns a WEAK etag (W/"...") for the next `reads`
+  // getTextWithETag calls, during which putIfMatch 412s; then it ages to strong.
+  markWeak(path: string, reads: number): void {
+    this.weakReads.set(path, reads);
   }
 
   /** Test-only: snapshot of all stored paths (sorted). */
@@ -100,6 +109,11 @@ export class MockWebdavRemote {
     this.calls.getTextWithETag += 1;
     const obj = this.store.get(path);
     if (!obj) return null;
+    const weakLeft = this.weakReads.get(path) ?? 0;
+    if (weakLeft > 0) {
+      this.weakReads.set(path, weakLeft - 1);
+      return { text: obj.data.toString("utf-8"), etag: `W/${obj.etag}` };
+    }
     return { text: obj.data.toString("utf-8"), etag: obj.etag };
   }
 
@@ -127,6 +141,10 @@ export class MockWebdavRemote {
       // Server-without-ETag fallback path: best-effort unconditional PUT.
       this.store.set(path, { data: toBuffer(data), etag: this.nextEtag() });
       return;
+    }
+    // Strong comparison: a WEAK current etag never matches (Apache mod_dav window).
+    if ((this.weakReads.get(path) ?? 0) > 0) {
+      throw new PreconditionFailedError(`If-Match failed (weak etag): ${path}`, 412);
     }
     if (!obj || obj.etag !== etag) {
       throw new PreconditionFailedError(`If-Match failed: ${path}`, 412);

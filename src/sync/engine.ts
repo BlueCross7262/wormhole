@@ -53,6 +53,8 @@ export interface EngineDeps {
   remote: RemoteStore;
   machineId: MachineId;
   logger?: Logger;
+  /** 매니페스트 갱신 CAS 의 weak-ETag 재시도 백오프(ms). 생략 시 production 기본값. 테스트 주입용. */
+  casRetryBackoffMs?: readonly number[];
 }
 
 /** CAS 재시도 상한. */
@@ -144,7 +146,12 @@ export class SyncEngine {
     this.machineId = deps.machineId;
     this.logger = deps.logger;
 
-    this.manifestStore = new ManifestStore(this.remote, this.crypto, this.config);
+    this.manifestStore = new ManifestStore(
+      this.remote,
+      this.crypto,
+      this.config,
+      deps.casRetryBackoffMs,
+    );
     this.lock = new RemoteLock(this.remote, this.config, this.machineId, this.logger);
     this.mutex = new AsyncMutex();
 

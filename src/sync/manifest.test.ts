@@ -1,6 +1,6 @@
 import { test, describe, beforeEach } from "node:test";
 import assert from "node:assert/strict";
-import { ManifestStore, ManifestConflictError } from "./manifest.js";
+import { ManifestStore, ManifestConflictError, DEFAULT_CAS_RETRY_BACKOFF_MS } from "./manifest.js";
 import { PreconditionFailedError } from "../webdav/client.js";
 import type { RemoteStore } from "../webdav/client.js";
 import type { AgeCrypto } from "../crypto/age.js";
@@ -356,6 +356,10 @@ class FakeRemote {
   failNextPutIfMatch = false;
   // Same simulated-loss hook for the create path.
   failNextPutIfNoneMatch = false;
+  // path -> remaining reads that still return a WEAK etag. Apache mod_dav emits
+  // W/"..." for files modified within ~1s, then ages to a strong etag. While
+  // weak, putIfMatch 412s under strong comparison regardless of the etag sent.
+  private readonly weakReads = new Map<string, number>();
 
   // Seed a value as if it already exists remotely. Returns the assigned etag.
   seed(path: string, data: string): string {
@@ -374,6 +378,21 @@ class FakeRemote {
     return etag;
   }
 
+  // Simulate Apache mod_dav's weak-ETag window: the path returns a WEAK etag
+  // for the next `reads` getTextWithETag calls, during which putIfMatch 412s;
+  // afterwards it ages to a strong etag and CAS succeeds again.
+  markWeak(path: string, reads: number): void {
+    this.weakReads.set(path, reads);
+  }
+
+  // Out-of-band overwrite that advances the stored value AND its etag (models a
+  // competing machine landing a new manifest generation between our read & put).
+  overwrite(path: string, data: string): string {
+    const etag = `etag-${this.etagCounter++}`;
+    this.store.set(path, { data, etag });
+    return etag;
+  }
+
   currentEtag(path: string): string | null {
     return this.store.get(path)?.etag ?? null;
   }
@@ -383,6 +402,13 @@ class FakeRemote {
   ): Promise<{ text: string; etag: string | null } | null> {
     const cur = this.store.get(path);
     if (cur === undefined) return null;
+    // Weak-ETag window: while weak, reads return a W/ etag and the value ages
+    // one step per read until it becomes strong.
+    const weakLeft = this.weakReads.get(path) ?? 0;
+    if (weakLeft > 0) {
+      this.weakReads.set(path, weakLeft - 1);
+      return { text: cur.data, etag: `W/${cur.etag}` };
+    }
     return { text: cur.data, etag: cur.etag };
   }
 
@@ -417,6 +443,14 @@ class FakeRemote {
         412,
       );
     }
+    // Real servers use strong comparison: a WEAK current etag never matches, so
+    // a freshly-written (weak) resource 412s regardless of the supplied etag.
+    if ((this.weakReads.get(path) ?? 0) > 0) {
+      throw new PreconditionFailedError(
+        `If-Match conflict (weak etag): ${path}`,
+        412,
+      );
+    }
     const cur = this.store.get(path);
     if (cur === undefined || cur.etag !== etag) {
       // Stale etag -> server-side CAS loss.
@@ -448,7 +482,10 @@ function makeConfig(): Config {
   } as unknown as Config;
 }
 
-function makeStore(remote: FakeRemote): {
+function makeStore(
+  remote: FakeRemote,
+  casBackoffMs: readonly number[] = [0, 0, 0, 0, 0],
+): {
   store: ManifestStore;
   remote: FakeRemote;
 } {
@@ -456,6 +493,7 @@ function makeStore(remote: FakeRemote): {
     remote as unknown as RemoteStore,
     new FakeCrypto() as unknown as AgeCrypto,
     makeConfig(),
+    casBackoffMs,
   );
   return { store, remote };
 }
@@ -597,12 +635,30 @@ describe("ManifestStore.write — update path (putIfMatch)", () => {
 });
 
 describe("ManifestStore.write — CAS conflict (412 -> ManifestConflictError)", () => {
-  test("putIfMatch precondition failure becomes ManifestConflictError", async () => {
-    const remote = new FakeRemote();
+  test("a competing writer that advances generation becomes ManifestConflictError", async () => {
     const existing: Manifest = { ...ManifestStore.empty(MACHINE_A), manifestGeneration: 3 };
+    // Another machine lands generation 4 between our read and our PUT, so the
+    // conditional PUT 412s and the in-write re-read observes the advance.
+    class RacingRemote extends FakeRemote {
+      private raced = false;
+      override async putIfMatch(
+        path: string,
+        data: string,
+        etag: string | null,
+        machineId: string,
+      ): Promise<void> {
+        if (!this.raced) {
+          this.raced = true;
+          this.overwrite(
+            path,
+            JSON.stringify({ ...ManifestStore.empty(MACHINE_B), manifestGeneration: 4 }),
+          );
+        }
+        return super.putIfMatch(path, data, etag, machineId);
+      }
+    }
+    const remote = new RacingRemote();
     remote.seed(MANIFEST_PATH, JSON.stringify(existing));
-    // Simulate another machine winning the server-side CAS race: the PUT 412s.
-    remote.failNextPutIfMatch = true;
     const { store } = makeStore(remote);
 
     await assert.rejects(
@@ -613,19 +669,36 @@ describe("ManifestStore.write — CAS conflict (412 -> ManifestConflictError)", 
           "expected ManifestConflictError, got " + (err as Error)?.name,
         );
         // expected mirrors the caller's expectedGeneration; actual mirrors the
-        // generation observed during the in-write re-read.
+        // advanced generation observed during the in-write re-read.
         assert.equal(err.expected, 3);
-        assert.equal(err.actual, 3);
+        assert.equal(err.actual, 4);
         return true;
       },
     );
   });
 
-  test("the underlying error is NOT a raw PreconditionFailedError", async () => {
-    const remote = new FakeRemote();
+  test("a real CAS conflict surfaces as ManifestConflictError, not raw PreconditionFailedError", async () => {
     const existing: Manifest = { ...ManifestStore.empty(MACHINE_A), manifestGeneration: 1 };
+    class RacingRemote extends FakeRemote {
+      private raced = false;
+      override async putIfMatch(
+        path: string,
+        data: string,
+        etag: string | null,
+        machineId: string,
+      ): Promise<void> {
+        if (!this.raced) {
+          this.raced = true;
+          this.overwrite(
+            path,
+            JSON.stringify({ ...ManifestStore.empty(MACHINE_B), manifestGeneration: 2 }),
+          );
+        }
+        return super.putIfMatch(path, data, etag, machineId);
+      }
+    }
+    const remote = new RacingRemote();
     remote.seed(MANIFEST_PATH, JSON.stringify(existing));
-    remote.failNextPutIfMatch = true;
     const { store } = makeStore(remote);
 
     await assert.rejects(
@@ -638,25 +711,26 @@ describe("ManifestStore.write — CAS conflict (412 -> ManifestConflictError)", 
     );
   });
 
-  test("stale-etag rotation between read and put yields ManifestConflictError", async () => {
-    // More faithful 412 simulation: do NOT use the fail flag. Instead let the
-    // store read the etag, then rotate it out-of-band so putIfMatch sees stale.
-    const remote = new FakeRemote();
+  test("an out-of-band write advancing generation between read and put yields ManifestConflictError", async () => {
+    // Faithful concurrent-writer simulation: between our read() and our PUT,
+    // another machine lands a NEW generation (new data + new etag). Our PUT
+    // 412s and the re-read observes the advanced generation -> real conflict.
     const existing: Manifest = { ...ManifestStore.empty(MACHINE_A), manifestGeneration: 2 };
-    remote.seed(MANIFEST_PATH, JSON.stringify(existing));
 
-    // Subclass to inject the rotation precisely between read() and the PUT.
     class RacingRemote extends FakeRemote {
-      private rotated = false;
+      private raced = false;
       override async putIfMatch(
         path: string,
         data: string,
         etag: string | null,
         machineId: string,
       ): Promise<void> {
-        if (!this.rotated) {
-          this.rotated = true;
-          this.rotateEtag(path); // another writer landed -> our etag is stale
+        if (!this.raced) {
+          this.raced = true;
+          this.overwrite(
+            path,
+            JSON.stringify({ ...ManifestStore.empty(MACHINE_B), manifestGeneration: 3 }),
+          );
         }
         return super.putIfMatch(path, data, etag, machineId);
       }
@@ -667,7 +741,11 @@ describe("ManifestStore.write — CAS conflict (412 -> ManifestConflictError)", 
 
     await assert.rejects(
       () => store.write({ ...existing }, 2, MACHINE_A),
-      (err: unknown) => err instanceof ManifestConflictError,
+      (err: unknown) => {
+        assert.ok(err instanceof ManifestConflictError);
+        assert.equal(err.actual, 3);
+        return true;
+      },
     );
   });
 
@@ -710,6 +788,134 @@ describe("ManifestStore.write — CAS conflict (412 -> ManifestConflictError)", 
         assert.equal(err, boom);
         return true;
       },
+    );
+  });
+});
+
+describe("ManifestStore.write — weak-ETag tolerance (Apache mod_dav)", () => {
+  test("a weak-ETag 412 with unchanged generation is retried until the etag ages, then succeeds", async () => {
+    const remote = new FakeRemote();
+    const existing: Manifest = { ...ManifestStore.empty(MACHINE_A), manifestGeneration: 5 };
+    remote.seed(MANIFEST_PATH, JSON.stringify(existing));
+    // The manifest reads back WEAK for the next 2 reads (freshly written),
+    // forcing putIfMatch to 412 even though no other machine wrote.
+    remote.markWeak(MANIFEST_PATH, 2);
+    const { store } = makeStore(remote); // zero backoff -> instant retries
+
+    const written = await store.write({ ...existing }, 5, MACHINE_A);
+
+    assert.equal(written.manifestGeneration, 6);
+    assert.equal(decodeStored(remote).manifestGeneration, 6);
+    // The first attempt(s) 412'd on the weak etag; success required retrying.
+    assert.ok(remote.puts.length >= 2, `expected retries, got ${remote.puts.length} put(s)`);
+  });
+
+  test("a weak-ETag that never ages exhausts retries and surfaces ManifestConflictError(expected,expected)", async () => {
+    const remote = new FakeRemote();
+    const existing: Manifest = { ...ManifestStore.empty(MACHINE_A), manifestGeneration: 5 };
+    remote.seed(MANIFEST_PATH, JSON.stringify(existing));
+    // Weak for far more reads than the retry budget -> never ages in time.
+    remote.markWeak(MANIFEST_PATH, 999);
+    const { store } = makeStore(remote);
+
+    await assert.rejects(
+      () => store.write({ ...existing }, 5, MACHINE_A),
+      (err: unknown) => {
+        // Surfaced as a conflict (not a raw precondition error); the tell-tale
+        // of a false weak-412 is expected === actual.
+        assert.ok(!(err instanceof PreconditionFailedError));
+        assert.ok(err instanceof ManifestConflictError);
+        assert.equal(err.expected, 5);
+        assert.equal(err.actual, 5);
+        return true;
+      },
+    );
+    // The manifest was never overwritten (generation stays at 5).
+    assert.equal(decodeStored(remote).manifestGeneration, 5);
+  });
+
+  test("a real conflict during the weak-retry loop fast-fails with the advanced generation", async () => {
+    const existing: Manifest = { ...ManifestStore.empty(MACHINE_A), manifestGeneration: 5 };
+    // Weak window active AND a competing machine lands generation 6 on the
+    // second PUT attempt — the re-read must catch the advance and fast-fail.
+    class WeakThenRacing extends FakeRemote {
+      private putCalls = 0;
+      override async putIfMatch(
+        path: string,
+        data: string,
+        etag: string | null,
+        machineId: string,
+      ): Promise<void> {
+        this.putCalls += 1;
+        if (this.putCalls === 2) {
+          this.overwrite(
+            path,
+            JSON.stringify({ ...ManifestStore.empty(MACHINE_B), manifestGeneration: 6 }),
+          );
+        }
+        return super.putIfMatch(path, data, etag, machineId);
+      }
+    }
+    const remote = new WeakThenRacing();
+    remote.seed(MANIFEST_PATH, JSON.stringify(existing));
+    remote.markWeak(MANIFEST_PATH, 10);
+    const { store } = makeStore(remote);
+
+    await assert.rejects(
+      () => store.write({ ...existing }, 5, MACHINE_A),
+      (err: unknown) => {
+        assert.ok(err instanceof ManifestConflictError);
+        assert.equal(err.expected, 5);
+        assert.equal(err.actual, 6);
+        return true;
+      },
+    );
+  });
+
+  test("a transient strong-etag mismatch with unchanged generation is absorbed (retried, then succeeds)", async () => {
+    // No weak window; instead the etag rotates once between read and PUT while
+    // the generation stays the same. Under the new contract this is treated as
+    // a benign transient and the retry (with the refreshed etag) succeeds.
+    const existing: Manifest = { ...ManifestStore.empty(MACHINE_A), manifestGeneration: 7 };
+    class RotateOnceRemote extends FakeRemote {
+      private rotated = false;
+      override async putIfMatch(
+        path: string,
+        data: string,
+        etag: string | null,
+        machineId: string,
+      ): Promise<void> {
+        if (!this.rotated) {
+          this.rotated = true;
+          this.rotateEtag(path); // etag changes but data/generation do not
+        }
+        return super.putIfMatch(path, data, etag, machineId);
+      }
+    }
+    const remote = new RotateOnceRemote();
+    remote.seed(MANIFEST_PATH, JSON.stringify(existing));
+    const { store } = makeStore(remote);
+
+    const written = await store.write({ ...existing }, 7, MACHINE_A);
+
+    assert.equal(written.manifestGeneration, 8);
+    assert.equal(decodeStored(remote).manifestGeneration, 8);
+  });
+});
+
+describe("DEFAULT_CAS_RETRY_BACKOFF_MS budget", () => {
+  test("weak-ETag CAS backoff outlasts the ~1s weak window yet stays well under the lock TTL", () => {
+    const innerSum = DEFAULT_CAS_RETRY_BACKOFF_MS.reduce((a, b) => a + b, 0);
+    // Must comfortably outlast Apache mod_dav's observed ~1s weak-ETag window so
+    // a freshly-written manifest ages to a strong etag before the budget runs out.
+    assert.ok(innerSum >= 1500, `CAS backoff budget ${innerSum}ms too small for weak window`);
+    // The whole push (incl. up to MAX_CAS_RETRIES outer re-runs in the engine)
+    // runs inside the remote lock; keep the total far below the 30s lock TTL so no
+    // other machine can steal the lock and advance the manifest mid-retry.
+    const MAX_CAS_RETRIES = 3; // mirror of engine.ts const
+    assert.ok(
+      innerSum * MAX_CAS_RETRIES < 15_000,
+      `CAS backoff budget ${innerSum}ms x${MAX_CAS_RETRIES} too close to lock TTL`,
     );
   });
 });

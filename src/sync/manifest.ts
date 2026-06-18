@@ -41,6 +41,16 @@ function joinRemote(baseDir: string, name: string): string {
 }
 
 /** CAS 실패 전용 에러 — 엔진이 재시도/보고에 사용. */
+// Apache mod_dav (및 유사 서버)는 수정 직후(~1s) 파일에 weak ETag(W/"...")를 주고, 이후
+// strong ETag 로 늙는다. RFC 7232 If-Match 는 strong 비교라 weak 현재 ETag 는 실 충돌 없이도
+// 412 가 된다. write() 의 갱신 CAS 는 이 윈도를 넘길 때까지 재시도한다. 누적 백오프는 관측된
+// ~1s 윈도를 충분히 초과하고, push 전체가 원격 락(TTL 30s) 안에서 도므로 락 TTL 보다는 훨씬 작다.
+export const DEFAULT_CAS_RETRY_BACKOFF_MS: readonly number[] = [300, 500, 700, 900, 1100];
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export class ManifestConflictError extends Error {
   readonly expected: number | null;
   readonly actual: number | null;
@@ -63,12 +73,20 @@ export class ManifestStore {
   private readonly manifestPath: string;
   /** 마지막 read() 가 받은 매니페스트 ETag. write() 의 CAS(If-Match)에 사용. 없으면 null. */
   private lastEtag: string | null = null;
+  /** 갱신 CAS 의 weak-ETag 재시도 백오프(ms). 시도 사이 대기. 테스트는 0 배열 주입. */
+  private readonly casRetryBackoffMs: readonly number[];
 
-  constructor(remote: RemoteStore, crypto: AgeCrypto, config: Config) {
+  constructor(
+    remote: RemoteStore,
+    crypto: AgeCrypto,
+    config: Config,
+    casRetryBackoffMs: readonly number[] = DEFAULT_CAS_RETRY_BACKOFF_MS,
+  ) {
     this.remote = remote;
     this.crypto = crypto;
     this.config = config;
     this.manifestPath = joinRemote(config.remote.remoteBaseDir, MANIFEST_FILE);
+    this.casRetryBackoffMs = casRetryBackoffMs;
   }
 
   /** 원격 manifest.json.age 읽어 복호+파싱. 없으면 null. */
@@ -127,23 +145,55 @@ export class ManifestStore {
 
     const armored = await this.crypto.encrypt(JSON.stringify(written));
 
-    try {
-      if (current === null) {
-        // 원격에 없음 → 생성 전용 조건부 PUT(동시 생성 경쟁에서 한쪽만 성공).
+    // 생성 경로(원격 부재)는 존재 기반 If-None-Match 라 weak-ETag 문제와 무관 — 단발 시도.
+    if (current === null) {
+      try {
         await this.remote.putIfNoneMatch(this.manifestPath, armored, machineId);
-      } else {
-        // 원격에 있음 → ETag 일치 시에만 덮어쓰기(read→write 사이 변경 검출).
-        await this.remote.putIfMatch(this.manifestPath, armored, this.lastEtag, machineId);
+      } catch (err) {
+        if (err instanceof PreconditionFailedError) {
+          // 동시 생성 경쟁 패배 → 충돌.
+          throw new ManifestConflictError(expectedGeneration, actual);
+        }
+        throw err;
       }
-    } catch (err) {
-      if (err instanceof PreconditionFailedError) {
-        // 서버측 CAS 패배 → 다른 머신이 먼저 썼음. generation 단위 충돌로 변환.
-        throw new ManifestConflictError(expectedGeneration, actual);
-      }
-      throw err;
+      return written;
     }
 
-    return written;
+    // 갱신 경로(If-Match). Apache mod_dav 등은 수정 직후(~1s) 파일에 weak ETag 를 주어 strong
+    // 비교인 If-Match 가 실 충돌 없이도 412 를 낸다. 412 면 세대를 재확인해 진짜 경쟁 쓰기(세대 전진)와
+    // 가짜 weak-412(세대 동일)를 구분한다. 진짜면 즉시 충돌, 가짜면 ETag 가 strong 으로 늙을 때까지
+    // 백오프 재시도한다(루프 전체가 원격 락 안에서 도므로 락 외부 머신은 weak 윈도 내 끼어들 수 없다).
+    const maxAttempts = this.casRetryBackoffMs.length + 1;
+    for (let attempt = 0; ; attempt++) {
+      try {
+        await this.remote.putIfMatch(this.manifestPath, armored, this.lastEtag, machineId);
+        return written;
+      } catch (err) {
+        if (err instanceof PreconditionFailedError && err.status === 412) {
+          // 재확인: read() 가 lastEtag 를 갱신(늙으면 weak→strong)하고 현재 세대를 준다.
+          const recheck = await this.read();
+          const recheckGen = recheck === null ? null : recheck.manifestGeneration;
+          if (recheckGen !== expectedGeneration) {
+            // 다른 머신이 매니페스트를 전진(또는 삭제)시킴 → 진짜 충돌.
+            throw new ManifestConflictError(expectedGeneration, recheckGen);
+          }
+          if (attempt < maxAttempts - 1) {
+            // 세대 동일 + 412 → weak-ETag 가짜 충돌. push 전체가 원격 락(단일 writer) 안에서
+            // 도므로 weak 윈도 내 세대를 바꿀 외부 writer 는 없다. 즉 세대 동일 412 는 서버의
+            // weak→strong 숙성 대기일 뿐 — 윈도가 지나도록 대기 후 재시도.
+            await delay(this.casRetryBackoffMs[attempt]);
+            continue;
+          }
+          // 예산 소진(weak 윈도가 비정상적으로 김) → 충돌로 변환. 상위 push 재시도가 처리.
+          throw new ManifestConflictError(expectedGeneration, recheckGen);
+        }
+        if (err instanceof PreconditionFailedError) {
+          // 412 외 precondition(405/409 등) → 즉시 충돌(기존 동작 유지).
+          throw new ManifestConflictError(expectedGeneration, actual);
+        }
+        throw err;
+      }
+    }
   }
 
   /** 빈 매니페스트 생성 (schemaVersion:1, manifestGeneration:0, entries:{}). */
