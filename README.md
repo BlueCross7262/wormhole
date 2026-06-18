@@ -19,6 +19,207 @@ Claude Code 사용자 전역 설정을 머신 간 동기화하는 MCP 서버 (Ty
 
 ---
 
+## 1.5 아키텍처
+
+wormhole 은 **두 개의 독립 프로세스 진입점** 이 **하나의 동기화 엔진 코어** 를 공유하는 구조다. 두 프로세스는 서로를 직접 인지하지 않으며, 오직 `~/.wormhole` 의 `daemon.lock` 파일 하나로만 조율된다. 아래에서 큰 그림, 진입점, 공유 코어, 데이터 흐름, 원격 레이아웃, 동시성·안전, 암호화, 모듈 맵 순으로 설명한다.
+
+### 큰 그림
+
+```
+   ┌──────────────────────────────┐   ┌──────────────────────────────┐
+   │ wormhole-mcp (dist/index.js) │   │ wormhole-daemon              │
+   │ MCP stdio 서버               │   │   (dist/daemon.js)           │
+   │ (Claude Code 세션 수명)      │   │ 헤드리스 상시 데몬           │
+   │                              │   │ (supervisor 가 재시작)       │
+   ├──────────────────────────────┤   ├──────────────────────────────┤
+   │ MCP 도구 5종 (§7)            │   │ AutoSync(forceEnabled:true)  │
+   │ AutoSync (조건부)            │   │ heartbeat 30s                │
+   │ daemon.lock 읽기만 (isHeld)  │   │ daemon.lock 강제 획득 + 갱신 │
+   └───────────────┬──────────────┘   └───────────────┬──────────────┘
+                   │                                   │
+                   │     buildEngine(logger) (동일 조립)
+                   └─────────────────┬─────────────────┘
+                                     ▼
+                       ┌──────────────────────────┐
+                       │   SyncEngine 코어        │
+                       │  push / pull / resolve   │
+                       │  status                  │
+                       │  ─ ManifestStore (CAS)   │
+                       │  ─ RemoteLock (머신 간)  │
+                       │  ─ AsyncMutex (프로세스) │
+                       └────────────┬─────────────┘
+                                    ▼
+                       ┌──────────────────────────┐
+                       │  RemoteStore (WebDAV)    │
+                       │  keyparams.json          │
+                       │  manifest.json.age       │
+                       │  blobs/<sha256>.age      │
+                       └──────────────────────────┘
+
+   조율 채널: daemon.lock (config.stateDir)
+```
+
+- `package.json` 은 두 개의 bin 을 선언한다.
+  - `wormhole-mcp` → `dist/index.js` (MCP 서버)
+  - `wormhole-daemon` → `dist/daemon.js` (상시 데몬)
+- npm 패키지명은 `wormhole-mcp` (v0.1.0, ESM, `node>=20`) 이지만, MCP 서버가 자기 식별에 쓰는 **이름은 `"wormhole"`** 로 패키지명과 구분된다.
+
+### 진입점
+
+#### MCP 서버 (`src/index.ts`)
+
+- `new McpServer({ name: "wormhole", version: "0.1.0" })` 를 `@modelcontextprotocol/sdk` (^1.29.0) 로 구성하고, `registerAllTools(server, engine)` 로 도구 5종을 등록한다 (도구 상세는 **§7 MCP 도구** 참조).
+- 전송은 `StdioServerTransport` 다. **stdout 은 MCP 전송 전용** 이며, 모든 로깅은 stderr 로거로만 나간다.
+- 시작 시 동작은 `config.autoSync.enabled` 와 데몬 락 상태로 분기한다.
+  - `autoSync.enabled = true` 이고 **데몬 락이 비어 있으면** `new AutoSync(engine, config, logger)` 를 만들고 `start()` 한다 (이 안에서 시작 시점 pull 1회를 수행).
+  - `autoSync.enabled = true` 이지만 `SingleInstanceLock(stateDir/daemon.lock).isHeld()` 가 **true** 이면 (상시 데몬이 이미 연속 동기화를 소유), 자체 watcher 를 띄우지 않고 (이중 감시 회피) **시작 시점 `engine.pull()` 한 번만** 수행한다. 이 분기에서 autoSync 는 null 로 남는다.
+  - `autoSync.enabled = false` 이면 `engine.pull()` 을 **정확히 한 번** 직접 호출하여 중복 pull 을 피한다.
+- watcher 수명 주의: AutoSync watcher 는 MCP stdio 프로세스 (= Claude Code 세션) 에 묶인다. **세션이 끝나면 watcher 도 죽으므로 상시 데몬이 아니다.** 세션 종료 중 발생한 로컬 변경이나 다른 머신의 원격 변경은 watcher 가 잡지 못하고, 다음 시작 시점 pull · 주기 pull · 수동 `sync_push` 로만 반영된다 (동작 모델은 **§8 동작 모델** 참조).
+- 종료는 SIGINT/SIGTERM 핸들러가 `shuttingDown` 불리언으로 멱등 보장된 `shutdown(signal)` 을 호출한다. `autoSync.stop()` (non-null 일 때) → `server.close()` → `process.exit(0)` 순이며, 부트스트랩 실패 시 `main().catch` 가 치명 오류를 남기고 `process.exit(1)`.
+
+#### 상시 데몬 (`src/daemon.ts`)
+
+- MCP stdio 세션과 무관한 헤드리스 상시 프로세스다. stdout 은 미사용, 로깅은 stderr 로거 전용이며, 종료 시 **supervisor 가 재시작** 하는 것을 전제한다 (운영 가이드는 **§8.5 상시 동기화 데몬** 참조).
+- `new AutoSync(engine, config, logger, { forceEnabled: true })` 로 **연속 동기화를 강제** 한다. `AutoSync.start()` 의 비활성 가드는 `if (!config.autoSync.enabled && !forceEnabled) return` 이므로, `forceEnabled = true` 가 비활성 설정을 무시한다 (`forceEnabled` 기본값은 false, MCP 경로용).
+- `SingleInstanceLock(stateDir/daemon.lock, { logger })` 와 `createDaemon({autoSync, lock, logger})` 로 구동한다. 시작 순서는 (1) `lock.acquire()` (획득 실패 시 `"another daemon instance is already running"` throw), (2) heartbeat `setInterval` 등록, (3) `await autoSync.start()` (watcher + 주기 pull) 다. 팩토리 (`createDaemon`) 는 import 시 부수효과가 없고 (시그널 핸들러·exit 없음), 그 책임은 `daemon.ts` 진입점에 있다.
+- heartbeat 는 `DEFAULT_HEARTBEAT_INTERVAL_MS = 30_000ms` (30초) 마다 `lock.heartbeat()` 를 호출해 락 TTL 을 갱신하고 stale 재탈취를 막는다 (콜백 오류는 catch·로깅). 락 TTL 기본값은 `DEFAULT_TTL_MS = 120_000ms` (120초) 로 heartbeat 간격의 4배다.
+- 락 획득 실패 throw 는 데몬이 잡아 `process.exit(1)` 하여 supervisor 가 backoff 하도록 신호한다. 부트스트랩 reject (패스프레이즈·원격 오류 등) 역시 `main().catch → process.exit(1)`.
+- 종료는 SIGINT/SIGTERM → `daemon.shutdown()`. `createDaemon.shutdown()` 은 `stopped` 플래그로 멱등이며, heartbeat 타이머를 끈 뒤 `autoSync.stop()` → `lock.release()` 순으로 정리하고, finally 에서 `process.exit(0)`. 프로세스가 죽으면 supervisor 가 재시작하는 v1 모델이다.
+
+### 공유 코어 (`buildEngine` 조립 순서)
+
+두 진입점 모두 `bootstrap.buildEngine(logger)` 로 **동일한 엔진** 을 조립한다. 고정된 순서는 다음과 같다.
+
+1. `loadConfig()` (평문 HTTP 사용 시 경고)
+2. `loadOrCreateMachineId(config.stateDir)`
+3. `new RemoteStore(config.remote, logger)` → `ensureDir(remoteBaseDir)` + `ensureDir(remoteBaseDir/blobs)`
+4. `resolvePassphrase` (env → 0600 파일 → keychain)
+5. `new AgeCrypto(logger)` + `ensureCryptoReady` (KDF → 결정적 age 키 파생, 원격 keyparams sentinel 로 패스프레이즈 검증)
+6. `new SyncEngine({config, crypto, remote, machineId, logger})`
+
+반환값은 `{engine, config, machineId, crypto, remote}` 다. 두 가지 순서 불변식이 있다.
+
+- `ensureDir` (원격 레이아웃) 는 `ensureCryptoReady` (원격 keyparams 읽기) 보다 **먼저** 실행돼야 한다.
+- `resolvePassphrase` 는 `ensureCryptoReady` 보다 **먼저** 실행돼야 한다.
+
+패스프레이즈·원격 실패 시 `buildEngine` 이 reject 하며, 각 진입점의 `main().catch → process.exit(1)` 로 전파된다 (데몬의 경우 supervisor backoff 유발).
+
+### 데이터 흐름
+
+`SyncEngine` 은 push/pull/resolve/status 의 오케스트레이터로, 생성자에서 `ManifestStore` (매니페스트 읽기/쓰기/CAS), `RemoteLock` (머신 간 락), `AsyncMutex` (프로세스 내 직렬화) 세 협력자를 소유한다. 로컬 상태 경로도 소유한다: `state.json`, `base/`, `backups/` (모두 `stateDir` 하위).
+
+- `status()` 는 부수효과 없음 — 원격 매니페스트 읽기 + 로컬 해시 스캔 + `state.json` 읽기 후 `computeStatus` 위임. mutex·락·쓰기 없음.
+- 모든 `push`/`pull`/`resolve` 는 `mutex.runExclusive` 로 감싸고, non-dryRun 실제 작업은 추가로 `withLock(this.lock, ...)` (원격 락) 로 감싼다. dryRun 계획은 mutex 안에서만 돌고 원격 락은 잡지 않는다.
+
+#### push
+
+```
+runPushWithRetry  ← ManifestConflictError 시 최대 MAX_CAS_RETRIES(3)회
+  └ runPush
+      1. 원격 매니페스트 읽기 → expectedGeneration (없으면 null = create 경로)
+      2. 로컬 해시 스캔 + state.json → computeStatus 로 키 분류
+      3. [pre-commit]  블롭 업로드(콘텐츠 주소·멱등, mapLimit IO_CONCURRENCY=8)
+                       + 인메모리 매니페스트 upsert/tombstone
+      4. [COMMIT]      manifestStore.write(manifest, expectedGeneration) ← 커밋 지점
+      5. [post-commit] base 스냅샷 + state.json watermark (커밋 성공 후에만)
+```
+
+- 커밋 지점 전 실패는 원격·로컬 모두 무변경, 커밋 후 로컬 반영 실패는 다음 실행이 자가 치유한다.
+- 빈 push 단락: pushed·deleted·converged 가 모두 0이면 매니페스트를 쓰지 않는다 (원격 무변경). CAS write 는 pushed>0 또는 deleted>0 일 때만 발생하며, converged-only push 는 원격 쓰기 없이 로컬 watermark 만 전진시킨다.
+- 충돌 시 재시도 backoff 는 지수 + jitter (`min(2000, 100·2^attempt) + random(0..99)ms`). 이 엔진 레벨 재시도는 ManifestStore 내부 weak-ETag 재시도 **위에** 한 겹 더 얹힌 것이다.
+
+#### pull
+
+```
+runPull
+  1. 원격 매니페스트 읽기 (없으면 적용 대상 없음 → 빈 결과)
+  2. 로컬 해시 스캔 + state.json → computeStatus
+  3. toApply(remoteAdded/Modified) / toRemove(remoteDeleted) / converged 분류
+  4. backupRoot = backups/<runTs> 생성
+  5. mapLimit IO_CONCURRENCY=8 적용:
+       경로 검증(safeAbsPath) → downloadBlob → backupFile → 키 타입별 라우팅 → watermark
+  6. 실패 시 try/catch → rollback(backedUp) 후 rethrow
+```
+
+- pull 은 **충돌을 적용하지 않는다** — 비충돌 원격 변경만 fast-forward 하고 충돌은 결과에 보고만 한다. 충돌 해소 (preserve-both / latest-wins / manual) 는 `resolve()` 의 몫이다 (**§9 충돌 처리** 참조).
+- 롤백은 all-or-nothing — `mapLimit` 이 `Promise.all` 이 아닌 `Promise.allSettled` 를 써서 모든 워커의 디스크 부수효과와 `backedUp` 등록이 끝난 뒤 rollback 이 돌도록 보장한다. 백업 복원 시 `backupPath===null` (적용이 새로 만든 파일) 항목은 삭제한다.
+
+#### settings.json / .mcp.json 특수 라우팅
+
+- push 시 `preparePushSettings` 가 스캔과 **동일한 파이프라인** 으로 정규화한다 — `settings.json` 은 머신 로컬 키 제거 + `${HOME}` 토큰화 + 안정 직렬화, `.mcp.json` 은 self/wormhole mcpServers 제거 + 토큰화. 정규화 텍스트가 블롭 콘텐츠가 되어 `contentHash` 가 스캔과 일치한다 (영구 modified 루프 방지).
+- pull 시 `applyPullSettings` 는 키 단위 3-way 병합 (원격 공유 vs 로컬 토큰화 vs base 스냅샷) 으로 머신 로컬 키는 항상 로컬 값을 보존하고 공유 부분집합만 병합한 뒤 실제 홈 경로로 detokenize 한다. `.mcp.json` 은 `mergeMcpJsonForPull` 로 비-self 서버는 remote-wins, self/wormhole 항목은 항상 로컬 보존.
+
+### 원격 레이아웃
+
+`remoteBaseDir` (예: `/wormhole`) 아래 세 종류 아티팩트만 존재한다.
+
+| 경로 | 내용 |
+|---|---|
+| `keyparams.json` | 평문 KDF 파라미터 (salt, N/r/p) + sentinel |
+| `manifest.json.age` | age 암호화 + armored 매니페스트 |
+| `blobs/<sha256(logicalKey)>.age` | 콘텐츠 주소 암호화 파일 블롭 |
+
+- 블롭 파일명은 **논리 키 (경로) 의 sha256** 이지 콘텐츠 해시가 아니다 — 그래서 서버에 논리 경로가 노출되지 않는다 (zero-knowledge 명명).
+- `RemoteStore.resolvePath` 가 상대 경로에 baseDir 을 접두하고 중복 슬래시를 접는다.
+
+### 동시성·안전
+
+2계층 동시성으로 무결성을 지킨다.
+
+- **프로세스 내** — `AsyncMutex.runExclusive` 가 `tail` 프로미스에 fn 을 체이닝하고 `tail = run.catch(()=>undefined)` 로 갱신해 실패 작업이 큐를 깨지 않게 하는 순수 FIFO 직렬화.
+- **머신 간** — 원격 `lock.json` 으로 직렬화. `RemoteLock.acquire()` 는 서버측 조건부 PUT (없으면 `putIfNoneMatch`, 만료·손상·자기 락 갱신은 `putIfMatch`) 으로 진짜 상호배제를 구현한다. TTL 은 `config.lock.ttlMs` (약 30초), 만료 판정은 `acquiredAt+ttl<=now` 또는 `CLOCK_SKEW_TOLERANCE_MS`(5분) 초과 미래값(=손상). `release()` 는 자기 락만 best-effort 삭제, `withLock` 은 획득 실패 시 throw 하고 finally 에서 release.
+
+매니페스트 CAS 는 **두 독립 가드** 를 쓴다 (안전장치 전반은 **§10 안전장치** 참조).
+
+- **1차 — ETag 조건부 PUT** — 원격이 있으면 `putIfMatch(If-Match:lastEtag)`, 생성 시 `putIfNoneMatch(If-None-Match:*)`. `ManifestStore.read()` 가 캡처한 ETag 를 다음 write 의 If-Match 로 쓴다.
+- **2차/폴백 — 세대 카운터** — write 직전 원격을 재독해 실제 `manifestGeneration` 을 `expectedGeneration` 과 비교, 다르면 `ManifestConflictError`. ETag 미지원 서버에서도 충돌을 잡는다. write 시 generation +1, `updatedBy`/`updatedAt` 갱신.
+- **weak-ETag 관용 재시도** — Apache mod_dav 등은 갓 수정한 파일에 약 1초간 weak ETag (`W/"..."`) 를 내보내, strong If-Match 비교가 실제 충돌 없이 가짜 412 를 낸다. 412 발생 시 write 가 원격을 재독해 — generation 이 전진했으면 **진짜 충돌** (throw), 그대로면 **가짜 weak-412** 로 보고 backoff (`DEFAULT_CAS_RETRY_BACKOFF_MS = [300,500,700,900,1100]ms`) 후 ETag 가 strong 으로 늙을 때까지 재시도한다. push 전체가 원격 락 (단일 writer) 아래 돌기 때문에 weak 윈도우 동안 외부 머신이 generation 을 전진시킬 수 없어 안전하다. 예산 소진 시 `ManifestConflictError` 로 변환되어 상위 push 재시도 루프로 올라간다. (생성 경로는 존재 기반 `If-None-Match` 라 weak-ETag 와 무관 — 단발 시도.)
+
+엔진 레벨 push 재시도 (`MAX_CAS_RETRIES = 3`) 는 이 manifest-store 내부 재시도 **위에** 한 겹 더 있는 별개 천장이다.
+
+추가 안전장치:
+
+- **원자적 로컬 쓰기** — `atomicWriteFile` 은 부모 mkdir → 동일 디렉터리 temp (machineId/pid/seq 명) → `fsync` → close → rename → 부모 dir fsync (best-effort). `state.json`, base 스냅샷, pull 파일, 충돌 사본에 적용해 크래시·정전 시 0바이트/부분 파일을 막는다.
+- **경로 탈출 방어** — 원격 유래 논리 키는 `safeAbsPath` (`isValidLogicalKey` + toOS + `isWithinHome`) 검증 후에만 쓰기/삭제, 무효·홈 밖 키는 warn 후 스킵. 파일명 접미사로 쓰이는 원격 유래 machineId/generation 은 `sanitizeToken` (`[A-Za-z0-9_-]`, 최대 64자) 으로 정제해 traversal/ADS/예약어 주입을 차단한다.
+- **converged watermark 전진** — 양측이 동일 콘텐츠에 도달했거나 양측 삭제한 항목은 데이터 전송 없이 base/state watermark 만 전진시켜 다음 실행의 stale-base 가짜 충돌을 막는다 (`advanceConverged`, runPush·runPull 양쪽 호출).
+- **SingleInstanceLock** — `daemon.lock` 은 보유자 메타 (pid, startedAt, heartbeatAt, hostname) 를 tmp→fsync→rename 로 원자 기록. `acquire()` 는 배타 `wx` 생성 또는 재탈취 시 true, **살아있는 보유자** 점유 시에만 false. `isLive()` = 동일 hostname + TTL 내 heartbeat + pid 생존 (`process.kill(pid,0)`: ESRCH=죽음, EPERM=생존). 재탈취 조건은 손상·죽은 pid·hostname 불일치·stale heartbeat. `isHeld()` 가 MCP 측 감지용이며 `heartbeat()`/`release()` 는 self(pid+hostname 일치) 일 때만 동작한다.
+
+### 암호화 (zero-knowledge)
+
+- 서버에는 **암호문만** 저장된다. 매니페스트와 모든 블롭은 age 암호화 후 armored 로 업로드되고, 패스프레이즈 평문은 절대 저장되지 않으며 파생된 age 신원만 로컬 캐시된다.
+- **패스프레이즈 → 결정적 age 신원** — `deriveAgeIdentity` 가 `scryptSync(passphrase, salt, 32, {N,r,p,maxmem})` 로 32바이트 스칼라를 만들고 `bech32.encodeFromBytes("AGE-SECRET-KEY-", scalar).toUpperCase()` 로 인코딩한다. 같은 패스프레이즈 + 같은 salt + 같은 파라미터면 **모든 머신에서 동일 신원** 이 나와 기기 간 키 파일 복사가 불필요하다. 패스프레이즈·salt 가 비면 throw. `maxmem` 은 scrypt 메모리(약 `128·N·r`)가 Node 기본 32MB 를 넘으므로 `128·N·r·2 + (1<<24)` 로 설정.
+- **KDF 파라미터** — `DEFAULT_KDF = {N: 1<<16 (=65536), r: 8, p: 1}` (약 64MB, 파생 1회 <1초), `config.crypto.kdfN/kdfR/kdfP` 로 튜닝. salt 는 16바이트 랜덤 base64 로 비밀이 아니며 원격에 평문 저장.
+- **AgeCrypto** — private `#identity`/public `#recipient` 를 들고 `age-encryption(typage)` 로 동작한다. `initWithIdentity` 는 신원이 `AGE-SECRET-KEY-1` 로 시작하는지 검증하고 `age.identityToRecipient` 로 recipient 를 산출한다. encrypt 는 `age.Encrypter`+`addRecipient` 후 `age.armor.encode` (armored), decrypt 는 `age.Decrypter`+`addIdentity` 후 `age.armor.decode`. 파생 키는 `derivedKeyPath` 에 **mode 0600** 으로 캐시 (Windows 에선 chmod no-op, 프로필 ACL 의존). 캐시되는 것은 파생 키뿐, 패스프레이즈가 아니다.
+- **keyparams.json + sentinel** — `{version, kdf:'scrypt', saltB64, N, r, p, sentinel}` 를 원격에 평문 저장 (`KeyParamsSchema` zod 검증). sentinel 은 고정 평문 `'wormhole passphrase verification v1'` 의 armored age 암호문이다.
+- **ensureCryptoReady 분기** — keyparams 부재(첫 머신)면 salt 생성 → 신원 파생 → sentinel 암호화 → keyparams 업로드 후 `{created:true}`. 존재(새 머신)면 **원격 salt/N/r/p** 로 신원 파생 (원격이 진실의 원천 → 모든 머신이 동일 키), sentinel 복호 후 평문 일치 단언 — 불일치 시 `'passphrase 검증 실패'` throw (틀린 패스프레이즈로는 원격 데이터 복호 불가).
+- **블롭 페이로드** — 평문 → gzip → `BLOB_MAGIC('CSZ1')` 접두 → age 암호화 → 업로드. 다운로드는 복호 후 앞 4바이트가 `CSZ1` 이면 magic 제거 + gunzip, 아니면 그대로 (레거시 무압축 하위호환). `contentHash` 는 **평문** 기준이라 압축·암호화가 해시에 영향을 주지 않는다.
+
+### 모듈 맵
+
+| 모듈 | 책임 |
+|---|---|
+| `src/index.ts` | MCP stdio 서버 진입점, 조건부 AutoSync, daemon.lock 읽기 deference |
+| `src/daemon.ts` | 헤드리스 상시 데몬 진입점, 락 강제 획득 + exit code 신호 |
+| `src/daemon/runner.ts` | `createDaemon` — 락 획득·heartbeat·AutoSync 시작/종료 오케스트레이션 |
+| `src/daemon/single-instance.ts` | `SingleInstanceLock` — 단일 인스턴스 락, isLive/isHeld/재탈취 |
+| `src/bootstrap.ts` | `buildEngine` — 두 진입점 공유 조립 (config→machineId→remote→passphrase→crypto→engine) |
+| `src/watcher/auto-sync.ts` | `AutoSync` — chokidar v4 watcher, debounce push, 주기 pull, self-write 억제 |
+| `src/sync/engine.ts` | `SyncEngine` — push/pull/resolve/status, 블롭 업/다운로드, 원자적 쓰기, 롤백 |
+| `src/sync/manifest.ts` | `ManifestStore` — 매니페스트 read/write, 2차 CAS, weak-ETag 재시도 |
+| `src/sync/diff.ts` | `computeStatus` — 3-way 콘텐츠 해시 diff, 충돌 항목 enrich |
+| `src/sync/scanner.ts` | `scanLocal` — fast-glob 로컬 열거 (stateDir 강제 제외) |
+| `src/sync/lock.ts` | `RemoteLock` (머신 간) + `AsyncMutex` (프로세스 내) |
+| `src/sync/hash.ts` | `sha256`/`hashFile`/`blobName`/`blobHash` — 콘텐츠 주소 명명 |
+| `src/sync/settings-merge.ts` | settings.json/.mcp.json 정규화 + 3-way 병합 |
+| `src/crypto/kdf.ts` | `deriveAgeIdentity` (scrypt) + KDF 파라미터/salt |
+| `src/crypto/age.ts` | `AgeCrypto` — age encrypt/decrypt + 0600 키 캐시 |
+| `src/crypto/keyparams.ts` | `ensureCryptoReady` — 첫 머신 부트스트랩 vs 새 머신 검증 |
+| `src/crypto/passphrase.ts` | `resolvePassphrase` — env → 파일 → keychain |
+| `src/webdav/client.ts` | `RemoteStore` — putAtomic/putIfMatch/putIfNoneMatch/getTextWithETag 등 WebDAV 원시 연산 |
+| `src/tools/*.ts` | MCP 도구 5종 (sync_status/push/pull/resolve/dry_run) — **§7 MCP 도구** |
+
+---
+
 ## 2. 요구사항
 
 - Node.js 20+
