@@ -230,9 +230,9 @@ Claude Code 플러그인 마켓플레이스를 통해 빌드 없이 설치한다
 
 ```bash
 # ~/.wormhole/.env  (chmod 600 적용됨)
-WORMHOLE_WEBDAV_URL=https://nas.example.com/dav
-WORMHOLE_WEBDAV_USER=alice
-WORMHOLE_WEBDAV_PASS=secret
+WEBDAV_URL=https://nas.example.com/dav
+WEBDAV_USER=alice
+WEBDAV_PASS=secret
 WORMHOLE_PASSPHRASE=your-strong-passphrase
 ```
 
@@ -357,10 +357,10 @@ WebDAV 접속 정보는 고정 위치 `~/.wormhole/.env` 에 **플랫 단일 변
 
 ```bash
 # ~/.wormhole/.env  (fixed location; chmod 600)
-WORMHOLE_WEBDAV_URL=https://nas.example.com/dav
-WORMHOLE_WEBDAV_USER=alice
-WORMHOLE_WEBDAV_PASS=secret
-# WORMHOLE_WEBDAV_BASEDIR=/wormhole   (선택 — 미지정 시 /wormhole 또는 config 기본값)
+WEBDAV_URL=https://nas.example.com/dav
+WEBDAV_USER=alice
+WEBDAV_PASS=secret
+# WEBDAV_BASEDIR=/wormhole   (선택 — 미지정 시 /wormhole 또는 config 기본값)
 
 # WORMHOLE_PASSPHRASE=...   (optional global; 0600 파일 / keychain 도 가능)
 ```
@@ -377,7 +377,7 @@ chmod 600 ~/.wormhole/.env
 ### config.json 설정
 
 `config.example.json` 을 복사해 편집한다.
-`config.json` 의 `remote` 섹션은 옵션 base 이며, `.env` 플랫 변수(WORMHOLE_WEBDAV_URL/USER/PASS/BASEDIR)가 권위 소스로 그 위를 override 한다.
+`config.json` 의 `remote` 섹션은 옵션 base 이며, `.env` 플랫 변수(WEBDAV_URL/USER/PASS/BASEDIR)가 권위 소스로 그 위를 override 한다.
 
 ```bash
 cp config.example.json ~/.wormhole/config.json
@@ -454,7 +454,7 @@ WORMHOLE_SYNC_EXCLUDE=.claude/secret-notes/**
       "command": "node",
       "args": ["/absolute/path/to/wormhole-mcp/dist/index.js"],
       "env": {
-        "WORMHOLE_WEBDAV_USER": "alice",
+        "WEBDAV_USER": "alice",
         "WORMHOLE_LOG_LEVEL": "info"
       }
     }
@@ -462,7 +462,7 @@ WORMHOLE_SYNC_EXCLUDE=.claude/secret-notes/**
 }
 ```
 
-- `WORMHOLE_WEBDAV_USER` 는 실제 username **override** 다 — 선택자가 아니라 `~/.wormhole/.env` 의 `WORMHOLE_WEBDAV_USER` 를 덮어쓰는 값이다.
+- `WEBDAV_USER` 는 실제 username **override** 다 — 선택자가 아니라 `~/.wormhole/.env` 의 `WEBDAV_USER` 를 덮어쓰는 값이다.
 - WebDAV 비밀값(PASS/URL/BASEDIR)은 `~/.wormhole/.env` 에 두며 이 파일에 넣지 않는다.
 - `WORMHOLE_PASSPHRASE` 를 여기 평문으로 넣는 대신 `~/.wormhole/.env` 또는 0600 파일 / keychain 사용을 권장한다 (4번 참고).
 - `args` 의 경로는 절대경로로 지정한다. Windows 는 `C:/Users/user/...`, WSL2 는 `/home/user/...` 형식이다.

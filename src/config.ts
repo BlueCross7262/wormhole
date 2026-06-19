@@ -159,10 +159,10 @@ function applyEnvOverrides(raw: Record<string, unknown>): Record<string, unknown
 
   const remote = { ...(result["remote"] as Record<string, unknown> ?? {}) };
 
-  if (process.env["WORMHOLE_WEBDAV_URL"]) remote["url"] = process.env["WORMHOLE_WEBDAV_URL"];
-  if (process.env["WORMHOLE_WEBDAV_USER"]) remote["username"] = process.env["WORMHOLE_WEBDAV_USER"];
-  if (process.env["WORMHOLE_WEBDAV_PASS"]) remote["password"] = process.env["WORMHOLE_WEBDAV_PASS"];
-  if (process.env["WORMHOLE_WEBDAV_BASEDIR"]) remote["remoteBaseDir"] = process.env["WORMHOLE_WEBDAV_BASEDIR"];
+  if (process.env["WEBDAV_URL"]) remote["url"] = process.env["WEBDAV_URL"];
+  if (process.env["WEBDAV_USER"]) remote["username"] = process.env["WEBDAV_USER"];
+  if (process.env["WEBDAV_PASS"]) remote["password"] = process.env["WEBDAV_PASS"];
+  if (process.env["WEBDAV_BASEDIR"]) remote["remoteBaseDir"] = process.env["WEBDAV_BASEDIR"];
   result["remote"] = remote;
 
   // crypto: passphrase 원문은 config 에 저장하지 않는다(런타임에 env/0600파일/keychain 에서 직접 읽음).

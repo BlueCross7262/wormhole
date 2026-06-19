@@ -1,11 +1,11 @@
 {
-  "_comment": "WORMHOLE_WEBDAV_USER 는 실제 username override 다 — 프로파일 선택자가 아니라 ~/.wormhole/.env 의 WORMHOLE_WEBDAV_USER 를 덮어쓰는 값이다. 접속 비밀값(PASS/URL/BASEDIR)은 ~/.wormhole/.env 에 두며 이 파일에 넣지 않는다. WORMHOLE_PASSPHRASE 를 여기 평문으로 넣는 대신 ~/.wormhole/.env 또는 0600 파일(<stateDir>/passphrase) / keychain 사용을 권장한다.",
+  "_comment": "WEBDAV_USER 는 실제 username override 다 — 프로파일 선택자가 아니라 ~/.wormhole/.env 의 WEBDAV_USER 를 덮어쓰는 값이다. 접속 비밀값(PASS/URL/BASEDIR)은 ~/.wormhole/.env 에 두며 이 파일에 넣지 않는다. WORMHOLE_PASSPHRASE 를 여기 평문으로 넣는 대신 ~/.wormhole/.env 또는 0600 파일(<stateDir>/passphrase) / keychain 사용을 권장한다.",
   "mcpServers": {
     "wormhole": {
       "command": "node",
       "args": ["/absolute/path/to/wormhole-mcp/dist/index.js"],
       "env": {
-        "WORMHOLE_WEBDAV_USER": "alice",
+        "WEBDAV_USER": "alice",
         "WORMHOLE_LOG_LEVEL": "info"
       }
     }

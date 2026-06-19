@@ -11,16 +11,16 @@ const TEMPLATE = `# wormhole MCP 서버 설정
 
 # ── WebDAV 연결 ───────────────────────────────────────────────
 # WebDAV 서버 URL (예: https://nextcloud.example.com/remote.php/dav/files/user/)
-WORMHOLE_WEBDAV_URL=https://your-webdav-server/path/
+WEBDAV_URL=https://your-webdav-server/path/
 
 # WebDAV 계정 이름
-WORMHOLE_WEBDAV_USER=your-username
+WEBDAV_USER=your-username
 
 # WebDAV 계정 비밀번호 (앱 비밀번호 권장)
-WORMHOLE_WEBDAV_PASS=your-password
+WEBDAV_PASS=your-password
 
 # WebDAV 서버에서 wormhole 파일을 저장할 기본 경로 (기본값: /wormhole)
-WORMHOLE_WEBDAV_BASEDIR=/wormhole
+WEBDAV_BASEDIR=/wormhole
 
 # ── 암호화 패스프레이즈 ──────────────────────────────────────
 # 방법 A: 환경변수 직접 지정 (가장 단순)

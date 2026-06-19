@@ -33741,10 +33741,10 @@ function loadDotEnvIntoProcess(envPath) {
 function applyEnvOverrides(raw) {
   const result = { ...raw };
   const remote = { ...result["remote"] ?? {} };
-  if (process.env["WORMHOLE_WEBDAV_URL"]) remote["url"] = process.env["WORMHOLE_WEBDAV_URL"];
-  if (process.env["WORMHOLE_WEBDAV_USER"]) remote["username"] = process.env["WORMHOLE_WEBDAV_USER"];
-  if (process.env["WORMHOLE_WEBDAV_PASS"]) remote["password"] = process.env["WORMHOLE_WEBDAV_PASS"];
-  if (process.env["WORMHOLE_WEBDAV_BASEDIR"]) remote["remoteBaseDir"] = process.env["WORMHOLE_WEBDAV_BASEDIR"];
+  if (process.env["WEBDAV_URL"]) remote["url"] = process.env["WEBDAV_URL"];
+  if (process.env["WEBDAV_USER"]) remote["username"] = process.env["WEBDAV_USER"];
+  if (process.env["WEBDAV_PASS"]) remote["password"] = process.env["WEBDAV_PASS"];
+  if (process.env["WEBDAV_BASEDIR"]) remote["remoteBaseDir"] = process.env["WEBDAV_BASEDIR"];
   result["remote"] = remote;
   const crypto5 = { ...result["crypto"] ?? {} };
   if (process.env["WORMHOLE_PASSPHRASE_FILE"]) crypto5["passphraseFile"] = process.env["WORMHOLE_PASSPHRASE_FILE"];
