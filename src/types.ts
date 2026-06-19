@@ -59,16 +59,6 @@ export interface CryptoConfig {
   kdfP: number;
 }
 
-/** 자동 동기화(watcher) 설정. */
-export interface AutoSyncConfig {
-  /** watcher 활성화 여부. */
-  enabled: boolean;
-  /** 변경 감지 후 push 까지 debounce(ms). */
-  debounceMs: number;
-  /** 주기적 pull 간격(ms). 0 또는 음수면 주기 pull 비활성. */
-  pullIntervalMs: number;
-}
-
 /** 원격 lock.json 관련 설정. */
 export interface LockConfig {
   /** 락 TTL(ms). 만료된 락은 탈취 가능. */
@@ -97,8 +87,6 @@ export interface Config {
   selfMcpServerNames: string[];
   /** 충돌 기본 정책. */
   conflictPolicy: ResolvePolicy;
-  /** 자동 동기화 설정. */
-  autoSync: AutoSyncConfig;
   /** 원격 락 설정. */
   lock: LockConfig;
 }

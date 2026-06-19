@@ -375,7 +375,7 @@ describe("Zod schema defaults populate omitted fields", () => {
     assert.deepEqual(cfg.settingsLocalKeys, DEFAULT_SETTINGS_LOCAL_KEYS);
   });
 
-  test("other schema defaults: remote subfields, crypto KDF, selfMcp, conflictPolicy, autoSync, lock", () => {
+  test("other schema defaults: remote subfields, crypto KDF, selfMcp, conflictPolicy, lock", () => {
     const cfg = resolveConfig({ remote: { url: "https://x.example.com/dav" } });
 
     // remote defaults
@@ -394,11 +394,6 @@ describe("Zod schema defaults populate omitted fields", () => {
     // top-level defaults
     assert.deepEqual(cfg.selfMcpServerNames, ["wormhole"]);
     assert.equal(cfg.conflictPolicy, "preserve-both");
-
-    // autoSync defaults
-    assert.equal(cfg.autoSync.enabled, false);
-    assert.equal(cfg.autoSync.debounceMs, 2000);
-    assert.equal(cfg.autoSync.pullIntervalMs, 300_000);
 
     // lock defaults
     assert.equal(cfg.lock.ttlMs, 30_000);
@@ -575,7 +570,7 @@ describe("resolveWebDavProfile — profile selection rules", () => {
 describe("loadConfig — .env profiles applied to remote", () => {
   test("single profile from .env auto-selected; config.json without remote is valid", async () => {
     // remote 섹션이 없는 config.json 도 유효(.env 프로파일이 remote 공급).
-    const cfgPath = writeConfigFile({ autoSync: { enabled: true } });
+    const cfgPath = writeConfigFile({});
     const envPath = writeDotEnv(
       [
         "WORMHOLE_WEBDAV_1_USER=alice",
@@ -591,8 +586,6 @@ describe("loadConfig — .env profiles applied to remote", () => {
     assert.equal(cfg.remote.username, "alice");
     assert.equal(cfg.remote.password, "secret1");
     assert.equal(cfg.remote.remoteBaseDir, "/wormhole-a");
-    // remote 없이도 다른 설정은 그대로.
-    assert.equal(cfg.autoSync.enabled, true);
   });
 
   test("profile without BASEDIR falls back to schema default remoteBaseDir", async () => {

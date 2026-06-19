@@ -19,7 +19,6 @@ function makeConfig(home: string, overrides?: Partial<Config["targets"]> & { sta
     settingsLocalKeys: [],
     selfMcpServerNames: [],
     conflictPolicy: "newer",
-    autoSync: { enabled: false, intervalMs: 0 },
     lock: { enabled: false, ttlMs: 0, pollMs: 0 },
   } as unknown as Config;
 }

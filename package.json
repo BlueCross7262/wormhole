@@ -5,16 +5,13 @@
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "wormhole-mcp": "dist/index.js",
-    "wormhole-daemon": "dist/daemon.js"
+    "wormhole-mcp": "dist/index.js"
   },
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/index.ts",
     "start": "node dist/index.js",
-    "daemon": "node dist/daemon.js",
-    "daemon:dev": "tsx src/daemon.ts",
-    "test": "tsx --test \"src/**/*.test.ts\"",
+"test": "tsx --test \"src/**/*.test.ts\"",
     "test:types": "tsc -p tsconfig.test.json --noEmit",
     "typecheck": "tsc --noEmit"
   },
@@ -22,9 +19,7 @@
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@scure/base": "^1.1.5",
     "age-encryption": "^0.2.3",
-    "chokidar": "^4.0.3",
     "fast-glob": "^3.3.2",
-    "picomatch": "^2.3.2",
     "webdav": "^5.7.1",
     "zod": "^3.23.8"
   },

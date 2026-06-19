@@ -70,12 +70,6 @@ const SyncTargetsSchema = z.object({
   exclude: z.array(z.string()).default(DEFAULT_EXCLUDE),
 });
 
-const AutoSyncConfigSchema = z.object({
-  enabled: z.boolean().default(false),
-  debounceMs: z.number().int().nonnegative().default(2000),
-  pullIntervalMs: z.number().int().nonnegative().default(300_000),
-});
-
 const LockConfigSchema = z.object({
   ttlMs: z.number().int().positive().default(30_000),
   acquireRetries: z.number().int().nonnegative().default(3),
@@ -92,7 +86,6 @@ const RawConfigSchema = z.object({
   // 자기 자신(wormhole) mcp 서버 이름 목록. .mcp.json 동기화 시 자기참조 제외 기준.
   selfMcpServerNames: z.array(z.string()).default(["wormhole"]),
   conflictPolicy: z.enum(["preserve-both", "latest-wins", "manual"]).default("preserve-both"),
-  autoSync: AutoSyncConfigSchema.partial().default({}),
   lock: LockConfigSchema.partial().default({}),
 });
 
@@ -105,7 +98,6 @@ const FullConfigSchema = z.object({
   targets: SyncTargetsSchema,
   settingsLocalKeys: z.array(z.string()),
   conflictPolicy: z.enum(["preserve-both", "latest-wins", "manual"]),
-  autoSync: AutoSyncConfigSchema,
   lock: LockConfigSchema,
 });
 
@@ -299,7 +291,6 @@ function resolvePaths(parsed: z.infer<typeof RawConfigSchema>, home: string, sta
     settingsLocalKeys: parsed.settingsLocalKeys,
     selfMcpServerNames: parsed.selfMcpServerNames,
     conflictPolicy: parsed.conflictPolicy,
-    autoSync: AutoSyncConfigSchema.parse(parsed.autoSync),
     lock: LockConfigSchema.parse(parsed.lock),
   };
 }
