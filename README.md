@@ -200,7 +200,51 @@ runPull
 
 ---
 
-## 3. 설치 및 빌드
+## 2.5 플러그인으로 설치 (권장 경로)
+
+Claude Code 플러그인 마켓플레이스를 통해 빌드 없이 설치한다.
+
+### 단계
+
+**1. 마켓플레이스 등록**
+
+```
+/plugin marketplace add BlueCross7262/wormhole
+```
+
+**2. 플러그인 설치**
+
+```
+/plugin install wormhole@wormhole-marketplace
+```
+
+**3. 초기 설정 스캐폴드**
+
+```
+/wormhole-setup
+```
+
+`~/.wormhole/.env` 파일을 자동 생성하고 필요한 변수를 채워넣을 수 있도록 안내한다.
+
+**4. `.env` 편집 후 Claude Code 재시작**
+
+```bash
+# ~/.wormhole/.env  (chmod 600 적용됨)
+WORMHOLE_WEBDAV_URL=https://nas.example.com/dav
+WORMHOLE_WEBDAV_USER=alice
+WORMHOLE_WEBDAV_PASS=secret
+WORMHOLE_PASSPHRASE=your-strong-passphrase
+```
+
+값 입력 후 Claude Code 를 재시작하면 wormhole MCP 서버가 자동으로 등록된다.
+
+> MCP 서버 등록(`.mcp.json` 편집)은 플러그인이 자동으로 처리한다. 아래 **§6 (수동 경로)** 를 따를 필요가 없다.
+
+---
+
+## 3. 설치 및 빌드 (수동 / 레거시 경로)
+
+> 플러그인을 쓰지 않거나 소스에서 직접 빌드해야 할 때만 이 절차를 따른다. 일반 사용자는 **§2.5 플러그인으로 설치** 를 권장한다.
 
 ```bash
 git clone https://github.com/your-org/wormhole-mcp
@@ -234,6 +278,33 @@ npm run typecheck   # 소스 전체 타입 검사 (tsc --noEmit)
 - 테스트 파일은 대상 소스 옆에 co-located 된다 (`src/**/*.test.ts`). 현재 19개 파일, 519개 테스트.
 - 빌드 산출물은 테스트를 제외한다 — `tsconfig.json` 이 `src/**/*.test.ts` 와 `src/test-helpers/**` 를 `exclude` 하므로 `dist/` 에는 런타임 코드만 들어간다.
 - 테스트 코드의 타입 검사는 빌드와 분리된 `tsconfig.test.json` (`noEmit`) 으로 수행한다.
+
+---
+
+## 3.7 플러그인 빌드 (개발자)
+
+플러그인 배포 아티팩트 (`plugin/dist/index.mjs`) 를 빌드하고 검증한다.
+
+```bash
+npm run build:plugin
+```
+
+이 명령은 세 단계를 순서대로 실행하며, **어느 단계든 실패하면 전체가 중단된다.**
+
+| 단계 | 내용 |
+|---|---|
+| esbuild 번들링 | `src/index.ts` → `plugin/dist/index.mjs` (단일 파일, ESM, Node 20+, 외부 의존성 인라인) |
+| `claude plugin validate` | Claude Code 플러그인 유효성 검사 (`plugin/plugin.json` + `plugin/.mcp.json` 포함) |
+| 번들 무결성 스모크 테스트 | `node --input-type=module` 로 번들을 임포트해 기동 오류 여부 확인 |
+
+빌드 성공 후 `plugin/dist/index.mjs` 를 커밋에 포함한다.
+
+```bash
+git add plugin/dist/index.mjs
+git commit -m "chore(plugin): update bundled dist"
+```
+
+> `plugin/dist/index.mjs` 는 플러그인 설치 시 별도 빌드 없이 바로 실행되는 아티팩트다 (hookify-global 방식과 동일). 커밋에 포함하지 않으면 설치 후 서버를 실행할 수 없다.
 
 ---
 
@@ -370,7 +441,9 @@ WORMHOLE_SYNC_EXCLUDE=.claude/secret-notes/**
 
 ---
 
-## 6. Claude Code `.mcp.json` 등록
+## 6. Claude Code `.mcp.json` 등록 (수동 / 레거시 경로)
+
+> 플러그인 경로(§2.5)를 쓰면 이 단계는 자동으로 처리된다. 수동 설치 또는 커스텀 경로가 필요할 때만 따른다.
 
 `.mcp.json.example` 을 참고해 Claude Code 전역 MCP 설정에 등록한다.
 
