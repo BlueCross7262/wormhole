@@ -1,6 +1,6 @@
-# wormhole-mcp
+# wormhole
 
-Claude Code 사용자 전역 설정을 머신 간 동기화하는 MCP 서버 (TypeScript, stdio transport).
+Claude Code 사용자 전역 설정을 머신 간 동기화하는 CLI (TypeScript). Claude Code 슬래시 커맨드가 이 CLI 를 호출한다.
 
 - 전송/저장: **WebDAV** (Tailscale 망 내 NAS / 노드)
 - 암호화: **age + passphrase 기반 zero-knowledge** — 업로드 전 클라이언트에서 암호화, 서버는 암호문만 보관
@@ -20,18 +20,22 @@ Claude Code 사용자 전역 설정을 머신 간 동기화하는 MCP 서버 (Ty
 
 ## 1.5 아키텍처
 
-wormhole 은 **단일 프로세스 진입점** (`wormhole-mcp` MCP stdio 서버) 이 **하나의 동기화 엔진 코어** 를 구동하는 구조다. 아래에서 큰 그림, 진입점, 공유 코어, 데이터 흐름, 원격 레이아웃, 동시성·안전, 암호화, 모듈 맵 순으로 설명한다.
+wormhole 은 **단발 CLI 진입점** (`src/cli.ts` → `dist/cli.mjs`) 이 **하나의 동기화 엔진 코어** 를 구동하는 구조다. Claude Code 슬래시 커맨드 (§7) 가 이 CLI 를 매 호출마다 새로 띄워 서브커맨드를 실행한다. 아래에서 큰 그림, 진입점, 공유 코어, 데이터 흐름, 원격 레이아웃, 동시성·안전, 암호화, 모듈 맵 순으로 설명한다.
 
 ### 큰 그림
 
 ```
    ┌──────────────────────────────┐
-   │ wormhole-mcp (dist/index.js) │
-   │ MCP stdio 서버               │
-   │ (Claude Code 세션 수명)      │
+   │ Claude Code 슬래시 커맨드     │
+   │ /wormhole_status /_push 등    │
+   │     │ shell out               │
+   │     ▼                         │
+   │ wormhole CLI (dist/cli.mjs)  │
+   │ argv 디스패처 (단발 실행)     │
    ├──────────────────────────────┤
-   │ MCP 도구 5종 (§7)            │
-   │ 기동 시 1회 pull             │
+   │ status/push/pull/resolve      │
+   │ dry-run/sync (§7)            │
+   │ JSON → stdout, 로그 → stderr │
    └───────────────┬──────────────┘
                    │  buildEngine(logger)
                    ▼
@@ -52,21 +56,21 @@ wormhole 은 **단일 프로세스 진입점** (`wormhole-mcp` MCP stdio 서버)
        └──────────────────────────┘
 ```
 
-- `package.json` 은 단일 bin `wormhole-mcp` → `dist/index.js` (MCP 서버) 를 선언한다.
-- npm 패키지명은 `wormhole-mcp` (v0.1.0, ESM, `node>=20`) 이지만, MCP 서버가 자기 식별에 쓰는 **이름은 `"wormhole"`** 로 패키지명과 구분된다.
+- CLI 는 매 서브커맨드 호출마다 `buildEngine(logger)` 로 엔진을 새로 조립하고 1회 작업 후 종료하는 **단발 실행** 모델이다 (상주 프로세스·세션 수명 없음). 각 호출은 자기 원격 락을 직접 획득·해제한다 (one-shot-safe).
+- 진입점은 `src/cli.ts` 한 곳뿐이며, 슬래시 커맨드는 이 CLI 를 shell out 으로 호출한다. 엔진 코어 (`src/sync`, `src/crypto`, `src/webdav`) 는 진입 표면이 바뀌어도 **그대로** 다 — stdio MCP 서버에서 CLI 로 바뀐 것은 진입점 한 겹뿐이다.
 
 ### 진입점
 
-#### MCP 서버 (`src/index.ts`)
+#### CLI (`src/cli.ts`)
 
-- `new McpServer({ name: "wormhole", version: "0.1.0" })` 를 `@modelcontextprotocol/sdk` (^1.29.0) 로 구성하고, `registerAllTools(server, engine)` 로 도구 5종을 등록한다 (도구 상세는 **§7 MCP 도구** 참조).
-- 전송은 `StdioServerTransport` 다. **stdout 은 MCP 전송 전용** 이며, 모든 로깅은 stderr 로거로만 나간다.
-- 시작 시 `engine.pull()` 을 **무조건 한 번** 호출해 원격 변경을 먼저 반영한다 (실패해도 warn 후 계속). 이후 동기화는 MCP 도구 (`sync_push`/`sync_pull` 등) 를 통한 **수동 호출** 로만 이뤄진다 (동작 모델은 **§8 동작 모델** 참조).
-- 종료는 SIGINT/SIGTERM 핸들러가 `shuttingDown` 불리언으로 멱등 보장된 `shutdown(signal)` 을 호출한다. `server.close()` → `process.exit(0)` 순이며, 부트스트랩 실패 시 `main().catch` 가 치명 오류를 남기고 `process.exit(1)`.
+- argv 디스패처다. 첫 인자로 서브커맨드 (`status`/`push`/`pull`/`resolve`/`dry-run`/`sync`) 를 받아 `buildEngine(logger)` 로 엔진을 조립한 뒤 해당 엔진 메서드를 1회 호출하고 결과 JSON 을 **stdout** 으로 출력한다 (서브커맨드 상세는 **§7 슬래시 커맨드 / CLI** 참조).
+- **stdout 은 결과 JSON 전용** 이며, 모든 로깅은 stderr 로거로만 나간다. 슬래시 커맨드는 stdout 의 JSON 을 파싱해 사용한다.
+- 성공 시 exit code 0, 오류 시 stderr 에 메시지를 남기고 nonzero 로 종료한다. 기동 시 자동 pull 은 **없다** — 단발 CLI 라 각 서브커맨드가 명시한 작업만 수행한다 (동작 모델은 **§8 동작 모델** 참조).
+- `--help` / `-h` / 서브커맨드 미지정 시에는 `buildEngine` 을 **호출하지 않고** 사용법만 출력한 뒤 exit 0 한다. 비밀값·원격 없이 오프라인 스모크 테스트가 가능하도록 한 설계다.
 
 ### 공유 코어 (`buildEngine` 조립 순서)
 
-MCP 진입점은 `bootstrap.buildEngine(logger)` 로 엔진을 조립한다. 고정된 순서는 다음과 같다.
+CLI 진입점은 매 서브커맨드 호출마다 `bootstrap.buildEngine(logger)` 로 엔진을 새로 조립한다. 고정된 순서는 다음과 같다.
 
 1. `loadConfig()` (평문 HTTP 사용 시 경고)
 2. `loadOrCreateMachineId(config.stateDir)`
@@ -80,7 +84,7 @@ MCP 진입점은 `bootstrap.buildEngine(logger)` 로 엔진을 조립한다. 고
 - `ensureDir` (원격 레이아웃) 는 `ensureCryptoReady` (원격 keyparams 읽기) 보다 **먼저** 실행돼야 한다.
 - `resolvePassphrase` 는 `ensureCryptoReady` 보다 **먼저** 실행돼야 한다.
 
-패스프레이즈·원격 실패 시 `buildEngine` 이 reject 하며, `main().catch → process.exit(1)` 로 전파된다.
+패스프레이즈·원격 실패 시 `buildEngine` 이 reject 하며, CLI 가 stderr 에 오류를 남기고 nonzero 로 종료한다.
 
 ### 데이터 흐름
 
@@ -174,7 +178,7 @@ runPull
 
 | 모듈 | 책임 |
 |---|---|
-| `src/index.ts` | MCP stdio 서버 진입점, 기동 시 1회 pull |
+| `src/cli.ts` | CLI argv 디스패처 진입점 (status/push/pull/resolve/dry-run/sync), JSON→stdout |
 | `src/bootstrap.ts` | `buildEngine` — 엔진 조립 (config→machineId→remote→passphrase→crypto→engine) |
 | `src/sync/engine.ts` | `SyncEngine` — push/pull/resolve/status, 블롭 업/다운로드, 원자적 쓰기, 롤백 |
 | `src/sync/manifest.ts` | `ManifestStore` — 매니페스트 read/write, 2차 CAS, weak-ETag 재시도 |
@@ -188,7 +192,6 @@ runPull
 | `src/crypto/keyparams.ts` | `ensureCryptoReady` — 첫 머신 부트스트랩 vs 새 머신 검증 |
 | `src/crypto/passphrase.ts` | `resolvePassphrase` — env → 파일 → keychain |
 | `src/webdav/client.ts` | `RemoteStore` — putAtomic/putIfMatch/putIfNoneMatch/getTextWithETag 등 WebDAV 원시 연산 |
-| `src/tools/*.ts` | MCP 도구 5종 (sync_status/push/pull/resolve/dry_run) — **§7 MCP 도구** |
 
 ---
 
@@ -226,7 +229,7 @@ Claude Code 플러그인 마켓플레이스를 통해 빌드 없이 설치한다
 
 `~/.wormhole/.env` 파일을 자동 생성하고 필요한 변수를 채워넣을 수 있도록 안내한다.
 
-**4. `.env` 편집 후 Claude Code 재시작**
+**4. `.env` 편집**
 
 ```bash
 # ~/.wormhole/.env  (chmod 600 적용됨)
@@ -236,9 +239,22 @@ WEBDAV_PASS=secret
 WORMHOLE_PASSPHRASE=your-strong-passphrase
 ```
 
-값 입력 후 Claude Code 를 재시작하면 wormhole MCP 서버가 자동으로 등록된다.
+**5. 슬래시 커맨드로 사용**
 
-> MCP 서버 등록(`.mcp.json` 편집)은 플러그인이 자동으로 처리한다. 아래 **§6 (수동 경로)** 를 따를 필요가 없다.
+값 입력 후 Claude Code 세션에서 슬래시 커맨드를 호출하면 된다. 별도 재시작·서버 기동이 필요 없다 (각 커맨드가 CLI 를 단발 실행한다).
+
+| 커맨드 | 동작 |
+|---|---|
+| `/wormhole_status` | 추가/수정/삭제/원격변경/충돌/수렴 요약 (변경 없음) |
+| `/wormhole_pull` | 원격 변경을 로컬에 적용 |
+| `/wormhole_push` | 로컬 변경을 원격으로 업로드 |
+| `/wormhole_resolve` | 충돌을 명시적으로 해소 |
+| `/wormhole_dry_run` | push/pull 계획만 미리보기 (변경 없음) |
+| `/wormhole_sync` | **원샷** — pull → 충돌 시 자동 해소(`preserve-both`) → push |
+
+일상적으로는 `/wormhole_sync` 하나면 충분하다. pull 후 충돌이 있으면 기본 정책 (`preserve-both`) 으로 해소한 뒤 push 까지 한 번에 처리한다 (커맨드 상세는 **§7 슬래시 커맨드 / CLI** 참조).
+
+> 플러그인 경로에는 등록할 MCP 서버가 없다 — wormhole 은 슬래시 커맨드가 호출하는 CLI 다. 아래 **§6 (CLI 직접 실행)** 은 터미널에서 직접 돌릴 때만 참고한다.
 
 ---
 
@@ -247,13 +263,13 @@ WORMHOLE_PASSPHRASE=your-strong-passphrase
 > 플러그인을 쓰지 않거나 소스에서 직접 빌드해야 할 때만 이 절차를 따른다. 일반 사용자는 **§2.5 플러그인으로 설치** 를 권장한다.
 
 ```bash
-git clone https://github.com/your-org/wormhole-mcp
-cd wormhole-mcp
+git clone https://github.com/BlueCross7262/wormhole
+cd wormhole
 npm install
 npm run build
 ```
 
-빌드 결과물은 `dist/index.js`.
+빌드 결과물은 `dist/cli.mjs` (CLI 진입점). 터미널에서 직접 실행하는 방법은 **§6 (CLI 직접 실행)** 참조.
 
 개발 중 TypeScript 직접 실행:
 
@@ -283,7 +299,7 @@ npm run typecheck   # 소스 전체 타입 검사 (tsc --noEmit)
 
 ## 3.7 플러그인 빌드 (개발자)
 
-플러그인 배포 아티팩트 (`plugin/dist/index.mjs`) 를 빌드하고 검증한다.
+플러그인 배포 아티팩트 (`plugin/dist/cli.mjs`) 를 빌드하고 검증한다.
 
 ```bash
 npm run build:plugin
@@ -293,24 +309,24 @@ npm run build:plugin
 
 | 단계 | 내용 |
 |---|---|
-| esbuild 번들링 | `src/index.ts` → `plugin/dist/index.mjs` (단일 파일, ESM, Node 20+, 외부 의존성 인라인) |
-| `claude plugin validate` | Claude Code 플러그인 유효성 검사 (`plugin/plugin.json` + `plugin/.mcp.json` 포함) |
-| 번들 무결성 스모크 테스트 | `node --input-type=module` 로 번들을 임포트해 기동 오류 여부 확인 |
+| esbuild 번들링 | `src/cli.ts` → `plugin/dist/cli.mjs` (단일 파일, ESM, Node 20+, 외부 의존성 인라인) |
+| `claude plugin validate` | Claude Code 플러그인 유효성 검사 (`plugin/plugin.json` + 슬래시 커맨드 정의 포함) |
+| 번들 무결성 스모크 테스트 | `node cli.mjs --help` 로 번들을 실행해 사용법 출력·기동 오류 여부 확인 (오프라인·비밀값 없이 동작) |
 
-빌드 성공 후 `plugin/dist/index.mjs` 를 커밋에 포함한다.
+빌드 성공 후 `plugin/dist/cli.mjs` 를 커밋에 포함한다.
 
 ```bash
-git add plugin/dist/index.mjs
-git commit -m "chore(plugin): update bundled dist"
+git add plugin/dist/cli.mjs
+git commit -m "chore(plugin): update bundled cli"
 ```
 
-> `plugin/dist/index.mjs` 는 플러그인 설치 시 별도 빌드 없이 바로 실행되는 아티팩트다 (hookify-global 방식과 동일). 커밋에 포함하지 않으면 설치 후 서버를 실행할 수 없다.
+> `plugin/dist/cli.mjs` 는 플러그인 설치 시 별도 빌드 없이 슬래시 커맨드가 바로 실행하는 아티팩트다 (hookify-global 방식과 동일). 커밋에 포함하지 않으면 설치 후 커맨드를 실행할 수 없다.
 
 ---
 
 ## 4. passphrase 설정
 
-이 서버는 passphrase 를 scrypt KDF (Node 내장) 로 통과시켜 age identity (`AGE-SECRET-KEY-1...`) 를 **결정적으로 파생** 한다. 동일 passphrase + 동일 salt 면 어떤 머신에서도 같은 키가 나온다. salt 는 비밀이 아니며 원격 `keyparams.json` 에 평문으로 보관된다. 최초 기기가 salt 를 생성하고, 이후 기기는 이 salt 로 동일 키를 파생한다.
+wormhole 은 passphrase 를 scrypt KDF (Node 내장) 로 통과시켜 age identity (`AGE-SECRET-KEY-1...`) 를 **결정적으로 파생** 한다. 동일 passphrase + 동일 salt 면 어떤 머신에서도 같은 키가 나온다. salt 는 비밀이 아니며 원격 `keyparams.json` 에 평문으로 보관된다. 최초 기기가 salt 를 생성하고, 이후 기기는 이 salt 로 동일 키를 파생한다.
 
 > passphrase 원문은 어디에도 저장되지 않는다. 파생된 키만 `~/.wormhole/age-key.txt` 에 0600 권한으로 캐시된다.
 
@@ -320,7 +336,7 @@ git commit -m "chore(plugin): update bundled dist"
 
 | 순위 | 출처 | 지정 방법 | 근거 |
 |---|---|---|---|
-| 1 | 환경변수 | `WORMHOLE_PASSPHRASE` | MCP stdio 는 비대화형이므로 `.mcp.json` env 주입이 가장 단순하다 |
+| 1 | 환경변수 | `WORMHOLE_PASSPHRASE` | CLI 는 비대화형이므로 `~/.wormhole/.env` env 주입이 가장 단순하다 |
 | 2 | 0600 파일 | 기본 `~/.wormhole/passphrase` (env `WORMHOLE_PASSPHRASE_FILE` 로 경로 지정) | 영속적이고 셸 히스토리에 노출되지 않는다 |
 | 3 | keychain | env `WORMHOLE_KEYCHAIN_SERVICE` (Linux/WSL2 의 `secret-tool` 만 실구현) | 가장 안전하나 플랫폼 의존적이라 최후순위 |
 
@@ -441,95 +457,98 @@ WORMHOLE_SYNC_EXCLUDE=.claude/secret-notes/**
 
 ---
 
-## 6. Claude Code `.mcp.json` 등록 (수동 / 레거시 경로)
+## 6. CLI 직접 실행 (터미널)
 
-> 플러그인 경로(§2.5)를 쓰면 이 단계는 자동으로 처리된다. 수동 설치 또는 커스텀 경로가 필요할 때만 따른다.
+> 일반 사용자는 §2.5 플러그인 + 슬래시 커맨드를 쓰면 된다. 이 절은 터미널에서 직접 돌리거나 스크립트로 자동화할 때만 참고한다. 등록할 MCP 서버는 없다.
 
-`.mcp.json.example` 을 참고해 Claude Code 전역 MCP 설정에 등록한다.
+빌드 후 `dist/cli.mjs` 를 node 로 직접 실행한다.
 
-```json
-{
-  "mcpServers": {
-    "wormhole": {
-      "command": "node",
-      "args": ["/absolute/path/to/wormhole-mcp/dist/index.js"],
-      "env": {
-        "WEBDAV_USER": "alice",
-        "WORMHOLE_LOG_LEVEL": "info"
-      }
-    }
-  }
-}
+```bash
+node dist/cli.mjs status
+node dist/cli.mjs push  --dry-run
+node dist/cli.mjs pull
+node dist/cli.mjs resolve --policy preserve-both
+node dist/cli.mjs dry-run pull
+node dist/cli.mjs sync   --policy preserve-both
+node dist/cli.mjs --help        # 사용법 (오프라인, 비밀값 불필요)
 ```
 
-- `WEBDAV_USER` 는 실제 username **override** 다 — 선택자가 아니라 `~/.wormhole/.env` 의 `WEBDAV_USER` 를 덮어쓰는 값이다.
-- WebDAV 비밀값(PASS/URL/BASEDIR)은 `~/.wormhole/.env` 에 두며 이 파일에 넣지 않는다.
-- `WORMHOLE_PASSPHRASE` 를 여기 평문으로 넣는 대신 `~/.wormhole/.env` 또는 0600 파일 / keychain 사용을 권장한다 (4번 참고).
-- `args` 의 경로는 절대경로로 지정한다. Windows 는 `C:/Users/user/...`, WSL2 는 `/home/user/...` 형식이다.
+`npm link` (또는 전역 설치) 후에는 `wormhole` bin 으로 바로 호출할 수 있다.
+
+```bash
+npm link
+wormhole status
+wormhole sync
+```
+
+- WebDAV / passphrase 비밀값은 `~/.wormhole/.env` (또는 0600 파일 / keychain) 에서 읽는다 — CLI 인자로 넘기지 않는다 (§4, §5 참고).
+- 결과는 stdout 에 JSON 으로, 로그는 stderr 로 나간다. 성공 시 exit 0, 오류 시 nonzero.
 
 ---
 
-## 7. MCP 도구
+## 7. 슬래시 커맨드 / CLI
 
-서버가 등록되면 Claude Code 에서 다음 5종을 사용할 수 있다.
+플러그인 설치 후 Claude Code 에서 다음 슬래시 커맨드를 쓸 수 있다. 괄호 안은 동일 동작의 CLI 서브커맨드다 (§6 직접 실행).
 
-### `sync_status`
+### `/wormhole_status` (`status`)
 
 추가/수정/삭제/원격변경/충돌/수렴 요약을 반환한다. 변경 없음.
 
-- 입력: `{ "jobId"?: string }`
-- `jobId` 를 주면 해당 async job (아래 `async` 옵션) 의 상태/결과/오류를 반환한다.
-- `jobId` 없으면: `summary` (added / modified / deleted / remoteAdded / remoteModified / remoteDeleted / conflicts / unchanged), `conflicts`, `machineId`, `manifestGeneration`
+- `summary` (added / modified / deleted / remoteAdded / remoteModified / remoteDeleted / conflicts / unchanged), `conflicts`, `machineId`, `manifestGeneration` 을 JSON 으로 출력.
 
-### `sync_push`
+### `/wormhole_push` (`push [--dry-run]`)
 
 로컬 변경을 원격으로 업로드한다.
 
-- 입력: `{ "dryRun"?: boolean, "async"?: boolean }` (둘 다 기본 `false`)
-- `dryRun: true` 면 실제 업로드 없이 계획만 반환한다.
-- `async: true` 면 백그라운드로 실행하고 `{ jobId, accepted }` 를 즉시 반환한다 (대용량 시 stdio 비블로킹). 진행은 `sync_status({ jobId })` 로 폴링.
+- `--dry-run` 이면 실제 업로드 없이 계획만 반환한다.
 - `settings.json` 은 머신 고유 키를 제외한 공유 subset 만 push 한다.
 - `.mcp.json` 의 자기참조 항목 (`selfMcpServerNames`) 은 push 에서 제거된다.
 
-### `sync_pull`
+### `/wormhole_pull` (`pull [--dry-run]`)
 
 원격 변경을 로컬에 적용한다.
 
-- 입력: `{ "dryRun"?: boolean, "async"?: boolean }` (둘 다 기본 `false`)
-- `async: true` 동작은 `sync_push` 와 동일 (`jobId` 반환 → `sync_status` 폴링).
+- `--dry-run` 이면 실제 적용 없이 계획만 반환한다.
 - 적용 전 영향 파일을 `<stateDir>/backups/<timestamp>/` 에 자동 백업한다.
-- 충돌 발생 시 `conflictPolicy` 에 따라 처리한다 (기본 `preserve-both`).
+- pull 은 비충돌 변경만 fast-forward 하고 충돌은 결과에 보고만 한다 — 해소는 `resolve` / `sync` 의 몫이다.
 
-### `sync_dry_run`
-
-push/pull 을 실제 변경 없이 계획만 계산한다 (작업 전 미리보기 권장).
-
-- 입력: `{ "direction": "push" | "pull" }`
-- 반환: 해당 방향의 dry-run 계획 (업로드/다운로드/삭제/충돌 후보). 데이터 변경 없음.
-
-### `sync_resolve`
+### `/wormhole_resolve` (`resolve [--policy P] [--keys k1,k2] [--dry-run]`)
 
 충돌을 명시적으로 해소한다.
 
-- 입력: `{ "policy"?: "preserve-both" | "latest-wins" | "manual", "keys"?: string[], "dryRun"?: boolean }`
-- `policy` 생략 시 config 의 `conflictPolicy` 를 따른다.
-- `keys` 생략 시 전체 충돌 대상.
+- `--policy` 는 `preserve-both` | `latest-wins` | `manual`. 생략 시 config 의 `conflictPolicy` 를 따른다.
+- `--keys` 생략 시 전체 충돌 대상.
 - `latest-wins`: 원격 최신본 (매니페스트 generation 우선) 으로 덮어쓴다.
 - `manual`: 충돌 목록만 반환하고 실제 처리는 사용자에게 위임한다.
+
+### `/wormhole_dry_run` (`dry-run <push|pull>`)
+
+push/pull 을 실제 변경 없이 계획만 계산한다 (작업 전 미리보기 권장).
+
+- 인자로 방향 (`push` 또는 `pull`) 을 받아 해당 방향의 dry-run 계획을 반환한다. 데이터 변경 없음.
+
+### `/wormhole_sync` (`sync [--policy preserve-both|latest-wins]`)
+
+**원샷 동기화** — pull → (충돌 시) resolve → push 를 한 번에 수행한다.
+
+- pull 결과에 충돌이 있으면 `--policy` (기본 `preserve-both`) 로 해소한 뒤 push 한다.
+- **stop-on-error** — pull / resolve 가 실패하면 push 전에 중단한다.
+- `--policy manual` 은 **금지** 다 (sync 안에서는 자동 해소가 전제이므로 에러 — 수동 해소가 필요하면 `/wormhole_resolve` 를 따로 쓴다).
+- 일상 동기화는 이 커맨드 하나면 충분하다.
 
 ---
 
 ## 8. 동작 모델
 
-wormhole 은 **수동 동기화** 모델이다. MCP 서버는 기동 시 1회 pull 로 원격 변경을 반영하고, 이후 동기화는 사용자가 MCP 도구를 직접 호출해 수행한다.
+wormhole 은 **명시적 단발 동기화** 모델이다. 상주 서버·자동 백그라운드 동기화·기동 시 자동 pull 이 없다 — 사용자가 슬래시 커맨드 (또는 CLI) 를 호출한 시점에만, 호출한 작업만 수행한다.
 
-### 기동 시 pull
+### 일상 흐름
 
-MCP 서버는 시작될 때 `engine.pull()` 을 **무조건 한 번** 수행해 다른 머신의 원격 변경을 먼저 반영한다 (실패해도 warn 후 계속).
+대개 `/wormhole_sync` 하나면 된다. pull → 충돌 시 자동 해소(`preserve-both`) → push 를 한 번에 처리한다. 세밀한 제어가 필요하면 `/wormhole_status` 로 상태를 보고 `/wormhole_pull` · `/wormhole_resolve` · `/wormhole_push` 를 개별 호출한다 (커맨드 상세는 **§7 슬래시 커맨드 / CLI** 참조).
 
-### 수동 동기화
+### 동시 실행 안전성
 
-`sync_push` / `sync_pull` / `sync_resolve` / `sync_status` / `sync_dry_run` 을 직접 호출한다 (도구 상세는 **§7 MCP 도구** 참조). 동시에 여러 MCP 세션이 떠 있어도 안전하다 — 매니페스트 CAS 커밋 + 원격 락 (`RemoteLock`) + 프로세스 내 `AsyncMutex` 로 직렬화되기 때문이다.
+여러 머신·여러 호출이 동시에 떠도 안전하다 — 각 호출은 자기 원격 락을 직접 획득·해제하며 (one-shot-safe), 매니페스트 CAS 커밋 + 원격 락 (`RemoteLock`) + 프로세스 내 `AsyncMutex` 로 직렬화되기 때문이다.
 
 ---
 
@@ -600,20 +619,20 @@ MCP 서버는 시작될 때 `engine.pull()` 을 **무조건 한 번** 수행해 
 
 ## 12. 트러블슈팅
 
-### MCP 서버가 응답하지 않는다
+### 슬래시 커맨드 / CLI 가 동작하지 않는다
 
-- `WORMHOLE_LOG_LEVEL=debug` 로 설정 후 재시작해 stderr 로그를 확인한다.
-- `dist/index.js` 경로가 절대경로인지 확인한다.
-- `npm run build` 로 빌드가 완료됐는지 확인한다.
+- `WORMHOLE_LOG_LEVEL=debug` 환경변수로 stderr 로그를 자세히 본다.
+- `node dist/cli.mjs --help` 가 사용법을 출력하는지 확인한다 (오프라인에서도 동작해야 정상).
+- `npm run build` (직접 실행) 또는 `npm run build:plugin` (플러그인) 으로 빌드가 완료됐는지 확인한다.
 
 ### WebDAV 연결 오류
 
 - WebDAV URL 과 `remoteBaseDir` 경로를 확인한다.
 - username / password 가 환경변수로 올바르게 주입됐는지 확인한다.
 
-### "passphrase 검증 실패" 로 기동이 중단된다
+### "passphrase 검증 실패" 로 커맨드가 중단된다
 
-- 신규 기기는 원격 `keyparams.json` 의 sentinel (고정 평문 암호문) 을 파생 키로 복호해 passphrase 정합성을 검증한다. 실패하면 기동을 멈춘다.
+- 신규 기기는 원격 `keyparams.json` 의 sentinel (고정 평문 암호문) 을 파생 키로 복호해 passphrase 정합성을 검증한다. 실패하면 커맨드가 nonzero 로 종료한다.
 - 다른 기기와 **완전히 동일한 passphrase** 를 쓰고 있는지 확인한다. 한 글자라도 다르면 다른 키가 파생된다.
 
 ### passphrase 분실

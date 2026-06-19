@@ -1,5 +1,5 @@
 ---
-description: wormhole MCP 서버 초기 설정 — ~/.wormhole/.env 템플릿 생성
+description: wormhole 초기 설정 — ~/.wormhole/.env 템플릿 생성
 ---
 
 `~/.wormhole/.env` 가 없으면 템플릿을 생성한다. 이미 존재하면 덮어쓰지 않는다.
@@ -16,4 +16,4 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/setup.mjs
 - `WEBDAV_BASEDIR` — 원격 저장 경로 (기본 `/wormhole`)
 - 패스프레이즈: `WORMHOLE_PASSPHRASE` (직접 입력) 또는 `WORMHOLE_PASSPHRASE_FILE` (파일 경로) 중 하나 선택
 
-입력 완료 후 **Claude Code 를 재시작** 하면 wormhole MCP 서버가 설정을 읽어 동작한다.
+입력 완료 후 `/wormhole_sync`, `/wormhole_push`, `/wormhole_pull` 등 슬래시 커맨드를 바로 사용할 수 있다. 서버 재시작 불필요.

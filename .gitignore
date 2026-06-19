@@ -55,4 +55,3 @@ desktop.ini
 # 설치 시 빌드 없이 동작하려면 번들과 MCP 등록 파일이 레포에 들어가야 한다.
 !plugin/dist/
 !plugin/dist/**
-!plugin/.mcp.json

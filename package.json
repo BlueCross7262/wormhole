@@ -1,23 +1,22 @@
 {
-  "name": "wormhole-mcp",
+  "name": "wormhole",
   "version": "0.1.0",
-  "description": "Claude Code 전역 설정을 머신 간 동기화하는 MCP 서버",
+  "description": "Claude Code 전역 설정을 머신 간 동기화하는 CLI / 플러그인 커맨드",
   "type": "module",
-  "main": "dist/index.js",
+  "main": "dist/cli.js",
   "bin": {
-    "wormhole-mcp": "dist/index.js"
+    "wormhole": "dist/cli.js"
   },
   "scripts": {
     "build": "tsc",
     "build:plugin": "node scripts/build-plugin.mjs",
-    "dev": "tsx src/index.ts",
-    "start": "node dist/index.js",
+    "dev": "tsx src/cli.ts",
+    "start": "node dist/cli.js",
 "test": "tsx --test \"src/**/*.test.ts\"",
     "test:types": "tsc -p tsconfig.test.json --noEmit",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.29.0",
     "@scure/base": "^1.1.5",
     "age-encryption": "^0.2.3",
     "fast-glob": "^3.3.2",
