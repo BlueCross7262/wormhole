@@ -8,7 +8,6 @@ import {
   loadConfig,
   resolveConfig,
   loadDotEnvIntoProcess,
-  resolveWebDavProfile,
   DEFAULT_INCLUDE,
   DEFAULT_EXCLUDE,
   DEFAULT_SETTINGS_LOCAL_KEYS,
@@ -20,6 +19,7 @@ const MANAGED_ENV_KEYS = [
   "WORMHOLE_WEBDAV_URL",
   "WORMHOLE_WEBDAV_USER",
   "WORMHOLE_WEBDAV_PASS",
+  "WORMHOLE_WEBDAV_BASEDIR",
   "WORMHOLE_PASSPHRASE_FILE",
   "WORMHOLE_KEYCHAIN_SERVICE",
   "WORMHOLE_PASSPHRASE",
@@ -28,24 +28,13 @@ const MANAGED_ENV_KEYS = [
   "WORMHOLE_SYNC_EXCLUDE",
 ];
 
-// 인덱스 프로파일 키(WORMHOLE_WEBDAV_<N>_USER 등)는 동적이라 별도 패턴으로 수집한다.
-const PROFILE_KEY_RE = /^WORMHOLE_WEBDAV_\d+_(USER|PASS|URL|BASEDIR)$/;
-
-function profileEnvKeys(): string[] {
-  return Object.keys(process.env).filter((k) => PROFILE_KEY_RE.test(k));
-}
-
 const savedEnv: Record<string, string | undefined> = {};
 
 function snapshotEnv(): void {
   for (const k of MANAGED_ENV_KEYS) savedEnv[k] = process.env[k];
-  // 진입 시점에 존재하는 인덱스 프로파일 키도 스냅샷.
-  for (const k of profileEnvKeys()) savedEnv[k] = process.env[k];
 }
 
 function restoreEnv(): void {
-  // 테스트가 추가했을 수 있는 인덱스 키까지 모두 제거 후 스냅샷 복원.
-  for (const k of profileEnvKeys()) delete process.env[k];
   for (const k of Object.keys(savedEnv)) {
     if (savedEnv[k] === undefined) delete process.env[k];
     else process.env[k] = savedEnv[k];
@@ -54,7 +43,6 @@ function restoreEnv(): void {
 
 function clearManagedEnv(): void {
   for (const k of MANAGED_ENV_KEYS) delete process.env[k];
-  for (const k of profileEnvKeys()) delete process.env[k];
 }
 
 let tmpRoot: string;
@@ -93,8 +81,8 @@ function minimalRaw(extra: Record<string, unknown> = {}): Record<string, unknown
 
 // ── 1. env-over-config precedence (remote) ────────────────────
 
-describe("loadConfig — env overrides file for remote.* (legacy, no indexed profiles)", () => {
-  test("legacy WEBDAV_URL/PASS env win over file; USER is selector only (no username override)", async () => {
+describe("loadConfig — env overrides file for remote.*", () => {
+  test("WEBDAV_URL/USER/PASS env win over file; USER overrides username", async () => {
     const cfgPath = writeConfigFile({
       remote: {
         url: "https://from-file.example.com/dav",
@@ -105,16 +93,13 @@ describe("loadConfig — env overrides file for remote.* (legacy, no indexed pro
     });
 
     process.env["WORMHOLE_WEBDAV_URL"] = "https://from-env.example.com/dav";
-    // 신규 계약: WORMHOLE_WEBDAV_USER 는 선택자다. 인덱스 프로파일이 없으면
-    // username 을 직접 덮어쓰지 않고 파일 값(fileUser)이 유지된다.
     process.env["WORMHOLE_WEBDAV_USER"] = "envUser";
     process.env["WORMHOLE_WEBDAV_PASS"] = "envPass";
 
     const cfg = await loadConfig(cfgPath);
 
     assert.equal(cfg.remote.url, "https://from-env.example.com/dav");
-    // USER 는 더 이상 username 직접 override 가 아님 → 파일 값 유지.
-    assert.equal(cfg.remote.username, "fileUser");
+    assert.equal(cfg.remote.username, "envUser");
     assert.equal(cfg.remote.password, "envPass");
     // env 가 건드리지 않은 필드는 파일 값 유지.
     assert.equal(cfg.remote.remoteBaseDir, "/custom-base");
@@ -139,8 +124,8 @@ describe("loadConfig — env overrides file for remote.* (legacy, no indexed pro
   });
 });
 
-describe("resolveConfig — env overrides injected raw for remote.* (legacy)", () => {
-  test("legacy URL/PASS env win over raw; USER is selector only (username from raw)", () => {
+describe("resolveConfig — env overrides injected raw for remote.*", () => {
+  test("URL/USER/PASS env win over raw; USER overrides username", () => {
     process.env["WORMHOLE_WEBDAV_URL"] = "https://env-direct.example.com/dav";
     process.env["WORMHOLE_WEBDAV_USER"] = "directEnvUser";
     process.env["WORMHOLE_WEBDAV_PASS"] = "directEnvPass";
@@ -154,8 +139,7 @@ describe("resolveConfig — env overrides injected raw for remote.* (legacy)", (
     });
 
     assert.equal(cfg.remote.url, "https://env-direct.example.com/dav");
-    // 신규 계약: USER 는 선택자 → 인덱스 프로파일 없으면 raw username 유지.
-    assert.equal(cfg.remote.username, "rawUser");
+    assert.equal(cfg.remote.username, "directEnvUser");
     assert.equal(cfg.remote.password, "directEnvPass");
   });
 });
@@ -440,9 +424,9 @@ describe("loadDotEnvIntoProcess — minimal .env parser", () => {
         "# 주석 줄",
         "",
         "   ",
-        "WORMHOLE_WEBDAV_1_USER=alice",
-        '  WORMHOLE_WEBDAV_1_PASS = "secret with spaces"  ',
-        "WORMHOLE_WEBDAV_1_URL='https://nas.example.com/dav'",
+        "WORMHOLE_WEBDAV_USER=alice",
+        '  WORMHOLE_WEBDAV_PASS = "secret with spaces"  ',
+        "WORMHOLE_WEBDAV_URL='https://nas.example.com/dav'",
         "# 또 다른 주석",
         "WORMHOLE_PASSPHRASE=global-pass",
         "MALFORMED_NO_EQUALS",
@@ -451,10 +435,10 @@ describe("loadDotEnvIntoProcess — minimal .env parser", () => {
 
     loadDotEnvIntoProcess(envPath);
 
-    assert.equal(process.env["WORMHOLE_WEBDAV_1_USER"], "alice");
+    assert.equal(process.env["WORMHOLE_WEBDAV_USER"], "alice");
     // 따옴표 안의 공백은 보존, 둘러싼 " 만 제거.
-    assert.equal(process.env["WORMHOLE_WEBDAV_1_PASS"], "secret with spaces");
-    assert.equal(process.env["WORMHOLE_WEBDAV_1_URL"], "https://nas.example.com/dav");
+    assert.equal(process.env["WORMHOLE_WEBDAV_PASS"], "secret with spaces");
+    assert.equal(process.env["WORMHOLE_WEBDAV_URL"], "https://nas.example.com/dav");
     assert.equal(process.env["WORMHOLE_PASSPHRASE"], "global-pass");
     // '=' 없는 줄은 무시.
     assert.equal(process.env["MALFORMED_NO_EQUALS"], undefined);
@@ -462,221 +446,91 @@ describe("loadDotEnvIntoProcess — minimal .env parser", () => {
 
   test("does NOT override an already-set process.env key", () => {
     // MCP 가 준 값이 있다고 가정.
-    process.env["WORMHOLE_WEBDAV_USER"] = "preset-selector";
+    process.env["WORMHOLE_WEBDAV_USER"] = "preset-user";
 
     const envPath = writeDotEnv("WORMHOLE_WEBDAV_USER=from-dotenv\n");
     loadDotEnvIntoProcess(envPath);
 
     // 기존 값이 이긴다.
-    assert.equal(process.env["WORMHOLE_WEBDAV_USER"], "preset-selector");
+    assert.equal(process.env["WORMHOLE_WEBDAV_USER"], "preset-user");
   });
 });
 
-// ── 7. resolveWebDavProfile — 프로파일 선택 규칙 ──────────────
+// ── 7. loadConfig integration with flat .env profile ─────────
 
-describe("resolveWebDavProfile — profile selection rules", () => {
-  test("no indexed profiles → null (legacy fallback)", () => {
-    assert.equal(resolveWebDavProfile(process.env), null);
+describe("loadConfig — flat .env profile applied to remote", () => {
+  test("URL-only .env: remote.url from env, username/password fall back to config.json", async () => {
+    const cfgPath = writeConfigFile({
+      remote: {
+        url: "https://from-file.example.com/dav",
+        username: "fileUser",
+        password: "filePass",
+      },
+    });
+    const envPath = writeDotEnv("WORMHOLE_WEBDAV_URL=https://from-env.example.com/dav\n");
+
+    const cfg = await loadConfig(cfgPath, envPath);
+
+    assert.equal(cfg.remote.url, "https://from-env.example.com/dav");
+    assert.equal(cfg.remote.username, "fileUser");
+    assert.equal(cfg.remote.password, "filePass");
   });
 
-  test("single profile auto-selected without a selector", () => {
-    process.env["WORMHOLE_WEBDAV_1_USER"] = "alice";
-    process.env["WORMHOLE_WEBDAV_1_PASS"] = "secret1";
-    process.env["WORMHOLE_WEBDAV_1_URL"] = "https://nas-a.example.com/dav";
-
-    const p = resolveWebDavProfile(process.env);
-    assert.ok(p);
-    assert.equal(p.username, "alice");
-    assert.equal(p.password, "secret1");
-    assert.equal(p.url, "https://nas-a.example.com/dav");
-    assert.equal(p.remoteBaseDir, undefined);
-  });
-
-  test("single profile + matching selector is fine", () => {
-    process.env["WORMHOLE_WEBDAV_1_USER"] = "alice";
-    process.env["WORMHOLE_WEBDAV_1_PASS"] = "secret1";
-    process.env["WORMHOLE_WEBDAV_1_URL"] = "https://nas-a.example.com/dav";
-    process.env["WORMHOLE_WEBDAV_USER"] = "alice";
-
-    const p = resolveWebDavProfile(process.env);
-    assert.ok(p);
-    assert.equal(p.username, "alice");
-  });
-
-  test("single profile + mismatched selector → error", () => {
-    process.env["WORMHOLE_WEBDAV_1_USER"] = "alice";
-    process.env["WORMHOLE_WEBDAV_1_PASS"] = "secret1";
-    process.env["WORMHOLE_WEBDAV_1_URL"] = "https://nas-a.example.com/dav";
-    process.env["WORMHOLE_WEBDAV_USER"] = "bob";
-
-    assert.throws(() => resolveWebDavProfile(process.env), /alice/);
-  });
-
-  test("baseDir applied when present", () => {
-    process.env["WORMHOLE_WEBDAV_1_USER"] = "alice";
-    process.env["WORMHOLE_WEBDAV_1_PASS"] = "secret1";
-    process.env["WORMHOLE_WEBDAV_1_URL"] = "https://nas-a.example.com/dav";
-    process.env["WORMHOLE_WEBDAV_1_BASEDIR"] = "/custom-root";
-
-    const p = resolveWebDavProfile(process.env);
-    assert.ok(p);
-    assert.equal(p.remoteBaseDir, "/custom-root");
-  });
-
-  test("2 profiles + correct selector → picks the right one", () => {
-    process.env["WORMHOLE_WEBDAV_1_USER"] = "alice";
-    process.env["WORMHOLE_WEBDAV_1_PASS"] = "secret1";
-    process.env["WORMHOLE_WEBDAV_1_URL"] = "https://nas-a.example.com/dav";
-    process.env["WORMHOLE_WEBDAV_2_USER"] = "bob@corp.com";
-    process.env["WORMHOLE_WEBDAV_2_PASS"] = "secret2";
-    process.env["WORMHOLE_WEBDAV_2_URL"] = "https://nas-b.example.com/dav";
-    process.env["WORMHOLE_WEBDAV_USER"] = "bob@corp.com";
-
-    const p = resolveWebDavProfile(process.env);
-    assert.ok(p);
-    assert.equal(p.username, "bob@corp.com");
-    assert.equal(p.password, "secret2");
-    assert.equal(p.url, "https://nas-b.example.com/dav");
-  });
-
-  test("2 profiles + missing selector → error listing usernames", () => {
-    process.env["WORMHOLE_WEBDAV_1_USER"] = "alice";
-    process.env["WORMHOLE_WEBDAV_1_URL"] = "https://nas-a.example.com/dav";
-    process.env["WORMHOLE_WEBDAV_2_USER"] = "bob@corp.com";
-    process.env["WORMHOLE_WEBDAV_2_URL"] = "https://nas-b.example.com/dav";
-
-    assert.throws(
-      () => resolveWebDavProfile(process.env),
-      (err: Error) => /alice/.test(err.message) && /bob@corp\.com/.test(err.message),
-    );
-  });
-
-  test("2 profiles + unmatched selector → error listing usernames", () => {
-    process.env["WORMHOLE_WEBDAV_1_USER"] = "alice";
-    process.env["WORMHOLE_WEBDAV_1_URL"] = "https://nas-a.example.com/dav";
-    process.env["WORMHOLE_WEBDAV_2_USER"] = "bob@corp.com";
-    process.env["WORMHOLE_WEBDAV_2_URL"] = "https://nas-b.example.com/dav";
-    process.env["WORMHOLE_WEBDAV_USER"] = "carol";
-
-    assert.throws(
-      () => resolveWebDavProfile(process.env),
-      (err: Error) => /alice/.test(err.message) && /bob@corp\.com/.test(err.message),
-    );
-  });
-});
-
-// ── 8. loadConfig integration with .env profiles ─────────────
-
-describe("loadConfig — .env profiles applied to remote", () => {
-  test("single profile from .env auto-selected; config.json without remote is valid", async () => {
-    // remote 섹션이 없는 config.json 도 유효(.env 프로파일이 remote 공급).
-    const cfgPath = writeConfigFile({});
+  test("all four keys in .env: url/username/password/remoteBaseDir all from env", async () => {
+    const cfgPath = writeConfigFile({
+      remote: {
+        url: "https://from-file.example.com/dav",
+        username: "fileUser",
+        password: "filePass",
+        remoteBaseDir: "/file-base",
+      },
+    });
     const envPath = writeDotEnv(
       [
-        "WORMHOLE_WEBDAV_1_USER=alice",
-        "WORMHOLE_WEBDAV_1_PASS=secret1",
-        "WORMHOLE_WEBDAV_1_URL=https://nas-a.example.com/dav",
-        "WORMHOLE_WEBDAV_1_BASEDIR=/wormhole-a",
+        "WORMHOLE_WEBDAV_URL=https://nas.example.com/dav",
+        "WORMHOLE_WEBDAV_USER=alice",
+        "WORMHOLE_WEBDAV_PASS=secret1",
+        "WORMHOLE_WEBDAV_BASEDIR=/wormhole-a",
       ].join("\n"),
     );
 
     const cfg = await loadConfig(cfgPath, envPath);
 
-    assert.equal(cfg.remote.url, "https://nas-a.example.com/dav");
+    assert.equal(cfg.remote.url, "https://nas.example.com/dav");
     assert.equal(cfg.remote.username, "alice");
     assert.equal(cfg.remote.password, "secret1");
     assert.equal(cfg.remote.remoteBaseDir, "/wormhole-a");
   });
 
-  test("profile without BASEDIR falls back to schema default remoteBaseDir", async () => {
-    const cfgPath = writeConfigFile({});
-    const envPath = writeDotEnv(
-      [
-        "WORMHOLE_WEBDAV_1_USER=alice",
-        "WORMHOLE_WEBDAV_1_PASS=secret1",
-        "WORMHOLE_WEBDAV_1_URL=https://nas-a.example.com/dav",
-      ].join("\n"),
-    );
+  test("no WEBDAV env → config.json remote values preserved", async () => {
+    const cfgPath = writeConfigFile({
+      remote: {
+        url: "https://untouched.example.com/dav",
+        username: "fileUser",
+        password: "filePass",
+        remoteBaseDir: "/base",
+      },
+    });
+    const envPath = writeDotEnv("WORMHOLE_PASSPHRASE=global-passphrase-from-dotenv\n");
 
     const cfg = await loadConfig(cfgPath, envPath);
 
-    assert.equal(cfg.remote.remoteBaseDir, "/wormhole");
-  });
-
-  test("2 profiles in .env + selector picks the right remote", async () => {
-    const cfgPath = writeConfigFile({});
-    const envPath = writeDotEnv(
-      [
-        "WORMHOLE_WEBDAV_1_USER=alice",
-        "WORMHOLE_WEBDAV_1_PASS=secret1",
-        "WORMHOLE_WEBDAV_1_URL=https://nas-a.example.com/dav",
-        "WORMHOLE_WEBDAV_2_USER=bob",
-        "WORMHOLE_WEBDAV_2_PASS=secret2",
-        "WORMHOLE_WEBDAV_2_URL=https://nas-b.example.com/dav",
-        "WORMHOLE_WEBDAV_USER=bob",
-      ].join("\n"),
-    );
-
-    const cfg = await loadConfig(cfgPath, envPath);
-
-    assert.equal(cfg.remote.username, "bob");
-    assert.equal(cfg.remote.url, "https://nas-b.example.com/dav");
-  });
-
-  test("2 profiles in .env + missing selector → loadConfig rejects", async () => {
-    const cfgPath = writeConfigFile({});
-    const envPath = writeDotEnv(
-      [
-        "WORMHOLE_WEBDAV_1_USER=alice",
-        "WORMHOLE_WEBDAV_1_URL=https://nas-a.example.com/dav",
-        "WORMHOLE_WEBDAV_2_USER=bob",
-        "WORMHOLE_WEBDAV_2_URL=https://nas-b.example.com/dav",
-      ].join("\n"),
-    );
-
-    await assert.rejects(() => loadConfig(cfgPath, envPath), /alice/);
+    assert.equal(cfg.remote.url, "https://untouched.example.com/dav");
+    assert.equal(cfg.remote.username, "fileUser");
+    assert.equal(cfg.remote.password, "filePass");
+    assert.equal(cfg.remote.remoteBaseDir, "/base");
   });
 
   test("WORMHOLE_PASSPHRASE in .env is visible via process.env after load", async () => {
-    const cfgPath = writeConfigFile({});
-    const envPath = writeDotEnv(
-      [
-        "WORMHOLE_WEBDAV_1_USER=alice",
-        "WORMHOLE_WEBDAV_1_PASS=secret1",
-        "WORMHOLE_WEBDAV_1_URL=https://nas-a.example.com/dav",
-        "WORMHOLE_PASSPHRASE=global-passphrase-from-dotenv",
-      ].join("\n"),
-    );
+    const cfgPath = writeConfigFile({ remote: { url: "https://x.example.com/dav" } });
+    const envPath = writeDotEnv("WORMHOLE_PASSPHRASE=global-passphrase-from-dotenv\n");
 
-    await loadConfig(cfgPath, envPath);
+    const cfg = await loadConfig(cfgPath, envPath);
 
     // .env 가 주입한 전역 passphrase 가 env 경로로 보인다.
     assert.equal(process.env["WORMHOLE_PASSPHRASE"], "global-passphrase-from-dotenv");
     // 설정의 passphraseEnv 이름은 그 env 를 가리킨다.
-    const cfg = await loadConfig(cfgPath, envPath);
     assert.equal(cfg.crypto.passphraseEnv, "WORMHOLE_PASSPHRASE");
-  });
-
-  test("MCP-provided selector beats .env profile-1 default selection", async () => {
-    // process.env 에 이미 선택자가 있으면 .env 의 동명 키가 덮어쓰지 않음.
-    process.env["WORMHOLE_WEBDAV_USER"] = "bob";
-    const cfgPath = writeConfigFile({});
-    const envPath = writeDotEnv(
-      [
-        "WORMHOLE_WEBDAV_1_USER=alice",
-        "WORMHOLE_WEBDAV_1_PASS=secret1",
-        "WORMHOLE_WEBDAV_1_URL=https://nas-a.example.com/dav",
-        "WORMHOLE_WEBDAV_2_USER=bob",
-        "WORMHOLE_WEBDAV_2_PASS=secret2",
-        "WORMHOLE_WEBDAV_2_URL=https://nas-b.example.com/dav",
-        "WORMHOLE_WEBDAV_USER=alice",
-      ].join("\n"),
-    );
-
-    const cfg = await loadConfig(cfgPath, envPath);
-
-    // process.env 선택자(bob)가 .env 의 alice 를 이긴다.
-    assert.equal(cfg.remote.username, "bob");
   });
 });
 

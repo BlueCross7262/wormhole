@@ -279,21 +279,17 @@ passphrase 가 약하면 zero-knowledge 보장이 무력해진다. 모든 머신
 
 ## 5. WebDAV 연결 설정
 
-WebDAV 접속 정보는 고정 위치 `~/.wormhole/.env` 에 **인덱스 기반 프로파일** 로 등록한다.
+WebDAV 접속 정보는 고정 위치 `~/.wormhole/.env` 에 **플랫 단일 변수** 로 등록한다.
 비밀값을 `config.json` 에 직접 쓰지 않는다.
 
-### ~/.wormhole/.env 프로파일 스키마
+### ~/.wormhole/.env 스키마
 
 ```bash
 # ~/.wormhole/.env  (fixed location; chmod 600)
-WORMHOLE_WEBDAV_1_USER=alice
-WORMHOLE_WEBDAV_1_PASS=secret1
-WORMHOLE_WEBDAV_1_URL=https://nas-a.example.com/dav
-WORMHOLE_WEBDAV_1_BASEDIR=/wormhole       # 선택 (생략 시 /wormhole 또는 config 기본값)
-
-WORMHOLE_WEBDAV_2_USER=bob@corp.com
-WORMHOLE_WEBDAV_2_PASS=secret2
-WORMHOLE_WEBDAV_2_URL=https://nas-b.example.com/dav
+WORMHOLE_WEBDAV_URL=https://nas.example.com/dav
+WORMHOLE_WEBDAV_USER=alice
+WORMHOLE_WEBDAV_PASS=secret
+# WORMHOLE_WEBDAV_BASEDIR=/wormhole   (선택 — 미지정 시 /wormhole 또는 config 기본값)
 
 # WORMHOLE_PASSPHRASE=...   (optional global; 0600 파일 / keychain 도 가능)
 ```
@@ -307,17 +303,10 @@ chmod 600 ~/.wormhole/.env
 # 실제 값으로 편집한다
 ```
 
-### 프로파일 선택 규칙
-
-- **프로파일 1개** — `WORMHOLE_WEBDAV_USER` 없이 자동 선택된다.
-  - selector 가 있고 username 과 불일치하면 에러로 중단한다.
-- **프로파일 2개 이상** — `WORMHOLE_WEBDAV_USER=<username>` 이 필수다.
-  - 미지정 또는 불일치 시 사용 가능한 username 목록을 포함한 에러로 중단한다.
-
 ### config.json 설정
 
 `config.example.json` 을 복사해 편집한다.
-WebDAV 접속 정보는 `.env` 프로파일이 권위 소스이므로 `config.json` 의 `remote` 섹션은 불필요하다.
+`config.json` 의 `remote` 섹션은 옵션 base 이며, `.env` 플랫 변수(WORMHOLE_WEBDAV_URL/USER/PASS/BASEDIR)가 권위 소스로 그 위를 override 한다.
 
 ```bash
 cp config.example.json ~/.wormhole/config.json
@@ -400,10 +389,8 @@ WORMHOLE_SYNC_EXCLUDE=.claude/secret-notes/**
 }
 ```
 
-- `WORMHOLE_WEBDAV_USER` 는 `~/.wormhole/.env` 에 등록된 프로파일을 **username 으로 선택** 하는 셀렉터다.
-  - 프로파일이 1개면 생략 가능 (자동 선택).
-  - 2개 이상이면 필수이며, 불일치 시 에러로 중단한다.
-- WebDAV 비밀값(PASS/URL 등)은 `~/.wormhole/.env` 에 두며 이 파일에 넣지 않는다.
+- `WORMHOLE_WEBDAV_USER` 는 실제 username **override** 다 — 선택자가 아니라 `~/.wormhole/.env` 의 `WORMHOLE_WEBDAV_USER` 를 덮어쓰는 값이다.
+- WebDAV 비밀값(PASS/URL/BASEDIR)은 `~/.wormhole/.env` 에 두며 이 파일에 넣지 않는다.
 - `WORMHOLE_PASSPHRASE` 를 여기 평문으로 넣는 대신 `~/.wormhole/.env` 또는 0600 파일 / keychain 사용을 권장한다 (4번 참고).
 - `args` 의 경로는 절대경로로 지정한다. Windows 는 `C:/Users/user/...`, WSL2 는 `/home/user/...` 형식이다.
 

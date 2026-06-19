@@ -1,5 +1,5 @@
 {
-  "_comment": "WebDAV 접속 정보(url/username/password/baseDir)는 ~/.wormhole/.env 의 인덱스 프로파일(WORMHOLE_WEBDAV_<N>_USER/_PASS/_URL/_BASEDIR)로 지정한다. MCP env 의 WORMHOLE_WEBDAV_USER 로 프로파일을 선택한다. 이 파일의 remote 섹션은 더 이상 필요하지 않으며 .env 프로파일이 우선한다. passphrase 원문은 절대 이 파일에 넣지 않는다(~/.wormhole/.env 또는 0600 파일 / keychain 사용).",
+  "_comment": "WebDAV 접속 정보(URL/username/password/baseDir)는 ~/.wormhole/.env 의 플랫 변수 WORMHOLE_WEBDAV_URL/USER/PASS/BASEDIR 로 지정한다. 이 파일의 remote 섹션은 옵션 base 이며 .env 변수가 그 위를 override 한다. passphrase 원문은 절대 이 파일에 넣지 않는다(~/.wormhole/.env 또는 0600 파일 / keychain 사용).",
   "stateDir": "~/.wormhole",
   "crypto": {
     "_comment": "passphraseEnv: passphrase 를 읽을 환경변수 이름. passphraseFile/derivedKeyPath 는 빈 문자열이면 stateDir 기본값을 쓴다(passphraseFile=<stateDir>/passphrase, derivedKeyPath=<stateDir>/age-key.txt). kdfN 이 클수록 강하다(메모리 사용량 증가). N=65536=2^16 ≈ 64MB.",
@@ -11,6 +11,7 @@
     "kdfP": 1
   },
   "targets": {
+    "_comment": "include/exclude 는 동기화 업로드 대상 glob 목록이다.",
     "include": [
       ".claude/CLAUDE.md",
       ".claude/settings.json",
@@ -41,11 +42,6 @@
   ],
   "selfMcpServerNames": ["wormhole"],
   "conflictPolicy": "preserve-both",
-  "autoSync": {
-    "enabled": false,
-    "debounceMs": 2000,
-    "pullIntervalMs": 300000
-  },
   "lock": {
     "ttlMs": 30000,
     "acquireRetries": 3,
