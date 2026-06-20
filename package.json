@@ -11,12 +11,15 @@
     "build": "tsc",
     "build:plugin": "node scripts/build-plugin.mjs",
     "dev": "tsx src/cli.ts",
+    "dev:server": "tsx src/index.ts",
     "start": "node dist/cli.js",
-"test": "tsx --test \"src/**/*.test.ts\"",
+    "test": "tsx --test \"src/**/*.test.ts\"",
+    "test:e2e": "tsx --test \"test/**/*.test.ts\"",
     "test:types": "tsc -p tsconfig.test.json --noEmit",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@scure/base": "^1.1.5",
     "age-encryption": "^0.2.3",
     "fast-glob": "^3.3.2",

@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "wormhole": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/dist/server.mjs"],
+      "env": {
+        "WORMHOLE_LOG_LEVEL": "info"
+      }
+    }
+  }
+}

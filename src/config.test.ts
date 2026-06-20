@@ -46,6 +46,7 @@ function clearManagedEnv(): void {
 }
 
 let tmpRoot: string;
+let isolatedEnv: string;
 
 before(() => {
   snapshotEnv();
@@ -59,6 +60,10 @@ beforeEach(() => {
   // 각 테스트 진입 시 관리 env 를 깨끗이 비워 결정적·순서무관 보장.
   clearManagedEnv();
   tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "cs-test-"));
+  // 머신의 실제 ~/.wormhole/.env 가 loadConfig 의 process.env 주입 경로로
+  // 새어 들어오는 것을 막기 위해, 각 테스트는 격리된 빈 .env 를 dotEnvPath 로 넘긴다.
+  isolatedEnv = path.join(tmpRoot, ".env.isolated");
+  fs.writeFileSync(isolatedEnv, "", "utf-8");
 });
 
 afterEach(() => {
@@ -96,7 +101,7 @@ describe("loadConfig — env overrides file for remote.*", () => {
     process.env["WEBDAV_USER"] = "envUser";
     process.env["WEBDAV_PASS"] = "envPass";
 
-    const cfg = await loadConfig(cfgPath);
+    const cfg = await loadConfig(cfgPath, isolatedEnv);
 
     assert.equal(cfg.remote.url, "https://from-env.example.com/dav");
     assert.equal(cfg.remote.username, "envUser");
@@ -116,7 +121,7 @@ describe("loadConfig — env overrides file for remote.*", () => {
 
     process.env["WEBDAV_URL"] = "https://only-url-env.example.com/dav";
 
-    const cfg = await loadConfig(cfgPath);
+    const cfg = await loadConfig(cfgPath, isolatedEnv);
 
     assert.equal(cfg.remote.url, "https://only-url-env.example.com/dav");
     assert.equal(cfg.remote.username, "fileUser");
@@ -158,7 +163,7 @@ describe("loadConfig — env overrides file for crypto source metadata", () => {
     process.env["WORMHOLE_PASSPHRASE_FILE"] = envPassFile;
     process.env["WORMHOLE_KEYCHAIN_SERVICE"] = "env-keychain-service";
 
-    const cfg = await loadConfig(cfgPath);
+    const cfg = await loadConfig(cfgPath, isolatedEnv);
 
     // passphraseFile: 절대경로면 그대로(확장만), env 값으로 대체.
     assert.equal(cfg.crypto.passphraseFile, envPassFile);
@@ -182,7 +187,7 @@ describe("loadConfig — absent env leaves file values untouched", () => {
     // env 는 beforeEach 에서 이미 비워짐 — 명시적 재확인.
     assert.equal(process.env["WEBDAV_URL"], undefined);
 
-    const cfg = await loadConfig(cfgPath);
+    const cfg = await loadConfig(cfgPath, isolatedEnv);
 
     assert.equal(cfg.remote.url, "https://untouched.example.com/dav");
     assert.equal(cfg.remote.username, "fileOnlyUser");
@@ -201,7 +206,7 @@ describe("loadConfig — absent env leaves file values untouched", () => {
       },
     });
 
-    const cfg = await loadConfig(cfgPath);
+    const cfg = await loadConfig(cfgPath, isolatedEnv);
 
     // 절대경로이므로 expandTilde 후 그대로 유지(stateDir 기준 resolve 안 됨).
     assert.equal(cfg.crypto.passphraseFile, filePassphrase);
@@ -389,7 +394,7 @@ describe("Zod schema defaults populate omitted fields", () => {
     // 존재하지 않는 파일 → ENOENT → 기본값 폴백 금지, 명확한 에러로 halt.
     const missing = path.join(tmpRoot, "does-not-exist.json");
     await assert.rejects(
-      () => loadConfig(missing),
+      () => loadConfig(missing, isolatedEnv),
       (err: Error) => {
         assert.match(err.message, /config\.json/);
         assert.match(err.message, /wormhole-setup/);
@@ -402,8 +407,8 @@ describe("Zod schema defaults populate omitted fields", () => {
     const cfgPath = writeConfigFile({ remote: { url: "https://via-env-config.example.com/dav" } });
     process.env["WORMHOLE_CONFIG"] = cfgPath;
 
-    // 인자 없이 호출 → WORMHOLE_CONFIG 경로 사용.
-    const cfg = await loadConfig();
+    // WORMHOLE_CONFIG 경로 사용(configPath 생략) + 격리된 .env.
+    const cfg = await loadConfig(undefined, isolatedEnv);
 
     assert.equal(cfg.remote.url, "https://via-env-config.example.com/dav");
     assert.deepEqual(cfg.targets.include, DEFAULT_INCLUDE);
@@ -549,7 +554,7 @@ describe("loadConfig — WORMHOLE_SYNC_INCLUDE/EXCLUDE additive union", () => {
     const cfgPath = writeConfigFile(minimalRaw());
     process.env["WORMHOLE_SYNC_INCLUDE"] = ".claude/extra/**,docs/**";
 
-    const cfg = await loadConfig(cfgPath);
+    const cfg = await loadConfig(cfgPath, isolatedEnv);
 
     // 기본 include 전부 유지(가산).
     for (const g of DEFAULT_INCLUDE) assert.ok(cfg.targets.include.includes(g), `missing default include: ${g}`);
@@ -564,7 +569,7 @@ describe("loadConfig — WORMHOLE_SYNC_INCLUDE/EXCLUDE additive union", () => {
     const cfgPath = writeConfigFile(minimalRaw());
     process.env["WORMHOLE_SYNC_EXCLUDE"] = "**/secrets/**,*.pem";
 
-    const cfg = await loadConfig(cfgPath);
+    const cfg = await loadConfig(cfgPath, isolatedEnv);
 
     // 보안 회귀 가드: 핵심 보안 기본 제외 항목이 반드시 살아있어야 한다.
     for (const secure of ["**/*.key", "**/*.token", ".claude/.credentials.json", ".claude/settings.local.json"]) {
@@ -583,7 +588,7 @@ describe("loadConfig — WORMHOLE_SYNC_INCLUDE/EXCLUDE additive union", () => {
     const cfgPath = writeConfigFile(minimalRaw());
     process.env["WORMHOLE_SYNC_INCLUDE"] = "a, ,b,";
 
-    const cfg = await loadConfig(cfgPath);
+    const cfg = await loadConfig(cfgPath, isolatedEnv);
 
     assert.deepEqual(cfg.targets.include, [...DEFAULT_INCLUDE, "a", "b"]);
   });
@@ -593,7 +598,7 @@ describe("loadConfig — WORMHOLE_SYNC_INCLUDE/EXCLUDE additive union", () => {
     const cfgPath = writeConfigFile(minimalRaw());
     process.env["WORMHOLE_SYNC_INCLUDE"] = `${dup},brand-new/**`;
 
-    const cfg = await loadConfig(cfgPath);
+    const cfg = await loadConfig(cfgPath, isolatedEnv);
 
     // 중복 default 는 한 번만, 새 글롭만 끝에 추가.
     assert.deepEqual(cfg.targets.include, [...DEFAULT_INCLUDE, "brand-new/**"]);
@@ -605,7 +610,7 @@ describe("loadConfig — WORMHOLE_SYNC_INCLUDE/EXCLUDE additive union", () => {
     const cfgPath = writeConfigFile(minimalRaw());
     // WORMHOLE_SYNC_* 미설정(beforeEach 가 clear).
 
-    const cfg = await loadConfig(cfgPath);
+    const cfg = await loadConfig(cfgPath, isolatedEnv);
 
     assert.deepEqual(cfg.targets.include, DEFAULT_INCLUDE);
     assert.deepEqual(cfg.targets.exclude, DEFAULT_EXCLUDE);
@@ -618,7 +623,7 @@ describe("loadConfig — WORMHOLE_SYNC_INCLUDE/EXCLUDE additive union", () => {
     process.env["WORMHOLE_SYNC_INCLUDE"] = "added/**";
     process.env["WORMHOLE_SYNC_EXCLUDE"] = "added-secret/**";
 
-    const cfg = await loadConfig(cfgPath);
+    const cfg = await loadConfig(cfgPath, isolatedEnv);
 
     // config.json 의 명시 targets + env 가산.
     assert.deepEqual(cfg.targets.include, ["custom/**", "added/**"]);

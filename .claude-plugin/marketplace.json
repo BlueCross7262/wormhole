@@ -1,12 +1,12 @@
 {
   "name": "wormhole-marketplace",
-  "description": "wormhole 플러그인 배포 마켓플레이스 — Claude Code 전역 설정 머신 간 동기화",
+  "description": "wormhole 플러그인 배포 마켓플레이스 — Claude Code 전역 설정 동기화(MCP 도구 + 슬래시 커맨드)",
   "owner": { "name": "BlueCross7262" },
   "plugins": [
     {
       "name": "wormhole",
       "source": "./plugin",
-      "description": "Claude Code 전역 설정을 머신 간 동기화하는 CLI 플러그인",
+      "description": "Claude Code 전역 설정 동기화 — MCP 도구(자율 호출) + 슬래시 커맨드(명시 제어)",
       "category": "productivity"
     }
   ]

@@ -255,7 +255,43 @@ WORMHOLE_PASSPHRASE=your-strong-passphrase
 
 일상적으로는 `/wormhole_sync` 하나면 충분하다. pull 후 충돌이 있으면 기본 정책 (`preserve-both`) 으로 해소한 뒤 push 까지 한 번에 처리한다 (커맨드 상세는 **§7 슬래시 커맨드 / CLI** 참조).
 
-> 플러그인 경로에는 등록할 MCP 서버가 없다 — wormhole 은 슬래시 커맨드가 호출하는 CLI 다. 아래 **§6 (CLI 직접 실행)** 은 터미널에서 직접 돌릴 때만 참고한다.
+> 플러그인 설치는 **두 표면** 을 동시에 등록한다 — MCP 서버(`plugin/dist/server.mjs`, Claude Code 재시작 후 활성화)와 슬래시 커맨드. MCP 도구 상세는 **§2.6 MCP 도구** 를 참조한다. 아래 **§6 (CLI 직접 실행)** 은 터미널에서 직접 돌릴 때만 참고한다.
+
+---
+
+## 2.6 MCP 도구 (자율 호출 표면)
+
+플러그인은 슬래시 커맨드 외에 **MCP stdio 서버** (`plugin/dist/server.mjs`) 를 함께 제공한다.
+Claude Code 가 직접 호출하는 도구로, 슬래시 커맨드 없이 AI 흐름 안에서 상태 조회·동기화를 수행할 수 있다.
+플러그인 설치 후 Claude Code 를 **재시작** 하면 MCP 서버가 활성화된다.
+
+### 제공 도구
+
+| 도구 이름 | 읽기/쓰기 | 기본 동작 | 설명 |
+|---|---|---|---|
+| `wormhole_status` | 읽기 전용 | 자율 호출 가능 | 추가/수정/삭제/충돌/수렴 요약 반환 (변경 없음) |
+| `wormhole_dry_run` | 읽기 전용 | 자율 호출 가능 | push 또는 pull 계획 미리보기 (변경 없음) |
+| `wormhole_push` | 쓰기 | 기본값 = 미리보기 | 로컬 변경을 원격으로 업로드 |
+| `wormhole_pull` | 쓰기 | 기본값 = 미리보기 | 원격 변경을 로컬에 적용 |
+| `wormhole_resolve` | 쓰기 | 기본값 = 미리보기 | 충돌을 명시적으로 해소 |
+| `wormhole_sync` | 쓰기 | 기본값 = 미리보기 | pull → resolve → push 원샷 동기화 |
+
+### confirm-gate 안전 모델
+
+**읽기 전용 도구** (`wormhole_status`, `wormhole_dry_run`) 는 로컬·원격을 변경하지 않으므로 Claude 가 자율적으로 호출할 수 있다.
+
+**쓰기 도구** (`wormhole_push`, `wormhole_pull`, `wormhole_resolve`, `wormhole_sync`) 는 `confirm` 파라미터(기본값 `false`)로 작동을 제어한다.
+
+- `confirm: false` (기본) — 실제 변경 없이 **미리보기** 결과만 반환한다. 어떤 파일이 영향을 받는지 확인할 수 있다.
+- `confirm: true` — 실제로 적용한다.
+
+> **중요:** Claude 는 `confirm: true` 를 **자율적으로 전달하지 않는다.** 사용자가 명시적으로 실행을 확인한 경우에만 `confirm: true` 로 재호출한다. 이 설계는 원격·로컬 데이터의 의도치 않은 변경을 방지한다.
+
+일반 흐름:
+
+1. Claude 가 `wormhole_sync` (confirm 생략 = 미리보기) 호출 → 계획 반환
+2. 사용자가 내용 확인 후 "적용해" 라고 지시
+3. Claude 가 `wormhole_sync` (`confirm: true`) 재호출 → 실제 동기화
 
 ---
 
