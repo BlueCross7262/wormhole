@@ -50856,7 +50856,7 @@ async function buildEngine(logger2) {
 // src/index.ts
 async function main() {
   const { engine } = await buildEngine(logger);
-  const server = new McpServer({ name: "wormhole", version: "0.1.3" });
+  const server = new McpServer({ name: "wormhole", version: "0.1.4" });
   registerAllTools(server, engine);
   let shuttingDown = false;
   const shutdown = async (signal) => {
