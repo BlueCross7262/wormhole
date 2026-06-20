@@ -234,10 +234,12 @@ Claude Code 플러그인 마켓플레이스를 통해 빌드 없이 설치한다
 
 ```bash
 # ~/.wormhole/.env  (chmod 600 적용됨)
-WEBDAV_URL=https://nas.example.com/dav
+# URL 에 WebDAV 공유 경로까지 포함한다 (예: /claude_code_sync)
+WEBDAV_URL=https://nas.example.com/claude_code_sync
 WEBDAV_USER=alice
 WEBDAV_PASS=secret
 WORMHOLE_PASSPHRASE=your-strong-passphrase
+# 원격 기본 디렉터리는 자동 파생됨 → /alice (WEBDAV_BASEDIR 불필요)
 ```
 
 **5. 슬래시 커맨드로 사용**
@@ -410,10 +412,14 @@ WebDAV 접속 정보는 고정 위치 `~/.wormhole/.env` 에 **플랫 단일 변
 
 ```bash
 # ~/.wormhole/.env  (fixed location; chmod 600)
-WEBDAV_URL=https://nas.example.com/dav
+# WEBDAV_URL 에는 WebDAV 공유 경로까지 포함한다
+# (예: https://nas.example.com/claude_code_sync)
+# Synology 등 NAS 는 루트가 읽기 전용이므로 쓰기 가능한 공유 경로를 URL 에 지정한다.
+WEBDAV_URL=https://nas.example.com/claude_code_sync
 WEBDAV_USER=alice
 WEBDAV_PASS=secret
-# WEBDAV_BASEDIR=/wormhole   (선택 — 미지정 시 /wormhole 또는 config 기본값)
+# 원격 기본 디렉터리는 WEBDAV_USER 에서 자동 파생된다 → /alice
+# (WEBDAV_BASEDIR 는 제거됨; 명시 override 가 필요하면 config.json 의 remote.remoteBaseDir 사용)
 
 # WORMHOLE_PASSPHRASE=...   (optional global; 0600 파일 / keychain 도 가능)
 ```
@@ -439,7 +445,7 @@ chmod 600 ~/.wormhole/.env
 cp config.example.json ~/.wormhole/config.json
 ```
 
-`config.json` 에는 **`remote` 섹션을 두지 않는다** — WebDAV 접속 정보(WEBDAV_URL/USER/PASS/BASEDIR)는 `.env` 에만 기술한다.
+`config.json` 에는 **`remote` 섹션을 두지 않는다** — WebDAV 접속 정보(WEBDAV_URL/USER/PASS)는 `.env` 에만 기술한다. 원격 기본 디렉터리는 WEBDAV_USER 에서 자동 파생되며, 명시 override 가 필요한 경우에만 `remote.remoteBaseDir` 필드를 추가한다.
 
 ### 주요 필드
 

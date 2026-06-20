@@ -37,7 +37,11 @@ export interface RemoteConfig {
   username: string;
   /** WebDAV 비밀번호. */
   password: string;
-  /** 원격 레이아웃 루트. 예: "/wormhole". */
+  /**
+   * 원격 레이아웃 루트. 예: "/wormhole_claude_code".
+   * 설정 파일에서 명시하지 않으면 username 에서 도출된다("/" + username).
+   * loadConfig 이후의 해석된 Config 에서는 항상 채워진 문자열이다.
+   */
   remoteBaseDir: string;
 }
 

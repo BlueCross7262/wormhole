@@ -11,17 +11,18 @@ const ENV_TEMPLATE = `# wormhole MCP 서버 설정
 # 이 파일을 편집하여 실제 값을 입력하고 Claude Code 를 재시작하세요.
 
 # ── WebDAV 연결 ───────────────────────────────────────────────
-# WebDAV 서버 URL (예: https://nextcloud.example.com/remote.php/dav/files/user/)
-WEBDAV_URL=https://your-webdav-server/path/
+# WebDAV 서버 URL — WebDAV 공유 경로까지 포함해야 합니다
+# (예: https://nas.example.com/claude_code_sync)
+# Synology 등 NAS 는 루트가 읽기 전용이며 쓰기는 공유 디렉터리 안에서만 가능합니다.
+WEBDAV_URL=https://your-webdav-server/your-share
 
 # WebDAV 계정 이름
+# 원격 기본 디렉터리는 이 값에서 자동으로 파생됩니다 (/<WEBDAV_USER>).
+# 별도 WEBDAV_BASEDIR 설정은 필요 없습니다.
 WEBDAV_USER=your-username
 
 # WebDAV 계정 비밀번호 (앱 비밀번호 권장)
 WEBDAV_PASS=your-password
-
-# WebDAV 서버에서 wormhole 파일을 저장할 기본 경로 (기본값: /wormhole)
-WEBDAV_BASEDIR=/wormhole
 
 # ── 암호화 패스프레이즈 ──────────────────────────────────────
 # 방법 A: 환경변수 직접 지정 (가장 단순)

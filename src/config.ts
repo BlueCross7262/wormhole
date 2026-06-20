@@ -47,7 +47,8 @@ const RemoteConfigSchema = z.object({
   url: z.string().min(1),
   username: z.string().default(""),
   password: z.string().default(""),
-  remoteBaseDir: z.string().default("/wormhole"),
+  // remoteBaseDir 는 더 이상 기본값을 갖지 않는다. 미지정 시 username 에서 도출된다("/" + username).
+  remoteBaseDir: z.string().optional(),
 });
 
 const CryptoConfigSchema = z.object({
@@ -162,7 +163,6 @@ function applyEnvOverrides(raw: Record<string, unknown>): Record<string, unknown
   if (process.env["WEBDAV_URL"]) remote["url"] = process.env["WEBDAV_URL"];
   if (process.env["WEBDAV_USER"]) remote["username"] = process.env["WEBDAV_USER"];
   if (process.env["WEBDAV_PASS"]) remote["password"] = process.env["WEBDAV_PASS"];
-  if (process.env["WEBDAV_BASEDIR"]) remote["remoteBaseDir"] = process.env["WEBDAV_BASEDIR"];
   result["remote"] = remote;
 
   // crypto: passphrase 원문은 config 에 저장하지 않는다(런타임에 env/0600파일/keychain 에서 직접 읽음).
@@ -175,10 +175,32 @@ function applyEnvOverrides(raw: Record<string, unknown>): Record<string, unknown
   return result;
 }
 
+
+// remoteBaseDir 정규화: 정확히 1개의 선행 슬래시, 후행 슬래시 제거.
+// 예: "wormhole_claude_code" -> "/wormhole_claude_code", "/foo/" -> "/foo".
+function normalizeBaseDir(raw: string): string {
+  return "/" + raw.replace(/^\/+/, "").replace(/\/+$/, "");
+}
+
+// 해석된 remote.remoteBaseDir 도출:
+// - 명시적으로 설정된 경우(공백 아님) 그 값을 정규화해 사용(override).
+// - 미지정/공백이면 username 에서 "/" + username 으로 도출.
+// username 도 비어 있을 때의 throw 가드는 호출자(loadConfig)에서 처리한다.
+function deriveRemoteBaseDir(remoteBaseDir: string | undefined, username: string): string {
+  const explicit = (remoteBaseDir ?? "").trim();
+  if (explicit) return normalizeBaseDir(explicit);
+  return normalizeBaseDir(username);
+}
 // ── 경로 확장 (~ + stateDir 기준 상대경로) ───────────────────
 
 function resolvePaths(parsed: z.infer<typeof RawConfigSchema>, home: string, stateDir: string): Config {
-  const remote = RemoteConfigSchema.parse(parsed.remote);
+  const remoteRaw = RemoteConfigSchema.parse(parsed.remote);
+  const remote = {
+    url: remoteRaw.url,
+    username: remoteRaw.username,
+    password: remoteRaw.password,
+    remoteBaseDir: deriveRemoteBaseDir(remoteRaw.remoteBaseDir, remoteRaw.username),
+  };
   const cryptoRaw = CryptoConfigSchema.parse(parsed.crypto);
 
   // passphraseFile: 빈 문자열이면 stateDir/passphrase 기본값.
@@ -289,6 +311,16 @@ export async function loadConfig(configPath?: string, dotEnvPath?: string): Prom
 
   const withEnv = applyEnvOverrides(fileRaw);
   const parsed = RawConfigSchema.parse(withEnv);
+
+  // remoteBaseDir 가드: 명시적 remoteBaseDir 가 없고 username 도 비어 있으면 도출 불가 → 명확히 halt.
+  // (remoteBaseDir 는 username 에서 "/" + username 으로 도출되므로 username 이 필수다.)
+  const remoteUsername = (parsed.remote?.username ?? "").trim();
+  const remoteBaseDir = (parsed.remote?.remoteBaseDir ?? "").trim();
+  if (!remoteBaseDir && !remoteUsername) {
+    throw new Error(
+      "WEBDAV_USER 가 필요함 (remote base 경로를 USER 에서 도출). ~/.wormhole/.env 에 WEBDAV_USER 를 설정하라.",
+    );
+  }
 
   // .env(또는 process.env)의 WORMHOLE_SYNC_INCLUDE/EXCLUDE 는 동기화 대상에 대해
   // "가산 union" 으로만 작동한다(절대 replace 아님). config.json 의 보안 기본 제외

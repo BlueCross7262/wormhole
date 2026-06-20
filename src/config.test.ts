@@ -19,7 +19,6 @@ const MANAGED_ENV_KEYS = [
   "WEBDAV_URL",
   "WEBDAV_USER",
   "WEBDAV_PASS",
-  "WEBDAV_BASEDIR",
   "WORMHOLE_PASSPHRASE_FILE",
   "WORMHOLE_KEYCHAIN_SERVICE",
   "WORMHOLE_PASSPHRASE",
@@ -76,10 +75,11 @@ function writeConfigFile(obj: unknown): string {
   return p;
 }
 
-// 최소 유효 raw config: remote.url 만 있으면 zod 통과.
+// 최소 유효 raw config: url + username 이 있으면 loadConfig 통과.
+// (remoteBaseDir 는 명시 안 하면 username 에서 "/" + username 으로 도출되므로 username 필수.)
 function minimalRaw(extra: Record<string, unknown> = {}): Record<string, unknown> {
   return {
-    remote: { url: "https://file.example.com/dav" },
+    remote: { url: "https://file.example.com/dav", username: "wormhole" },
     ...extra,
   };
 }
@@ -129,6 +129,57 @@ describe("loadConfig — env overrides file for remote.*", () => {
   });
 });
 
+// ── 1b. remoteBaseDir 도출 (USER 기반) ─────────────────────────
+// WEBDAV_BASEDIR env 오버라이드는 제거됨. remoteBaseDir 는
+//  (a) config 에 명시되면 override 로 사용, 아니면
+//  (b) "/" + username 으로 도출. username 도 비면 명확한 에러로 halt.
+
+describe("loadConfig — remoteBaseDir derived from username", () => {
+  test("no remoteBaseDir + WEBDAV_USER env → derived = '/' + user", async () => {
+    const cfgPath = writeConfigFile({
+      remote: { url: "https://nas.example.com/dav" },
+    });
+    process.env["WEBDAV_USER"] = "wormhole_claude_code";
+
+    const cfg = await loadConfig(cfgPath, isolatedEnv);
+
+    assert.equal(cfg.remote.username, "wormhole_claude_code");
+    // 정확히 선행 슬래시 1개, 후행 슬래시 없음.
+    assert.equal(cfg.remote.remoteBaseDir, "/wormhole_claude_code");
+  });
+
+  test("explicit config remoteBaseDir wins over username derivation", async () => {
+    const cfgPath = writeConfigFile({
+      remote: {
+        url: "https://nas.example.com/dav",
+        username: "alice",
+        remoteBaseDir: "/explicit-base",
+      },
+    });
+
+    const cfg = await loadConfig(cfgPath, isolatedEnv);
+
+    // override 가 도출("/alice")보다 우선.
+    assert.equal(cfg.remote.username, "alice");
+    assert.equal(cfg.remote.remoteBaseDir, "/explicit-base");
+  });
+
+  test("no remoteBaseDir + empty username → throws actionable error", async () => {
+    const cfgPath = writeConfigFile({
+      remote: { url: "https://nas.example.com/dav" },
+    });
+    // env 비어 있음(beforeEach) + config 에 username/remoteBaseDir 없음.
+
+    await assert.rejects(
+      () => loadConfig(cfgPath, isolatedEnv),
+      (err: Error) => {
+        assert.match(err.message, /WEBDAV_USER/);
+        return true;
+      },
+    );
+  });
+});
+
 describe("resolveConfig — env overrides injected raw for remote.*", () => {
   test("URL/USER/PASS env win over raw; USER overrides username", () => {
     process.env["WEBDAV_URL"] = "https://env-direct.example.com/dav";
@@ -152,7 +203,7 @@ describe("resolveConfig — env overrides injected raw for remote.*", () => {
 describe("loadConfig — env overrides file for crypto source metadata", () => {
   test("PASSPHRASE_FILE / KEYCHAIN_SERVICE env win over file values", async () => {
     const cfgPath = writeConfigFile({
-      remote: { url: "https://file.example.com/dav" },
+      remote: { url: "https://file.example.com/dav", username: "wormhole" },
       crypto: {
         passphraseFile: "/abs/file/passphrase",
         keychainService: "file-keychain-service",
@@ -199,7 +250,7 @@ describe("loadConfig — absent env leaves file values untouched", () => {
     // OS 절대경로를 사용해 isAbsolute 분기를 타게 함(확장만, stateDir resolve 안 함).
     const filePassphrase = path.join(tmpRoot, "file", "configured", "passphrase");
     const cfgPath = writeConfigFile({
-      remote: { url: "https://x.example.com/dav" },
+      remote: { url: "https://x.example.com/dav", username: "wormhole" },
       crypto: {
         passphraseFile: filePassphrase,
         keychainService: "file-only-keychain",
@@ -365,11 +416,12 @@ describe("Zod schema defaults populate omitted fields", () => {
   });
 
   test("other schema defaults: remote subfields, crypto KDF, selfMcp, conflictPolicy, lock", () => {
-    const cfg = resolveConfig({ remote: { url: "https://x.example.com/dav" } });
+    const cfg = resolveConfig({ remote: { url: "https://x.example.com/dav", username: "wormhole" } });
 
     // remote defaults
-    assert.equal(cfg.remote.username, "");
+    assert.equal(cfg.remote.username, "wormhole");
     assert.equal(cfg.remote.password, "");
+    // remoteBaseDir 는 기본값이 아니라 username 에서 도출된다("/" + username).
     assert.equal(cfg.remote.remoteBaseDir, "/wormhole");
 
     // crypto defaults
@@ -404,7 +456,7 @@ describe("Zod schema defaults populate omitted fields", () => {
   });
 
   test("WORMHOLE_CONFIG env points loadConfig at the tmp file", async () => {
-    const cfgPath = writeConfigFile({ remote: { url: "https://via-env-config.example.com/dav" } });
+    const cfgPath = writeConfigFile({ remote: { url: "https://via-env-config.example.com/dav", username: "wormhole" } });
     process.env["WORMHOLE_CONFIG"] = cfgPath;
 
     // WORMHOLE_CONFIG 경로 사용(configPath 생략) + 격리된 .env.
@@ -488,7 +540,7 @@ describe("loadConfig — flat .env profile applied to remote", () => {
     assert.equal(cfg.remote.password, "filePass");
   });
 
-  test("all four keys in .env: url/username/password/remoteBaseDir all from env", async () => {
+  test("three keys in .env (url/username/password); explicit config remoteBaseDir wins", async () => {
     const cfgPath = writeConfigFile({
       remote: {
         url: "https://from-file.example.com/dav",
@@ -502,7 +554,6 @@ describe("loadConfig — flat .env profile applied to remote", () => {
         "WEBDAV_URL=https://nas.example.com/dav",
         "WEBDAV_USER=alice",
         "WEBDAV_PASS=secret1",
-        "WEBDAV_BASEDIR=/wormhole-a",
       ].join("\n"),
     );
 
@@ -511,7 +562,20 @@ describe("loadConfig — flat .env profile applied to remote", () => {
     assert.equal(cfg.remote.url, "https://nas.example.com/dav");
     assert.equal(cfg.remote.username, "alice");
     assert.equal(cfg.remote.password, "secret1");
-    assert.equal(cfg.remote.remoteBaseDir, "/wormhole-a");
+    // 명시적 config remoteBaseDir 는 override 로 유지(username 도출보다 우선).
+    assert.equal(cfg.remote.remoteBaseDir, "/file-base");
+  });
+
+  test("no remoteBaseDir + WEBDAV_USER (.env) → remoteBaseDir derived = '/' + user", async () => {
+    const cfgPath = writeConfigFile({
+      remote: { url: "https://from-file.example.com/dav" },
+    });
+    const envPath = writeDotEnv("WEBDAV_USER=wormhole_claude_code\n");
+
+    const cfg = await loadConfig(cfgPath, envPath);
+
+    assert.equal(cfg.remote.username, "wormhole_claude_code");
+    assert.equal(cfg.remote.remoteBaseDir, "/wormhole_claude_code");
   });
 
   test("no WEBDAV env → config.json remote values preserved", async () => {
@@ -534,7 +598,7 @@ describe("loadConfig — flat .env profile applied to remote", () => {
   });
 
   test("WORMHOLE_PASSPHRASE in .env is visible via process.env after load", async () => {
-    const cfgPath = writeConfigFile({ remote: { url: "https://x.example.com/dav" } });
+    const cfgPath = writeConfigFile({ remote: { url: "https://x.example.com/dav", username: "wormhole" } });
     const envPath = writeDotEnv("WORMHOLE_PASSPHRASE=global-passphrase-from-dotenv\n");
 
     const cfg = await loadConfig(cfgPath, envPath);

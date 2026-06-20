@@ -16396,7 +16396,8 @@ var RemoteConfigSchema = external_exports.object({
   url: external_exports.string().min(1),
   username: external_exports.string().default(""),
   password: external_exports.string().default(""),
-  remoteBaseDir: external_exports.string().default("/wormhole")
+  // remoteBaseDir 는 더 이상 기본값을 갖지 않는다. 미지정 시 username 에서 도출된다("/" + username).
+  remoteBaseDir: external_exports.string().optional()
 });
 var CryptoConfigSchema = external_exports.object({
   // passphrase 를 읽을 환경변수 이름.
@@ -16481,7 +16482,6 @@ function applyEnvOverrides(raw) {
   if (process.env["WEBDAV_URL"]) remote["url"] = process.env["WEBDAV_URL"];
   if (process.env["WEBDAV_USER"]) remote["username"] = process.env["WEBDAV_USER"];
   if (process.env["WEBDAV_PASS"]) remote["password"] = process.env["WEBDAV_PASS"];
-  if (process.env["WEBDAV_BASEDIR"]) remote["remoteBaseDir"] = process.env["WEBDAV_BASEDIR"];
   result["remote"] = remote;
   const crypto5 = { ...result["crypto"] ?? {} };
   if (process.env["WORMHOLE_PASSPHRASE_FILE"]) crypto5["passphraseFile"] = process.env["WORMHOLE_PASSPHRASE_FILE"];
@@ -16489,8 +16489,22 @@ function applyEnvOverrides(raw) {
   result["crypto"] = crypto5;
   return result;
 }
+function normalizeBaseDir(raw) {
+  return "/" + raw.replace(/^\/+/, "").replace(/\/+$/, "");
+}
+function deriveRemoteBaseDir(remoteBaseDir, username) {
+  const explicit = (remoteBaseDir ?? "").trim();
+  if (explicit) return normalizeBaseDir(explicit);
+  return normalizeBaseDir(username);
+}
 function resolvePaths(parsed, home, stateDir) {
-  const remote = RemoteConfigSchema.parse(parsed.remote);
+  const remoteRaw = RemoteConfigSchema.parse(parsed.remote);
+  const remote = {
+    url: remoteRaw.url,
+    username: remoteRaw.username,
+    password: remoteRaw.password,
+    remoteBaseDir: deriveRemoteBaseDir(remoteRaw.remoteBaseDir, remoteRaw.username)
+  };
   const cryptoRaw = CryptoConfigSchema.parse(parsed.crypto);
   let passphraseFile = cryptoRaw.passphraseFile;
   if (!passphraseFile) {
@@ -16561,6 +16575,13 @@ async function loadConfig(configPath, dotEnvPath) {
   }
   const withEnv = applyEnvOverrides(fileRaw);
   const parsed = RawConfigSchema.parse(withEnv);
+  const remoteUsername = (parsed.remote?.username ?? "").trim();
+  const remoteBaseDir = (parsed.remote?.remoteBaseDir ?? "").trim();
+  if (!remoteBaseDir && !remoteUsername) {
+    throw new Error(
+      "WEBDAV_USER \uAC00 \uD544\uC694\uD568 (remote base \uACBD\uB85C\uB97C USER \uC5D0\uC11C \uB3C4\uCD9C). ~/.wormhole/.env \uC5D0 WEBDAV_USER \uB97C \uC124\uC815\uD558\uB77C."
+    );
+  }
   const baseTargets = SyncTargetsSchema.parse(parsed.targets);
   parsed.targets = {
     include: dedupe([

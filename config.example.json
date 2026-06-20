@@ -1,5 +1,5 @@
 {
-  "_comment": "WebDAV 접속 정보(URL/username/password/baseDir)는 ~/.wormhole/.env 의 플랫 변수 WEBDAV_URL/USER/PASS/BASEDIR 로 지정한다. 이 파일의 remote 섹션은 옵션 base 이며 .env 변수가 그 위를 override 한다. passphrase 원문은 절대 이 파일에 넣지 않는다(~/.wormhole/.env 또는 0600 파일 / keychain 사용).",
+  "_comment": "WebDAV 접속 정보(URL/username/password)는 ~/.wormhole/.env 의 플랫 변수 WEBDAV_URL/USER/PASS 로 지정한다. 원격 기본 디렉터리는 WEBDAV_USER 값에서 자동 파생된다(WEBDAV_URL 내 공유 경로 아래 /<username>). 명시적 override 가 필요하면 remote.remoteBaseDir 필드를 추가한다. passphrase 원문은 절대 이 파일에 넣지 않는다(~/.wormhole/.env 또는 0600 파일 / keychain 사용).",
   "stateDir": "~/.wormhole",
   "crypto": {
     "_comment": "passphraseEnv: passphrase 를 읽을 환경변수 이름. passphraseFile/derivedKeyPath 는 빈 문자열이면 stateDir 기본값을 쓴다(passphraseFile=<stateDir>/passphrase, derivedKeyPath=<stateDir>/age-key.txt). kdfN 이 클수록 강하다(메모리 사용량 증가). N=65536=2^16 ≈ 64MB.",
