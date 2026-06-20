@@ -15,6 +15,7 @@
     "start": "node dist/cli.js",
     "test": "tsx --test \"src/**/*.test.ts\"",
     "test:e2e": "tsx --test \"test/**/*.test.ts\"",
+    "test:mcp": "tsx --test test/mcp/smoke.test.mjs test/mcp/contract.test.mjs test/mcp/twomachine.test.mjs test/mcp/twomachine2.test.mjs test/mcp/edge.test.mjs test/mcp/config2.test.mjs test/mcp/security.test.ts",
     "test:types": "tsc -p tsconfig.test.json --noEmit",
     "typecheck": "tsc --noEmit"
   },
