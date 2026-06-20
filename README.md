@@ -566,7 +566,7 @@ wormhole sync
 
 - `--policy` 는 `preserve-both` | `latest-wins` | `manual`. 생략 시 config 의 `conflictPolicy` 를 따른다.
 - `--keys` 생략 시 전체 충돌 대상.
-- `latest-wins`: 원격 최신본 (매니페스트 generation 우선) 으로 덮어쓴다.
+- `latest-wins`: 원격 최신본 (매니페스트 generation 우선) 으로 덮어쓴다. 여기서 "최신" 은 **마지막으로 push 된** 쪽(generation 이 높은 쪽)을 뜻하며, 파일 mtime/벽시계 시각이 아니다. 덮어쓰기 전 로컬본은 백업 디렉터리에 보존된다.
 - `manual`: 충돌 목록만 반환하고 실제 처리는 사용자에게 위임한다.
 
 ### `/wormhole_dry_run` (`dry-run <push|pull>`)
@@ -607,7 +607,7 @@ wormhole 은 **명시적 단발 동기화** 모델이다. 상주 서버·자동 
 | 정책 | 동작 |
 |---|---|
 | `preserve-both` (기본) | 로컬을 유지하고 원격본을 `<path>.conflict-<머신>-<세대>` 로 보존 (삭제 충돌은 `.conflict-deleted-*` 마커) |
-| `latest-wins` | 원격 최신본 (매니페스트 generation 우선) 으로 자동 덮어쓰기 |
+| `latest-wins` | 원격 최신본 (매니페스트 generation = **마지막 push** 기준, 파일 mtime 아님) 으로 자동 덮어쓰기 |
 | `manual` | 충돌 목록만 반환, 사용자가 직접 처리 |
 
 기본값이 `preserve-both` 인 이유: 설정 파일은 손실 위험을 0 으로 두는 게 안전하므로 양쪽을 보존하는 것이 적절한 기본값이다.

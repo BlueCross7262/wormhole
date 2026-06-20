@@ -15,7 +15,12 @@ export function registerSyncTool(server: McpServer, engine: SyncEngine): void {
       description:
         "pull → (충돌 시) resolve → push 를 한 번에 수행하는 복합 동기화. 안전 기본값: confirm 없이 호출하면 실제 변경 없이 pull/push 미리보기(dry-run)만 반환한다. 실제 적용은 confirm:true 가 필요하며, 이는 사용자의 명시적 확인이 있을 때만 전달한다 — 절대 자율적으로 confirm:true 를 넘기지 않는다.",
       inputSchema: {
-        policy: z.enum(["preserve-both", "latest-wins"]).optional(),
+        policy: z
+          .enum(["preserve-both", "latest-wins"])
+          .describe(
+            "충돌 해소 정책. preserve-both(기본): 양쪽 보존(무손실). latest-wins: 원격 최신본(매니페스트 generation = 마지막으로 push 된 쪽 기준, 파일 mtime/벽시계 시각 아님)으로 덮어쓰기. 생략 시 preserve-both.",
+          )
+          .optional(),
         confirm: z.boolean().optional().default(false),
       },
     },

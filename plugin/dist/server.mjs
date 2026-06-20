@@ -33487,7 +33487,9 @@ function registerResolveTool(server, engine) {
       title: "Wormhole Resolve",
       description: "\uCDA9\uB3CC \uD56D\uBAA9\uC744 \uC9C0\uC815\uD55C \uC815\uCC45\uC73C\uB85C \uD574\uC18C\uD55C\uB2E4. keys \uC0DD\uB7B5 \uC2DC \uC804\uCCB4 \uCDA9\uB3CC \uCC98\uB9AC. \uC548\uC804 \uAE30\uBCF8\uAC12: confirm \uC5C6\uC774 \uD638\uCD9C\uD558\uBA74 \uC2E4\uC81C \uBCC0\uACBD \uC5C6\uC774 \uBBF8\uB9AC\uBCF4\uAE30(dry-run)\uB9CC \uBC18\uD658\uD55C\uB2E4. \uC2E4\uC81C \uC801\uC6A9\uC740 confirm:true \uAC00 \uD544\uC694\uD558\uBA70, \uC774\uB294 \uC0AC\uC6A9\uC790\uC758 \uBA85\uC2DC\uC801 \uD655\uC778\uC774 \uC788\uC744 \uB54C\uB9CC \uC804\uB2EC\uD55C\uB2E4 \u2014 \uC808\uB300 \uC790\uC728\uC801\uC73C\uB85C confirm:true \uB97C \uB118\uAE30\uC9C0 \uC54A\uB294\uB2E4.",
       inputSchema: {
-        policy: external_exports.enum(["preserve-both", "latest-wins", "manual"]).optional(),
+        policy: external_exports.enum(["preserve-both", "latest-wins", "manual"]).describe(
+          "\uCDA9\uB3CC \uD574\uC18C \uC815\uCC45. preserve-both(\uAE30\uBCF8): \uB85C\uCEEC \uC720\uC9C0 + \uC6D0\uACA9\uBCF8\uC744 .conflict \uC0AC\uBCF8\uC73C\uB85C \uBCF4\uC874(\uBB34\uC190\uC2E4). latest-wins: \uC6D0\uACA9 \uCD5C\uC2E0\uBCF8(\uB9E4\uB2C8\uD398\uC2A4\uD2B8 generation = \uB9C8\uC9C0\uB9C9\uC73C\uB85C push \uB41C \uCABD \uAE30\uC900, \uD30C\uC77C mtime/\uBCBD\uC2DC\uACC4 \uC2DC\uAC01 \uC544\uB2D8)\uC73C\uB85C \uB36E\uC5B4\uC4F0\uAE30 + \uB36E\uC5B4\uC4F0\uAE30 \uC804 \uB85C\uCEEC \uBC31\uC5C5. manual: \uCDA9\uB3CC \uBAA9\uB85D\uB9CC \uBC18\uD658\uD558\uACE0 \uC790\uB3D9 \uCC98\uB9AC\uD558\uC9C0 \uC54A\uC74C. \uC0DD\uB7B5 \uC2DC config \uC758 conflictPolicy \uB97C \uB530\uB978\uB2E4."
+        ).optional(),
         keys: external_exports.array(external_exports.string()).optional(),
         confirm: external_exports.boolean().optional().default(false)
       }
@@ -33556,7 +33558,9 @@ function registerSyncTool(server, engine) {
       title: "Wormhole Sync",
       description: "pull \u2192 (\uCDA9\uB3CC \uC2DC) resolve \u2192 push \uB97C \uD55C \uBC88\uC5D0 \uC218\uD589\uD558\uB294 \uBCF5\uD569 \uB3D9\uAE30\uD654. \uC548\uC804 \uAE30\uBCF8\uAC12: confirm \uC5C6\uC774 \uD638\uCD9C\uD558\uBA74 \uC2E4\uC81C \uBCC0\uACBD \uC5C6\uC774 pull/push \uBBF8\uB9AC\uBCF4\uAE30(dry-run)\uB9CC \uBC18\uD658\uD55C\uB2E4. \uC2E4\uC81C \uC801\uC6A9\uC740 confirm:true \uAC00 \uD544\uC694\uD558\uBA70, \uC774\uB294 \uC0AC\uC6A9\uC790\uC758 \uBA85\uC2DC\uC801 \uD655\uC778\uC774 \uC788\uC744 \uB54C\uB9CC \uC804\uB2EC\uD55C\uB2E4 \u2014 \uC808\uB300 \uC790\uC728\uC801\uC73C\uB85C confirm:true \uB97C \uB118\uAE30\uC9C0 \uC54A\uB294\uB2E4.",
       inputSchema: {
-        policy: external_exports.enum(["preserve-both", "latest-wins"]).optional(),
+        policy: external_exports.enum(["preserve-both", "latest-wins"]).describe(
+          "\uCDA9\uB3CC \uD574\uC18C \uC815\uCC45. preserve-both(\uAE30\uBCF8): \uC591\uCABD \uBCF4\uC874(\uBB34\uC190\uC2E4). latest-wins: \uC6D0\uACA9 \uCD5C\uC2E0\uBCF8(\uB9E4\uB2C8\uD398\uC2A4\uD2B8 generation = \uB9C8\uC9C0\uB9C9\uC73C\uB85C push \uB41C \uCABD \uAE30\uC900, \uD30C\uC77C mtime/\uBCBD\uC2DC\uACC4 \uC2DC\uAC01 \uC544\uB2D8)\uC73C\uB85C \uB36E\uC5B4\uC4F0\uAE30. \uC0DD\uB7B5 \uC2DC preserve-both."
+        ).optional(),
         confirm: external_exports.boolean().optional().default(false)
       }
     },
