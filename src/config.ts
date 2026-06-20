@@ -279,10 +279,12 @@ export async function loadConfig(configPath?: string, dotEnvPath?: string): Prom
     const content = await fs.promises.readFile(cfgPath, "utf-8");
     fileRaw = JSON.parse(content) as Record<string, unknown>;
   } catch (err: unknown) {
-    // 파일 없으면 기본값만 사용 (필수 항목 누락은 이후 zod 검증에서 포착)
-    if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
-      throw new Error(`config 파일 읽기 실패 (${cfgPath}): ${(err as Error).message}`);
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+      throw new Error(
+        `config.json 없음 (${cfgPath}). /wormhole-setup 를 실행해 생성하거나 config.example.json 을 ~/.wormhole/config.json 으로 복사하라.`,
+      );
     }
+    throw new Error(`config 파일 읽기 실패 (${cfgPath}): ${(err as Error).message}`);
   }
 
   const withEnv = applyEnvOverrides(fileRaw);

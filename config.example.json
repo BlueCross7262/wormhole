@@ -18,7 +18,10 @@
       ".claude/skills/**",
       ".claude/agents/**",
       ".claude/commands/**",
-      ".claude/.mcp.json"
+      ".claude/.mcp.json",
+      ".claude/hooks/**",
+      ".claude/statusline/**",
+      ".claude/hud/**"
     ],
     "exclude": [
       ".claude/.credentials.json",
@@ -38,7 +41,9 @@
     "mcpServers.*.args",
     "mcpServers.*.cwd",
     "mcpServers.*.env",
-    "permissions.*"
+    "permissions.*",
+    "hooks",
+    "statusLine.command"
   ],
   "selfMcpServerNames": ["wormhole"],
   "conflictPolicy": "preserve-both",

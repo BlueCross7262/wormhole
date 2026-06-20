@@ -227,7 +227,8 @@ Claude Code 플러그인 마켓플레이스를 통해 빌드 없이 설치한다
 /wormhole-setup
 ```
 
-`~/.wormhole/.env` 파일을 자동 생성하고 필요한 변수를 채워넣을 수 있도록 안내한다.
+`~/.wormhole/.env` 와 `~/.wormhole/config.json` 두 파일을 자동 생성하고 필요한 값을 채워넣을 수 있도록 안내한다.
+두 파일 모두 이미 존재하면 덮어쓰지 않는다 (멱등).
 
 **4. `.env` 편집**
 
@@ -392,12 +393,17 @@ chmod 600 ~/.wormhole/.env
 
 ### config.json 설정
 
-`config.example.json` 을 복사해 편집한다.
-`config.json` 의 `remote` 섹션은 옵션 base 이며, `.env` 플랫 변수(WEBDAV_URL/USER/PASS/BASEDIR)가 권위 소스로 그 위를 override 한다.
+`~/.wormhole/config.json` 은 **필수** 파일이다.
+존재하지 않으면 어떤 wormhole 커맨드든 오류와 함께 중단되며, `/wormhole-setup` 실행을 안내하는 메시지가 출력된다.
+
+`/wormhole-setup` (또는 `setup.mjs`) 을 실행하면 코드 기본값 그대로 채워진 `config.json` 이 생성된다 (이미 있으면 건드리지 않음).
+직접 만들려면:
 
 ```bash
 cp config.example.json ~/.wormhole/config.json
 ```
+
+`config.json` 에는 **`remote` 섹션을 두지 않는다** — WebDAV 접속 정보(WEBDAV_URL/USER/PASS/BASEDIR)는 `.env` 에만 기술한다.
 
 ### 주요 필드
 
@@ -431,7 +437,7 @@ WORMHOLE_SYNC_INCLUDE=.claude/plugins/known_marketplaces.json,.claude/extra/**
 WORMHOLE_SYNC_EXCLUDE=.claude/secret-notes/**
 ```
 
-- **보안 제외는 floor** — `*.key`, `*.token`, `.credentials.json`, `settings.local.json` 등 기본 제외 목록은 `.env` 로 제거할 수 없다. 제거하려면 `config.json` 의 `targets.exclude` 를 직접 편집한다.
+- **보안 제외는 floor** — `*.key`, `*.token`, `.credentials.json`, `settings.local.json` 등 기본 제외 목록은 `.env` 로 제거할 수 없다. 제거하려면 `~/.wormhole/config.json` 의 `targets.exclude` 를 직접 편집한다. 이 목록은 이제 `config.json` 에 명시적으로 기술되어 있으므로 바로 확인·수정할 수 있다.
 - **쉼표가 구분자** — 중괄호 확장 `{a,b}` 미지원. 빈 변수 또는 미지정 시 아무 효과 없음.
 - **`${HOME}` 토큰화 대상 아님** — 일반 glob 타겟은 raw 경로로 동기화된다. home 절대경로가 들어간 값은 타 머신에서 경로가 깨질 수 있으므로 주의한다.
 
@@ -618,6 +624,12 @@ wormhole 은 **명시적 단발 동기화** 모델이다. 상주 서버·자동 
 ---
 
 ## 12. 트러블슈팅
+
+### "config.json 을 찾을 수 없습니다" 오류
+
+`~/.wormhole/config.json` 이 없으면 wormhole 커맨드가 즉시 오류와 함께 종료된다.
+`/wormhole-setup` 을 실행하면 기본값이 채워진 `config.json` 이 자동 생성된다.
+이미 `.env` 만 있는 기존 환경은 `/wormhole-setup` 을 한 번 더 실행하면 `config.json` 만 추가 생성된다 (`.env` 는 건드리지 않음).
 
 ### 슬래시 커맨드 / CLI 가 동작하지 않는다
 

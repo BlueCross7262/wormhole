@@ -385,10 +385,17 @@ describe("Zod schema defaults populate omitted fields", () => {
     assert.equal(cfg.lock.acquireRetryDelayMs, 1000);
   });
 
-  test("loadConfig with missing file falls back to schema defaults (no remote.url) → throws on required url", async () => {
-    // 존재하지 않는 파일 → fileRaw {} → remote.url 누락 → zod min(1) 실패.
+  test("loadConfig with missing config file throws actionable error (config.json required)", async () => {
+    // 존재하지 않는 파일 → ENOENT → 기본값 폴백 금지, 명확한 에러로 halt.
     const missing = path.join(tmpRoot, "does-not-exist.json");
-    await assert.rejects(() => loadConfig(missing));
+    await assert.rejects(
+      () => loadConfig(missing),
+      (err: Error) => {
+        assert.match(err.message, /config\.json/);
+        assert.match(err.message, /wormhole-setup/);
+        return true;
+      },
+    );
   });
 
   test("WORMHOLE_CONFIG env points loadConfig at the tmp file", async () => {

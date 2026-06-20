@@ -16552,9 +16552,12 @@ async function loadConfig(configPath, dotEnvPath) {
     const content = await fs.promises.readFile(cfgPath, "utf-8");
     fileRaw = JSON.parse(content);
   } catch (err) {
-    if (err.code !== "ENOENT") {
-      throw new Error(`config \uD30C\uC77C \uC77D\uAE30 \uC2E4\uD328 (${cfgPath}): ${err.message}`);
+    if (err.code === "ENOENT") {
+      throw new Error(
+        `config.json \uC5C6\uC74C (${cfgPath}). /wormhole-setup \uB97C \uC2E4\uD589\uD574 \uC0DD\uC131\uD558\uAC70\uB098 config.example.json \uC744 ~/.wormhole/config.json \uC73C\uB85C \uBCF5\uC0AC\uD558\uB77C.`
+      );
     }
+    throw new Error(`config \uD30C\uC77C \uC77D\uAE30 \uC2E4\uD328 (${cfgPath}): ${err.message}`);
   }
   const withEnv = applyEnvOverrides(fileRaw);
   const parsed = RawConfigSchema.parse(withEnv);
