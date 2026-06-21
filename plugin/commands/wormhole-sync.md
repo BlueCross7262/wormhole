@@ -1,5 +1,6 @@
 ---
 description: wormhole 동기화 실행 (pull→push)
+argument-hint: [--policy latest-wins] [--force-up | --force-down] [--dry-run]
 ---
 
 ```bash
