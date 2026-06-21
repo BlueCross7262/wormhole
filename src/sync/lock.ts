@@ -88,11 +88,7 @@ export class RemoteLock {
    * - 손상: acquiredAt 이 now 보다 CLOCK_SKEW_TOLERANCE_MS 이상 미래 → 잘못 기록된 락으로 간주.
    */
   private isExpired(info: LockInfo, now: number): boolean {
-    if (info.acquiredAt > now + CLOCK_SKEW_TOLERANCE_MS) {
-      return true;
-    }
-    const ttl = typeof info.ttlMs === "number" ? info.ttlMs : this.ttlMs;
-    return info.acquiredAt + ttl <= now;
+    return isLockExpired(info, now, this.ttlMs);
   }
 
   /**
@@ -205,4 +201,49 @@ export async function withLock<T>(lock: RemoteLock, fn: () => Promise<T>): Promi
   } finally {
     await lock.release();
   }
+}
+
+export function isLockExpired(info: LockInfo, now: number, defaultTtlMs: number): boolean {
+  if (info.acquiredAt > now + CLOCK_SKEW_TOLERANCE_MS) return true;
+  const ttl = typeof info.ttlMs === "number" ? info.ttlMs : defaultTtlMs;
+  return info.acquiredAt + ttl <= now;
+}
+
+export type LockState = "none" | "self" | "expired" | "held" | "corrupt";
+
+export interface LockClassification {
+  state: LockState;
+  holder?: string;
+  ageMs?: number;
+}
+
+export function classifyLock(
+  raw: string | null,
+  now: number,
+  selfId: string | null,
+  defaultTtlMs: number,
+): LockClassification {
+  if (raw === null) return { state: "none" };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return { state: "corrupt" };
+  }
+  const o = parsed as { machineId?: unknown; acquiredAt?: unknown };
+  if (typeof o.machineId !== "string" || typeof o.acquiredAt !== "number") {
+    return { state: "corrupt" };
+  }
+  const info = parsed as LockInfo;
+  const ageMs = now - info.acquiredAt;
+  if (info.acquiredAt > now + CLOCK_SKEW_TOLERANCE_MS) {
+    return { state: "corrupt", holder: info.machineId, ageMs };
+  }
+  if (isLockExpired(info, now, defaultTtlMs)) {
+    return { state: "expired", holder: info.machineId, ageMs };
+  }
+  if (selfId !== null && info.machineId === selfId) {
+    return { state: "self", holder: info.machineId, ageMs };
+  }
+  return { state: "held", holder: info.machineId, ageMs };
 }

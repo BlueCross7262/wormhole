@@ -104,7 +104,8 @@ function responseXml(href, entry) {
   );
 }
 
-export function start(port) {
+export function start(port, opts = {}) {
+  const etagMode = opts.etagMode ?? "strong";
   // path -> { body:Buffer, etag, type:'file'|'collection', mtime }
   const store = new Map();
   // Root is always a collection.
@@ -181,9 +182,12 @@ export function start(port) {
           res.end();
           return;
         }
+        const headEtagHeaders = {};
+        if (etagMode === "strong") headEtagHeaders["ETag"] = entry.etag;
+        else if (etagMode === "weak") headEtagHeaders["ETag"] = `W/${entry.etag}`;
         res.writeHead(200, {
           "Content-Length": String(entry.body.length),
-          ETag: entry.etag,
+          ...headEtagHeaders,
           "Content-Type": "application/octet-stream",
         });
         res.end();
@@ -196,9 +200,12 @@ export function start(port) {
           res.end("Not Found");
           return;
         }
+        const getEtagHeaders = {};
+        if (etagMode === "strong") getEtagHeaders["ETag"] = entry.etag;
+        else if (etagMode === "weak") getEtagHeaders["ETag"] = `W/${entry.etag}`;
         res.writeHead(200, {
           "Content-Length": String(entry.body.length),
-          ETag: entry.etag,
+          ...getEtagHeaders,
           "Content-Type": "application/octet-stream",
         });
         res.end(entry.body);

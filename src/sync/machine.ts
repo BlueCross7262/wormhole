@@ -32,3 +32,14 @@ export async function loadOrCreateMachineId(stateDir: string): Promise<MachineId
   }
   return id;
 }
+
+export async function readMachineIdIfExists(stateDir: string): Promise<MachineId | null> {
+  const filePath = path.join(stateDir, "machine-id");
+  try {
+    const content = await fs.readFile(filePath, "utf-8");
+    const id = content.trim();
+    return id.length > 0 ? id : null;
+  } catch {
+    return null;
+  }
+}

@@ -44339,6 +44339,13 @@ var RemoteStore = class {
     this.logger?.debug(`[RemoteStore] \uC774\uB3D9: ${resolvedFrom} -> ${resolvedTo}`);
   }
 };
+function classifyEtag(etag) {
+  if (etag === null || etag === void 0) return "none";
+  const t2 = etag.trim();
+  if (t2 === "") return "none";
+  if (/^W\//i.test(t2)) return "weak";
+  return "strong";
+}
 
 // src/crypto/age.ts
 import { promises as fs3 } from "node:fs";
@@ -49159,6 +49166,234 @@ var ManifestStore = class {
   }
 };
 
+// src/sync/lock.ts
+var CLOCK_SKEW_TOLERANCE_MS = 5 * 60 * 1e3;
+function delay2(ms) {
+  return new Promise((resolve2) => setTimeout(resolve2, ms));
+}
+var AsyncMutex = class {
+  // 직전 작업의 완료 Promise. 새 작업은 이 꼬리에 붙어 순차 실행.
+  tail = Promise.resolve();
+  /** fn 을 배타 실행. 반환은 fn 의 반환. fn 예외는 호출자에게 전파하되 큐는 유지. */
+  runExclusive(fn) {
+    const run = this.tail.then(() => fn());
+    this.tail = run.catch(() => void 0);
+    return run;
+  }
+};
+var RemoteLock = class {
+  constructor(remote, config2, machineId, logger2) {
+    this.remote = remote;
+    this.config = config2;
+    this.machineId = machineId;
+    this.logger = logger2;
+    this.ttlMs = config2.lock.ttlMs;
+    this.acquireRetries = config2.lock.acquireRetries;
+    this.acquireRetryDelayMs = config2.lock.acquireRetryDelayMs;
+  }
+  remote;
+  config;
+  machineId;
+  logger;
+  ttlMs;
+  acquireRetries;
+  acquireRetryDelayMs;
+  /** 마지막 read() 가 받은 lock.json 의 ETag. 만료 락 탈취 시 putIfMatch CAS 에 사용. */
+  lastLockEtag = null;
+  /** lock.json 경로(<remoteBaseDir>/lock.json). */
+  get lockPath() {
+    return "lock.json";
+  }
+  /** 현재 원격 락 상태 읽기. 없거나 파싱 실패 시 null. */
+  /** 현재 원격 락 상태 읽기. 없거나 파싱 실패 시 null. 마지막 read 의 ETag 도 내부 보관(탈취 CAS 용). */
+  async read() {
+    const result = await this.remote.getTextWithETag(this.lockPath);
+    if (result === null) {
+      this.lastLockEtag = null;
+      return null;
+    }
+    this.lastLockEtag = result.etag;
+    try {
+      const info = JSON.parse(result.text);
+      if (typeof info.machineId !== "string" || typeof info.acquiredAt !== "number") {
+        return null;
+      }
+      return info;
+    } catch {
+      return null;
+    }
+  }
+  /** 락이 만료됐는지 (acquiredAt + ttlMs < now). */
+  /**
+   * 락이 탈취 가능한 상태인지 (만료 또는 손상).
+   * - 정상 만료: acquiredAt + ttlMs <= now.
+   * - 손상: acquiredAt 이 now 보다 CLOCK_SKEW_TOLERANCE_MS 이상 미래 → 잘못 기록된 락으로 간주.
+   */
+  isExpired(info, now) {
+    return isLockExpired(info, now, this.ttlMs);
+  }
+  /**
+   * 원격 락 획득 시도. best-effort CAS.
+   * - 락 없음/만료/자기소유 → 자기 락 기록 후 짧은 지연 뒤 재확인(다른 머신 동시 기록 검출).
+   * - 재확인 결과 자기 소유면 true.
+   * - 타머신이 유효 락 보유 → acquireRetryDelayMs 대기 후 재시도, acquireRetries 소진 시 false.
+   */
+  /**
+   * 원격 락 획득 시도. 서버측 조건부 PUT 으로 진짜 상호배제(원자적 CAS).
+   * - 락 없음 → putIfNoneMatch(If-None-Match:*): 동시 생성 경쟁에서 한쪽만 성공.
+   * - 만료/손상 락 → putIfMatch(If-Match:<etag>): read 시점 ETag 일치할 때만 탈취(다른 머신이 먼저 갱신했으면 실패).
+   * - 자기 소유 락 → putIfMatch 로 갱신(재진입/TTL 연장).
+   * - 타머신 유효 락 → acquireRetryDelayMs 대기 후 재시도, acquireRetries 소진 시 false.
+   * - CAS 패배(PreconditionFailedError) → 다음 시도로 재경쟁.
+   * delay 후 사후 read 휴리스틱은 서버측 원자 연산으로 대체되어 불필요해졌다.
+   */
+  async acquire() {
+    const totalAttempts = this.acquireRetries + 1;
+    for (let attempt = 0; attempt < totalAttempts; attempt++) {
+      const now = Date.now();
+      const current = await this.read();
+      const isNone = current === null;
+      const isOwn = current !== null && current.machineId === this.machineId;
+      const isStale = current !== null && this.isExpired(current, now);
+      const takeable = isNone || isOwn || isStale;
+      if (!takeable) {
+        if (attempt < totalAttempts - 1) {
+          this.logger?.debug(
+            `remote lock held by ${current.machineId}, retry ${attempt + 1}/${this.acquireRetries}`
+          );
+          await delay2(this.acquireRetryDelayMs);
+          continue;
+        }
+        this.logger?.warn(
+          `remote lock acquire failed: held by ${current.machineId} (not expired)`
+        );
+        return false;
+      }
+      const lock2 = {
+        machineId: this.machineId,
+        acquiredAt: now,
+        ttlMs: this.ttlMs
+      };
+      const payload = JSON.stringify(lock2);
+      try {
+        if (isNone) {
+          await this.remote.putIfNoneMatch(this.lockPath, payload, this.machineId);
+        } else {
+          await this.remote.putIfMatch(this.lockPath, payload, this.lastLockEtag, this.machineId);
+        }
+        this.logger?.debug("remote lock acquired");
+        return true;
+      } catch (err) {
+        if (err instanceof PreconditionFailedError) {
+          if (attempt < totalAttempts - 1) {
+            this.logger?.debug(
+              `remote lock race lost (CAS), retry ${attempt + 1}/${this.acquireRetries}`
+            );
+            await delay2(this.acquireRetryDelayMs);
+            continue;
+          }
+          this.logger?.warn("remote lock acquire failed: lost CAS race");
+          return false;
+        }
+        throw err;
+      }
+    }
+    return false;
+  }
+  /** 자기 소유 락만 해제(deleteFile). 타 소유면 no-op. best-effort. */
+  async release() {
+    try {
+      const current = await this.read();
+      if (current === null) return;
+      if (current.machineId !== this.machineId) {
+        this.logger?.debug(`remote lock release skipped: owned by ${current.machineId}`);
+        return;
+      }
+      await this.remote.deleteFile(this.lockPath);
+      this.logger?.debug("remote lock released");
+    } catch (err) {
+      this.logger?.warn(`remote lock release failed: ${String(err.message)}`);
+    }
+  }
+};
+async function withLock(lock2, fn) {
+  const acquired = await lock2.acquire();
+  if (!acquired) {
+    throw new Error("failed to acquire remote lock");
+  }
+  try {
+    return await fn();
+  } finally {
+    await lock2.release();
+  }
+}
+function isLockExpired(info, now, defaultTtlMs) {
+  if (info.acquiredAt > now + CLOCK_SKEW_TOLERANCE_MS) return true;
+  const ttl = typeof info.ttlMs === "number" ? info.ttlMs : defaultTtlMs;
+  return info.acquiredAt + ttl <= now;
+}
+function classifyLock(raw, now, selfId, defaultTtlMs) {
+  if (raw === null) return { state: "none" };
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return { state: "corrupt" };
+  }
+  const o = parsed;
+  if (typeof o.machineId !== "string" || typeof o.acquiredAt !== "number") {
+    return { state: "corrupt" };
+  }
+  const info = parsed;
+  const ageMs = now - info.acquiredAt;
+  if (info.acquiredAt > now + CLOCK_SKEW_TOLERANCE_MS) {
+    return { state: "corrupt", holder: info.machineId, ageMs };
+  }
+  if (isLockExpired(info, now, defaultTtlMs)) {
+    return { state: "expired", holder: info.machineId, ageMs };
+  }
+  if (selfId !== null && info.machineId === selfId) {
+    return { state: "self", holder: info.machineId, ageMs };
+  }
+  return { state: "held", holder: info.machineId, ageMs };
+}
+
+// src/sync/machine.ts
+import * as fs5 from "fs/promises";
+import * as path6 from "path";
+import * as crypto3 from "crypto";
+async function loadOrCreateMachineId(stateDir) {
+  const filePath = path6.join(stateDir, "machine-id");
+  try {
+    const content = await fs5.readFile(filePath, "utf-8");
+    const id2 = content.trim();
+    if (id2.length > 0) return id2;
+  } catch {
+  }
+  await fs5.mkdir(stateDir, { recursive: true });
+  const id = crypto3.randomUUID();
+  const tmpPath = `${filePath}.${crypto3.randomUUID()}.tmp`;
+  await fs5.writeFile(tmpPath, id, "utf-8");
+  try {
+    await fs5.rename(tmpPath, filePath);
+  } catch (err) {
+    await fs5.rm(tmpPath, { force: true }).catch(() => {
+    });
+    throw err;
+  }
+  return id;
+}
+async function readMachineIdIfExists(stateDir) {
+  const filePath = path6.join(stateDir, "machine-id");
+  try {
+    const content = await fs5.readFile(filePath, "utf-8");
+    const id = content.trim();
+    return id.length > 0 ? id : null;
+  } catch {
+    return null;
+  }
+}
+
 // src/doctor.ts
 function statusOf(err) {
   const e2 = err;
@@ -49172,9 +49407,11 @@ async function runDoctor(logger2) {
   let config2 = null;
   let remote = null;
   let keyparamsRaw = null;
+  let keyparamsEtag = null;
   let keyparamsFetched = false;
   let passphrase = null;
   let crypto5 = null;
+  let selfId = null;
   try {
     config2 = await loadConfig();
     const pwWarn = config2.remote.password === "";
@@ -49199,8 +49436,11 @@ async function runDoctor(logger2) {
   } else {
     try {
       remote = new RemoteStore(config2.remote, logger2);
-      keyparamsRaw = await remote.getTextIfExists(KEYPARAMS_REMOTE);
+      const kp = await remote.getTextWithETag(KEYPARAMS_REMOTE);
+      keyparamsRaw = kp?.text ?? null;
+      keyparamsEtag = kp?.etag ?? null;
       keyparamsFetched = true;
+      selfId = await readMachineIdIfExists(config2.stateDir);
       checks.push({
         name: "WebDAV \uC5F0\uACB0\xB7\uC778\uC99D",
         status: "ok",
@@ -49343,6 +49583,100 @@ async function runDoctor(logger2) {
       detail: "https \uB610\uB294 localhost \u2014 \uC804\uC1A1 \uBCF4\uC548 \uC591\uD638"
     });
   }
+  if (config2 === null || !keyparamsFetched) {
+    checks.push({
+      name: "CAS/ETag \uB2A5\uB825",
+      status: "warn",
+      detail: "\uC120\uD589 \uCCB4\uD06C \uC2E4\uD328\uB85C \uBBF8\uAC80\uC99D"
+    });
+  } else if (keyparamsRaw === null) {
+    checks.push({
+      name: "CAS/ETag \uB2A5\uB825",
+      status: "warn",
+      detail: "\uC6D0\uACA9 vault \uBBF8\uCD08\uAE30\uD654 \u2014 CAS \uB2A5\uB825 \uBBF8\uAC80\uC99D. \uCD5C\uCD08 push \uD6C4 \uC7AC\uC2E4\uD589"
+    });
+  } else {
+    const strength = classifyEtag(keyparamsEtag);
+    if (strength === "strong") {
+      checks.push({
+        name: "CAS/ETag \uB2A5\uB825",
+        status: "ok",
+        detail: "\uAC15\uD55C ETag \u2014 \uC870\uAC74\uBD80 PUT(CAS) \uC2E0\uB8B0 \uAC00\uB2A5"
+      });
+    } else if (strength === "weak") {
+      checks.push({
+        name: "CAS/ETag \uB2A5\uB825",
+        status: "warn",
+        detail: "\uC57D\uD55C ETag(W/) \u2014 If-Match \uAC15\uBE44\uAD50 \uC2E4\uD328 \uC704\uD5D8(\uAC00\uC9DC\uCDA9\uB3CC\xB7\uB77D\uC18C\uC2E4). \uC11C\uBC84 ETag \uC815\uCC45 \uD655\uC778"
+      });
+    } else {
+      checks.push({
+        name: "CAS/ETag \uB2A5\uB825",
+        status: "warn",
+        detail: "GET \uC751\uB2F5\uC5D0 ETag \uC5C6\uC74C \u2014 If-Match CAS \uAC00\uB2A5 \uC5EC\uBD80 \uBD88\uD655\uC2E4. \uC11C\uBC84 ETag \uC815\uCC45 \uD655\uC778"
+      });
+    }
+  }
+  if (config2 === null || remote === null || !keyparamsFetched) {
+    checks.push({
+      name: "\uC6D0\uACA9 \uB77D \uC0C1\uD0DC",
+      status: "warn",
+      detail: "\uC120\uD589 \uCCB4\uD06C \uC2E4\uD328\uB85C \uBBF8\uAC80\uC99D"
+    });
+  } else {
+    try {
+      const lr = await remote.getTextWithETag("lock.json");
+      const cls = classifyLock(lr?.text ?? null, Date.now(), selfId, config2.lock.ttlMs);
+      if (cls.state === "none") {
+        checks.push({ name: "\uC6D0\uACA9 \uB77D \uC0C1\uD0DC", status: "ok", detail: "\uC6D0\uACA9 \uB77D \uC5C6\uC74C" });
+      } else if (cls.state === "self") {
+        checks.push({ name: "\uC6D0\uACA9 \uB77D \uC0C1\uD0DC", status: "ok", detail: "\uC790\uAE30 \uC18C\uC720 \uB77D(\uC815\uC0C1)" });
+      } else if (cls.state === "expired") {
+        checks.push({
+          name: "\uC6D0\uACA9 \uB77D \uC0C1\uD0DC",
+          status: "ok",
+          detail: "\uB9CC\uB8CC \uB77D \u2014 \uB2E4\uC74C sync \uAC00 \uD0C8\uCDE8(\uC815\uC0C1)"
+        });
+      } else if (cls.state === "held") {
+        checks.push({
+          name: "\uC6D0\uACA9 \uB77D \uC0C1\uD0DC",
+          status: "warn",
+          detail: `\uD0C0 \uBA38\uC2E0 ${cls.holder?.slice(0, 8)} \uB77D \uBCF4\uC720, ${cls.ageMs}ms \uACBD\uACFC \u2014 \uC9C4\uD589\uC911\uC774\uAC70\uB098 stale`
+        });
+      } else {
+        checks.push({
+          name: "\uC6D0\uACA9 \uB77D \uC0C1\uD0DC",
+          status: "warn",
+          detail: "lock.json \uC190\uC0C1/\uBBF8\uB798\uC2DC\uAC01 \u2014 \uBB34\uC2DC\uB428"
+        });
+      }
+    } catch {
+      checks.push({
+        name: "\uC6D0\uACA9 \uB77D \uC0C1\uD0DC",
+        status: "warn",
+        detail: "lock.json \uC77D\uAE30 \uC2E4\uD328 \u2014 \uBB34\uC2DC\uB428"
+      });
+    }
+  }
+  if (config2 === null) {
+    checks.push({
+      name: "machine-id",
+      status: "warn",
+      detail: "\uC120\uD589 \uCCB4\uD06C \uC2E4\uD328\uB85C \uBBF8\uAC80\uC99D"
+    });
+  } else if (selfId !== null) {
+    checks.push({
+      name: "machine-id",
+      status: "ok",
+      detail: `machine-id: ${selfId.slice(0, 8)}`
+    });
+  } else {
+    checks.push({
+      name: "machine-id",
+      status: "warn",
+      detail: "machine-id \uC5C6\uC74C \u2014 \uC544\uC9C1 sync \uC804(\uCCAB \uC791\uC5C5 \uC2DC \uC0DD\uC131)"
+    });
+  }
   const ok = checks.every((c) => c.status !== "fail");
   return { ok, checks };
 }
@@ -49379,32 +49713,6 @@ function registerAllTools(server, engine) {
   registerResolveTool(server, engine);
   registerSyncTool(server, engine);
   registerDoctorTool(server);
-}
-
-// src/sync/machine.ts
-import * as fs5 from "fs/promises";
-import * as path6 from "path";
-import * as crypto3 from "crypto";
-async function loadOrCreateMachineId(stateDir) {
-  const filePath = path6.join(stateDir, "machine-id");
-  try {
-    const content = await fs5.readFile(filePath, "utf-8");
-    const id2 = content.trim();
-    if (id2.length > 0) return id2;
-  } catch {
-  }
-  await fs5.mkdir(stateDir, { recursive: true });
-  const id = crypto3.randomUUID();
-  const tmpPath = `${filePath}.${crypto3.randomUUID()}.tmp`;
-  await fs5.writeFile(tmpPath, id, "utf-8");
-  try {
-    await fs5.rename(tmpPath, filePath);
-  } catch (err) {
-    await fs5.rm(tmpPath, { force: true }).catch(() => {
-    });
-    throw err;
-  }
-  return id;
 }
 
 // src/sync/engine.ts
@@ -49664,172 +49972,6 @@ function blobHash(logicalKey) {
 }
 function blobName(logicalKey) {
   return `${blobHash(logicalKey)}.age`;
-}
-
-// src/sync/lock.ts
-var CLOCK_SKEW_TOLERANCE_MS = 5 * 60 * 1e3;
-function delay2(ms) {
-  return new Promise((resolve2) => setTimeout(resolve2, ms));
-}
-var AsyncMutex = class {
-  // 직전 작업의 완료 Promise. 새 작업은 이 꼬리에 붙어 순차 실행.
-  tail = Promise.resolve();
-  /** fn 을 배타 실행. 반환은 fn 의 반환. fn 예외는 호출자에게 전파하되 큐는 유지. */
-  runExclusive(fn) {
-    const run = this.tail.then(() => fn());
-    this.tail = run.catch(() => void 0);
-    return run;
-  }
-};
-var RemoteLock = class {
-  constructor(remote, config2, machineId, logger2) {
-    this.remote = remote;
-    this.config = config2;
-    this.machineId = machineId;
-    this.logger = logger2;
-    this.ttlMs = config2.lock.ttlMs;
-    this.acquireRetries = config2.lock.acquireRetries;
-    this.acquireRetryDelayMs = config2.lock.acquireRetryDelayMs;
-  }
-  remote;
-  config;
-  machineId;
-  logger;
-  ttlMs;
-  acquireRetries;
-  acquireRetryDelayMs;
-  /** 마지막 read() 가 받은 lock.json 의 ETag. 만료 락 탈취 시 putIfMatch CAS 에 사용. */
-  lastLockEtag = null;
-  /** lock.json 경로(<remoteBaseDir>/lock.json). */
-  get lockPath() {
-    return "lock.json";
-  }
-  /** 현재 원격 락 상태 읽기. 없거나 파싱 실패 시 null. */
-  /** 현재 원격 락 상태 읽기. 없거나 파싱 실패 시 null. 마지막 read 의 ETag 도 내부 보관(탈취 CAS 용). */
-  async read() {
-    const result = await this.remote.getTextWithETag(this.lockPath);
-    if (result === null) {
-      this.lastLockEtag = null;
-      return null;
-    }
-    this.lastLockEtag = result.etag;
-    try {
-      const info = JSON.parse(result.text);
-      if (typeof info.machineId !== "string" || typeof info.acquiredAt !== "number") {
-        return null;
-      }
-      return info;
-    } catch {
-      return null;
-    }
-  }
-  /** 락이 만료됐는지 (acquiredAt + ttlMs < now). */
-  /**
-   * 락이 탈취 가능한 상태인지 (만료 또는 손상).
-   * - 정상 만료: acquiredAt + ttlMs <= now.
-   * - 손상: acquiredAt 이 now 보다 CLOCK_SKEW_TOLERANCE_MS 이상 미래 → 잘못 기록된 락으로 간주.
-   */
-  isExpired(info, now) {
-    if (info.acquiredAt > now + CLOCK_SKEW_TOLERANCE_MS) {
-      return true;
-    }
-    const ttl = typeof info.ttlMs === "number" ? info.ttlMs : this.ttlMs;
-    return info.acquiredAt + ttl <= now;
-  }
-  /**
-   * 원격 락 획득 시도. best-effort CAS.
-   * - 락 없음/만료/자기소유 → 자기 락 기록 후 짧은 지연 뒤 재확인(다른 머신 동시 기록 검출).
-   * - 재확인 결과 자기 소유면 true.
-   * - 타머신이 유효 락 보유 → acquireRetryDelayMs 대기 후 재시도, acquireRetries 소진 시 false.
-   */
-  /**
-   * 원격 락 획득 시도. 서버측 조건부 PUT 으로 진짜 상호배제(원자적 CAS).
-   * - 락 없음 → putIfNoneMatch(If-None-Match:*): 동시 생성 경쟁에서 한쪽만 성공.
-   * - 만료/손상 락 → putIfMatch(If-Match:<etag>): read 시점 ETag 일치할 때만 탈취(다른 머신이 먼저 갱신했으면 실패).
-   * - 자기 소유 락 → putIfMatch 로 갱신(재진입/TTL 연장).
-   * - 타머신 유효 락 → acquireRetryDelayMs 대기 후 재시도, acquireRetries 소진 시 false.
-   * - CAS 패배(PreconditionFailedError) → 다음 시도로 재경쟁.
-   * delay 후 사후 read 휴리스틱은 서버측 원자 연산으로 대체되어 불필요해졌다.
-   */
-  async acquire() {
-    const totalAttempts = this.acquireRetries + 1;
-    for (let attempt = 0; attempt < totalAttempts; attempt++) {
-      const now = Date.now();
-      const current = await this.read();
-      const isNone = current === null;
-      const isOwn = current !== null && current.machineId === this.machineId;
-      const isStale = current !== null && this.isExpired(current, now);
-      const takeable = isNone || isOwn || isStale;
-      if (!takeable) {
-        if (attempt < totalAttempts - 1) {
-          this.logger?.debug(
-            `remote lock held by ${current.machineId}, retry ${attempt + 1}/${this.acquireRetries}`
-          );
-          await delay2(this.acquireRetryDelayMs);
-          continue;
-        }
-        this.logger?.warn(
-          `remote lock acquire failed: held by ${current.machineId} (not expired)`
-        );
-        return false;
-      }
-      const lock2 = {
-        machineId: this.machineId,
-        acquiredAt: now,
-        ttlMs: this.ttlMs
-      };
-      const payload = JSON.stringify(lock2);
-      try {
-        if (isNone) {
-          await this.remote.putIfNoneMatch(this.lockPath, payload, this.machineId);
-        } else {
-          await this.remote.putIfMatch(this.lockPath, payload, this.lastLockEtag, this.machineId);
-        }
-        this.logger?.debug("remote lock acquired");
-        return true;
-      } catch (err) {
-        if (err instanceof PreconditionFailedError) {
-          if (attempt < totalAttempts - 1) {
-            this.logger?.debug(
-              `remote lock race lost (CAS), retry ${attempt + 1}/${this.acquireRetries}`
-            );
-            await delay2(this.acquireRetryDelayMs);
-            continue;
-          }
-          this.logger?.warn("remote lock acquire failed: lost CAS race");
-          return false;
-        }
-        throw err;
-      }
-    }
-    return false;
-  }
-  /** 자기 소유 락만 해제(deleteFile). 타 소유면 no-op. best-effort. */
-  async release() {
-    try {
-      const current = await this.read();
-      if (current === null) return;
-      if (current.machineId !== this.machineId) {
-        this.logger?.debug(`remote lock release skipped: owned by ${current.machineId}`);
-        return;
-      }
-      await this.remote.deleteFile(this.lockPath);
-      this.logger?.debug("remote lock released");
-    } catch (err) {
-      this.logger?.warn(`remote lock release failed: ${String(err.message)}`);
-    }
-  }
-};
-async function withLock(lock2, fn) {
-  const acquired = await lock2.acquire();
-  if (!acquired) {
-    throw new Error("failed to acquire remote lock");
-  }
-  try {
-    return await fn();
-  } finally {
-    await lock2.release();
-  }
 }
 
 // src/sync/settings-merge.ts
@@ -51062,7 +51204,7 @@ async function buildEngine(logger2) {
 // src/index.ts
 async function main() {
   const { engine } = await buildEngine(logger);
-  const server = new McpServer({ name: "wormhole", version: "0.4.1" });
+  const server = new McpServer({ name: "wormhole", version: "0.5.0" });
   registerAllTools(server, engine);
   let shuttingDown = false;
   const shutdown = async (signal) => {

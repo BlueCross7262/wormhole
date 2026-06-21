@@ -10,7 +10,7 @@
 // 복호 로직을 직접 재현한다(deriveAgeIdentity → initWithIdentity → decryptToString).
 
 import { loadConfig } from "./config.js";
-import { RemoteStore } from "./webdav/client.js";
+import { RemoteStore, classifyEtag } from "./webdav/client.js";
 import { AgeCrypto } from "./crypto/age.js";
 import { resolvePassphrase } from "./crypto/passphrase.js";
 import {
@@ -20,7 +20,9 @@ import {
 } from "./crypto/keyparams.js";
 import { deriveAgeIdentity } from "./crypto/kdf.js";
 import { ManifestStore } from "./sync/manifest.js";
-import type { Config, Logger } from "./types.js";
+import { classifyLock } from "./sync/lock.js";
+import { readMachineIdIfExists } from "./sync/machine.js";
+import type { Config, MachineId, Logger } from "./types.js";
 
 export type DoctorStatus = "ok" | "fail" | "warn";
 
@@ -54,9 +56,11 @@ export async function runDoctor(logger: Logger): Promise<DoctorResult> {
   let config: Config | null = null;
   let remote: RemoteStore | null = null;
   let keyparamsRaw: string | null = null;
-  let keyparamsFetched = false; // Check2 가 keyparams 읽기를 성공적으로 수행했는지.
+  let keyparamsEtag: string | null = null;
+  let keyparamsFetched = false;
   let passphrase: string | null = null;
   let crypto: AgeCrypto | null = null;
+  let selfId: MachineId | null = null;
 
   // ── Check 1: config 파일 ────────────────────────────────────────────
   try {
@@ -87,10 +91,11 @@ export async function runDoctor(logger: Logger): Promise<DoctorResult> {
   } else {
     try {
       remote = new RemoteStore(config.remote, logger);
-      // getTextIfExists: 404 → null(정상 연결), 401/네트워크오류 → throw.
-      // exists() 는 예외를 삼키므로 진단에 부적합 — 반드시 getTextIfExists 사용.
-      keyparamsRaw = await remote.getTextIfExists(KEYPARAMS_REMOTE);
+      const kp = await remote.getTextWithETag(KEYPARAMS_REMOTE);
+      keyparamsRaw = kp?.text ?? null;
+      keyparamsEtag = kp?.etag ?? null;
       keyparamsFetched = true;
+      selfId = await readMachineIdIfExists(config.stateDir);
       checks.push({
         name: "WebDAV 연결·인증",
         status: "ok",
@@ -246,6 +251,106 @@ export async function runDoctor(logger: Logger): Promise<DoctorResult> {
       name: "transport 보안",
       status: "ok",
       detail: "https 또는 localhost — 전송 보안 양호",
+    });
+  }
+
+  // ── Check 7: CAS/ETag 능력 ──────────────────────────────────────────
+  if (config === null || !keyparamsFetched) {
+    checks.push({
+      name: "CAS/ETag 능력",
+      status: "warn",
+      detail: "선행 체크 실패로 미검증",
+    });
+  } else if (keyparamsRaw === null) {
+    checks.push({
+      name: "CAS/ETag 능력",
+      status: "warn",
+      detail: "원격 vault 미초기화 — CAS 능력 미검증. 최초 push 후 재실행",
+    });
+  } else {
+    const strength = classifyEtag(keyparamsEtag);
+    if (strength === "strong") {
+      checks.push({
+        name: "CAS/ETag 능력",
+        status: "ok",
+        detail: "강한 ETag — 조건부 PUT(CAS) 신뢰 가능",
+      });
+    } else if (strength === "weak") {
+      checks.push({
+        name: "CAS/ETag 능력",
+        status: "warn",
+        detail: "약한 ETag(W/) — If-Match 강비교 실패 위험(가짜충돌·락소실). 서버 ETag 정책 확인",
+      });
+    } else {
+      checks.push({
+        name: "CAS/ETag 능력",
+        status: "warn",
+        detail: "GET 응답에 ETag 없음 — If-Match CAS 가능 여부 불확실. 서버 ETag 정책 확인",
+      });
+    }
+  }
+
+  // ── Check 8: 원격 락 상태 ───────────────────────────────────────────
+  if (config === null || remote === null || !keyparamsFetched) {
+    checks.push({
+      name: "원격 락 상태",
+      status: "warn",
+      detail: "선행 체크 실패로 미검증",
+    });
+  } else {
+    try {
+      const lr = await remote.getTextWithETag("lock.json");
+      const cls = classifyLock(lr?.text ?? null, Date.now(), selfId, config.lock.ttlMs);
+      if (cls.state === "none") {
+        checks.push({ name: "원격 락 상태", status: "ok", detail: "원격 락 없음" });
+      } else if (cls.state === "self") {
+        checks.push({ name: "원격 락 상태", status: "ok", detail: "자기 소유 락(정상)" });
+      } else if (cls.state === "expired") {
+        checks.push({
+          name: "원격 락 상태",
+          status: "ok",
+          detail: "만료 락 — 다음 sync 가 탈취(정상)",
+        });
+      } else if (cls.state === "held") {
+        checks.push({
+          name: "원격 락 상태",
+          status: "warn",
+          detail: `타 머신 ${cls.holder?.slice(0, 8)} 락 보유, ${cls.ageMs}ms 경과 — 진행중이거나 stale`,
+        });
+      } else {
+        checks.push({
+          name: "원격 락 상태",
+          status: "warn",
+          detail: "lock.json 손상/미래시각 — 무시됨",
+        });
+      }
+    } catch {
+      checks.push({
+        name: "원격 락 상태",
+        status: "warn",
+        detail: "lock.json 읽기 실패 — 무시됨",
+      });
+    }
+  }
+
+  // ── Check 9: machine-id ──────────────────────────────────────────────
+  if (config === null) {
+    checks.push({
+      name: "machine-id",
+      status: "warn",
+      detail: "선행 체크 실패로 미검증",
+    });
+  } else if (selfId !== null) {
+    checks.push({
+      name: "machine-id",
+      status: "ok",
+      detail: `machine-id: ${selfId.slice(0, 8)}`,
+    });
+  } else {
+    checks.push({
+      name: "machine-id",
+      status: "warn",
+      detail: "machine-id 없음 — 아직 sync 전(첫 작업 시 생성)",
     });
   }
 

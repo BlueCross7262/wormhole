@@ -275,3 +275,13 @@ export class RemoteStore {
     this.logger?.debug(`[RemoteStore] 이동: ${resolvedFrom} -> ${resolvedTo}`);
   }
 }
+
+export type EtagStrength = "strong" | "weak" | "none";
+
+export function classifyEtag(etag: string | null | undefined): EtagStrength {
+  if (etag === null || etag === undefined) return "none";
+  const t = etag.trim();
+  if (t === "") return "none";
+  if (/^W\//i.test(t)) return "weak";
+  return "strong";
+}

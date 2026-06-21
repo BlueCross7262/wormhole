@@ -31665,6 +31665,13 @@ var RemoteStore = class {
     this.logger?.debug(`[RemoteStore] \uC774\uB3D9: ${resolvedFrom} -> ${resolvedTo}`);
   }
 };
+function classifyEtag(etag) {
+  if (etag === null || etag === void 0) return "none";
+  const t2 = etag.trim();
+  if (t2 === "") return "none";
+  if (/^W\//i.test(t2)) return "weak";
+  return "strong";
+}
 
 // src/sync/machine.ts
 import * as fs4 from "fs/promises";
@@ -31690,6 +31697,16 @@ async function loadOrCreateMachineId(stateDir) {
     throw err;
   }
   return id;
+}
+async function readMachineIdIfExists(stateDir) {
+  const filePath = path6.join(stateDir, "machine-id");
+  try {
+    const content = await fs4.readFile(filePath, "utf-8");
+    const id = content.trim();
+    return id.length > 0 ? id : null;
+  } catch {
+    return null;
+  }
 }
 
 // src/sync/engine.ts
@@ -32209,11 +32226,7 @@ var RemoteLock = class {
    * - 손상: acquiredAt 이 now 보다 CLOCK_SKEW_TOLERANCE_MS 이상 미래 → 잘못 기록된 락으로 간주.
    */
   isExpired(info, now) {
-    if (info.acquiredAt > now + CLOCK_SKEW_TOLERANCE_MS) {
-      return true;
-    }
-    const ttl = typeof info.ttlMs === "number" ? info.ttlMs : this.ttlMs;
-    return info.acquiredAt + ttl <= now;
+    return isLockExpired(info, now, this.ttlMs);
   }
   /**
    * 원격 락 획득 시도. best-effort CAS.
@@ -32309,6 +32322,36 @@ async function withLock(lock2, fn) {
   } finally {
     await lock2.release();
   }
+}
+function isLockExpired(info, now, defaultTtlMs) {
+  if (info.acquiredAt > now + CLOCK_SKEW_TOLERANCE_MS) return true;
+  const ttl = typeof info.ttlMs === "number" ? info.ttlMs : defaultTtlMs;
+  return info.acquiredAt + ttl <= now;
+}
+function classifyLock(raw, now, selfId, defaultTtlMs) {
+  if (raw === null) return { state: "none" };
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return { state: "corrupt" };
+  }
+  const o = parsed;
+  if (typeof o.machineId !== "string" || typeof o.acquiredAt !== "number") {
+    return { state: "corrupt" };
+  }
+  const info = parsed;
+  const ageMs = now - info.acquiredAt;
+  if (info.acquiredAt > now + CLOCK_SKEW_TOLERANCE_MS) {
+    return { state: "corrupt", holder: info.machineId, ageMs };
+  }
+  if (isLockExpired(info, now, defaultTtlMs)) {
+    return { state: "expired", holder: info.machineId, ageMs };
+  }
+  if (selfId !== null && info.machineId === selfId) {
+    return { state: "self", holder: info.machineId, ageMs };
+  }
+  return { state: "held", holder: info.machineId, ageMs };
 }
 
 // src/sync/settings-merge.ts
@@ -33704,9 +33747,11 @@ async function runDoctor(logger2) {
   let config = null;
   let remote = null;
   let keyparamsRaw = null;
+  let keyparamsEtag = null;
   let keyparamsFetched = false;
   let passphrase = null;
   let crypto5 = null;
+  let selfId = null;
   try {
     config = await loadConfig();
     const pwWarn = config.remote.password === "";
@@ -33731,8 +33776,11 @@ async function runDoctor(logger2) {
   } else {
     try {
       remote = new RemoteStore(config.remote, logger2);
-      keyparamsRaw = await remote.getTextIfExists(KEYPARAMS_REMOTE);
+      const kp = await remote.getTextWithETag(KEYPARAMS_REMOTE);
+      keyparamsRaw = kp?.text ?? null;
+      keyparamsEtag = kp?.etag ?? null;
       keyparamsFetched = true;
+      selfId = await readMachineIdIfExists(config.stateDir);
       checks.push({
         name: "WebDAV \uC5F0\uACB0\xB7\uC778\uC99D",
         status: "ok",
@@ -33873,6 +33921,100 @@ async function runDoctor(logger2) {
       name: "transport \uBCF4\uC548",
       status: "ok",
       detail: "https \uB610\uB294 localhost \u2014 \uC804\uC1A1 \uBCF4\uC548 \uC591\uD638"
+    });
+  }
+  if (config === null || !keyparamsFetched) {
+    checks.push({
+      name: "CAS/ETag \uB2A5\uB825",
+      status: "warn",
+      detail: "\uC120\uD589 \uCCB4\uD06C \uC2E4\uD328\uB85C \uBBF8\uAC80\uC99D"
+    });
+  } else if (keyparamsRaw === null) {
+    checks.push({
+      name: "CAS/ETag \uB2A5\uB825",
+      status: "warn",
+      detail: "\uC6D0\uACA9 vault \uBBF8\uCD08\uAE30\uD654 \u2014 CAS \uB2A5\uB825 \uBBF8\uAC80\uC99D. \uCD5C\uCD08 push \uD6C4 \uC7AC\uC2E4\uD589"
+    });
+  } else {
+    const strength = classifyEtag(keyparamsEtag);
+    if (strength === "strong") {
+      checks.push({
+        name: "CAS/ETag \uB2A5\uB825",
+        status: "ok",
+        detail: "\uAC15\uD55C ETag \u2014 \uC870\uAC74\uBD80 PUT(CAS) \uC2E0\uB8B0 \uAC00\uB2A5"
+      });
+    } else if (strength === "weak") {
+      checks.push({
+        name: "CAS/ETag \uB2A5\uB825",
+        status: "warn",
+        detail: "\uC57D\uD55C ETag(W/) \u2014 If-Match \uAC15\uBE44\uAD50 \uC2E4\uD328 \uC704\uD5D8(\uAC00\uC9DC\uCDA9\uB3CC\xB7\uB77D\uC18C\uC2E4). \uC11C\uBC84 ETag \uC815\uCC45 \uD655\uC778"
+      });
+    } else {
+      checks.push({
+        name: "CAS/ETag \uB2A5\uB825",
+        status: "warn",
+        detail: "GET \uC751\uB2F5\uC5D0 ETag \uC5C6\uC74C \u2014 If-Match CAS \uAC00\uB2A5 \uC5EC\uBD80 \uBD88\uD655\uC2E4. \uC11C\uBC84 ETag \uC815\uCC45 \uD655\uC778"
+      });
+    }
+  }
+  if (config === null || remote === null || !keyparamsFetched) {
+    checks.push({
+      name: "\uC6D0\uACA9 \uB77D \uC0C1\uD0DC",
+      status: "warn",
+      detail: "\uC120\uD589 \uCCB4\uD06C \uC2E4\uD328\uB85C \uBBF8\uAC80\uC99D"
+    });
+  } else {
+    try {
+      const lr = await remote.getTextWithETag("lock.json");
+      const cls = classifyLock(lr?.text ?? null, Date.now(), selfId, config.lock.ttlMs);
+      if (cls.state === "none") {
+        checks.push({ name: "\uC6D0\uACA9 \uB77D \uC0C1\uD0DC", status: "ok", detail: "\uC6D0\uACA9 \uB77D \uC5C6\uC74C" });
+      } else if (cls.state === "self") {
+        checks.push({ name: "\uC6D0\uACA9 \uB77D \uC0C1\uD0DC", status: "ok", detail: "\uC790\uAE30 \uC18C\uC720 \uB77D(\uC815\uC0C1)" });
+      } else if (cls.state === "expired") {
+        checks.push({
+          name: "\uC6D0\uACA9 \uB77D \uC0C1\uD0DC",
+          status: "ok",
+          detail: "\uB9CC\uB8CC \uB77D \u2014 \uB2E4\uC74C sync \uAC00 \uD0C8\uCDE8(\uC815\uC0C1)"
+        });
+      } else if (cls.state === "held") {
+        checks.push({
+          name: "\uC6D0\uACA9 \uB77D \uC0C1\uD0DC",
+          status: "warn",
+          detail: `\uD0C0 \uBA38\uC2E0 ${cls.holder?.slice(0, 8)} \uB77D \uBCF4\uC720, ${cls.ageMs}ms \uACBD\uACFC \u2014 \uC9C4\uD589\uC911\uC774\uAC70\uB098 stale`
+        });
+      } else {
+        checks.push({
+          name: "\uC6D0\uACA9 \uB77D \uC0C1\uD0DC",
+          status: "warn",
+          detail: "lock.json \uC190\uC0C1/\uBBF8\uB798\uC2DC\uAC01 \u2014 \uBB34\uC2DC\uB428"
+        });
+      }
+    } catch {
+      checks.push({
+        name: "\uC6D0\uACA9 \uB77D \uC0C1\uD0DC",
+        status: "warn",
+        detail: "lock.json \uC77D\uAE30 \uC2E4\uD328 \u2014 \uBB34\uC2DC\uB428"
+      });
+    }
+  }
+  if (config === null) {
+    checks.push({
+      name: "machine-id",
+      status: "warn",
+      detail: "\uC120\uD589 \uCCB4\uD06C \uC2E4\uD328\uB85C \uBBF8\uAC80\uC99D"
+    });
+  } else if (selfId !== null) {
+    checks.push({
+      name: "machine-id",
+      status: "ok",
+      detail: `machine-id: ${selfId.slice(0, 8)}`
+    });
+  } else {
+    checks.push({
+      name: "machine-id",
+      status: "warn",
+      detail: "machine-id \uC5C6\uC74C \u2014 \uC544\uC9C1 sync \uC804(\uCCAB \uC791\uC5C5 \uC2DC \uC0DD\uC131)"
     });
   }
   const ok = checks.every((c) => c.status !== "fail");

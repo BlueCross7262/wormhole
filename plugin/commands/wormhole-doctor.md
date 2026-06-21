@@ -17,5 +17,8 @@ JSON 결과를 읽고 사용자에게 한국어로 요약한다.
 4. **passphrase↔vault 정합** — 원격 keyparams sentinel 복호화로 passphrase 일치 여부 검증
 5. **vault 상태** — keyparams / manifest 존재 여부, manifestGeneration 및 항목 수
 6. **transport 보안** — 평문 http 사용 시 자격증명 노출 경고 (localhost 제외)
+7. **CAS/ETag 능력** — 원격 keyparams ETag 강도로 조건부 PUT(CAS) 신뢰성 휴리스틱 점검(weak/no-ETag 경고)
+8. **원격 락 상태** — lock.json 보유자·만료·손상 진단(타 머신 유효 락이면 경고)
+9. **machine-id** — 로컬 머신 식별자 존재 여부
 
 실패 항목이 하나라도 있으면 종료 코드가 0이 아니다.

@@ -90,6 +90,10 @@ test("DOC-01: doctor 정상환경 checks 구조 + ok", async (t) => {
   assert.equal(d.ok, !hasFail, "ok === (fail 없음)");
   // 정상환경 + vault 부트스트랩이면 어떤 체크도 fail 아니어야 함.
   assert.ok(!hasFail, `정상환경 doctor 무-fail (statuses: ${d.checks.map((c) => `${c.name}:${c.status}`).join(", ")})`);
+  // 신규 체크 3종 노출 검증.
+  assert.ok(d.checks.some((c) => c.name.includes("ETag")), "CAS/ETag 체크 노출");
+  assert.ok(d.checks.some((c) => c.name.includes("락")), "lock 체크 노출");
+  assert.ok(d.checks.some((c) => c.name.includes("machine-id")), "machine-id 체크 노출");
 });
 
 // ── CGW-03: sync 미리보기 → {pull,push} 합본, resolve 키 부재 ──
