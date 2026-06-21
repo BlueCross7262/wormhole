@@ -1,5 +1,6 @@
 ---
 description: wormhole 충돌 해소
+argument-hint: [--policy preserve-both | latest-wins | manual] [--keys k1,k2] [--dry-run]
 ---
 
 ```bash
