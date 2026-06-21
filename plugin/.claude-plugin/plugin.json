@@ -1,6 +1,6 @@
 {
   "name": "wormhole",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Claude Code 전역 설정 동기화 — MCP 도구(자율 호출) + 슬래시 커맨드(명시 제어)",
   "author": { "name": "BlueCross7262" }
 }
