@@ -9,7 +9,7 @@
 
 ## 1. 목적과 범위
 
-- **목적**: wormhole MCP stdio 서버가 노출하는 6개 도구(`wormhole_status`, `wormhole_dry_run`, `wormhole_push`, `wormhole_pull`, `wormhole_resolve`, `wormhole_sync`)를 실제 MCP 프로토콜 경계에서 블랙박스로 검증한다.
+- **목적**: wormhole MCP stdio 서버가 노출하는 3개 도구(`wormhole_status`, `wormhole_resolve`, `wormhole_sync`)를 실제 MCP 프로토콜 경계에서 블랙박스로 검증한다.
 - **증명 기준**: 본 계획서가 말하는 'proven'(proven=true)은 **무사각 기준** = "모든 mcp-boundary 기능에 그 동작을 행사하는 시나리오가 ≥1개 존재(none=0)" 를 뜻한다. 상세 결과는 §7.8 참조.
 - **범위 IN**:
   - `tools/list` · `tools/call` 직렬화
@@ -38,21 +38,18 @@
 
 ## 3. 검증 대상 표면
 
-### 3.1 6개 도구
+### 3.1 3개 도구
 
 | 도구명 | 종류 | inputSchema 요약 | 반환타입 | confirm 동작 |
 |---|---|---|---|---|
 | `wormhole_status` | 읽기전용 | 파라미터 없음 (빈 object) | `SyncStatus` | 해당 없음 (자율호출) |
-| `wormhole_dry_run` | 읽기전용 | `direction: enum["push","pull"]` (required) | `PushResult` 또는 `PullResult` (dryRun:true) | 해당 없음 (자율호출) |
-| `wormhole_push` | 쓰기 | `confirm: boolean (default false)` optional | `PushResult` | false=미리보기 / true=실행 |
-| `wormhole_pull` | 쓰기 | `confirm: boolean (default false)` optional | `PullResult` | false=미리보기 / true=실행 |
 | `wormhole_resolve` | 쓰기 | `policy: enum 3종 optional`, `keys: array<string> optional`, `confirm: boolean optional` | `ResolveResult` | false=미리보기 / true=실행 |
 | `wormhole_sync` | 쓰기 | `policy: enum 2종("preserve-both","latest-wins") optional`, `confirm: boolean optional` | pull+push (+resolve) 합본 | false=미리보기 / true=실행 |
 
 ### 3.2 confirm 게이트 안전 모델
 
-- **읽기전용 (`wormhole_status` / `wormhole_dry_run`)**: confirm 불필요, Claude 자율호출 허용.
-- **쓰기 4종 (`push` / `pull` / `resolve` / `sync`)**: confirm 기본값 `false` = 미리보기(dryRun), `true` = 실행.
+- **읽기전용 (`wormhole_status`)**: confirm 불필요, Claude 자율호출 허용.
+- **쓰기 2종 (`resolve` / `sync`)**: confirm 기본값 `false` = 미리보기(dryRun), `true` = 실행.
 - **Claude 자율 `confirm:true` 금지**: 쓰기 도구의 실제 실행은 사용자 확인을 거친다.
 
 ### 3.3 주의 사항
@@ -82,7 +79,7 @@
 - **`WRITABLE_WEBDAV` 후보**: dufs / Caddy / Nginx / rclone serve webdav. ETag 강도가 중요한 ELC-08(manifest CAS 소진) · ELC-05(락 CAS)는 강한 ETag 가 필요하다. Apache `mod_dav` 의 weak-ETag 윈도는 `putIfMatch` CAS 를 깨므로 CAS 의존 시나리오에 부적합하다.
 - **`TWO_MACHINE` 구성**: 머신 A/B 를 `HOME` 환경변수와 stateDir 만 분리(별도 임시 디렉터리 2개)하고, 동일 `WEBDAV_URL` + `WEBDAV_USER` + passphrase 로 동일 원격을 공유한다. `settings.json` 특수 라우팅(SMR-08)은 `${HOME}` 토큰화 공간에서 3-way 가 일어나므로 두 HOME 이 실제로 달라야 토큰화/디토큰화 경로가 실측된다.
 - **`NO_ETAG_WEBDAV` 모사**: ELC-06(best-effort PUT 폴백 + warn) 별도 검증용으로 ETag 미반환 서버를 모사한다.
-- **독립 PROPFIND 와이어 관측**: 도구와 별개의 PROPFIND/GET 클라이언트(`webdav` npm 또는 `curl`)를 띄워 `manifest.json` generation, `lock.json` machineId, `blobs/*` 존재를 호출 전후로 비교한다. confirm 게이트 무변경 증명(CGW 차원)과 dry_run 읽기전용(SCH-08)은 이 외부 관측으로 "mock 분기" 가 아닌 "실제 와이어 불변" 을 단언한다.
+- **독립 PROPFIND 와이어 관측**: 도구와 별개의 PROPFIND/GET 클라이언트(`webdav` npm 또는 `curl`)를 띄워 `manifest.json` generation, `lock.json` machineId, `blobs/*` 존재를 호출 전후로 비교한다. confirm 게이트 무변경 증명(CGW 차원)과 sync 미리보기 읽기전용(CGW-01)은 이 외부 관측으로 "mock 분기" 가 아닌 "실제 와이어 불변" 을 단언한다.
 - **실행 순서 · 판정 자동화 팁**: 8절 참조.
 
 ---
@@ -91,7 +88,7 @@
 
 | 차원 | ID | 우선순위 | 제목 |
 |---|---|---|---|
-| **Transport & Registration** | TRX-01 | P0 | tools/list — 정확히 6개 도구 이름·inputSchema 계약 검증 |
+| **Transport & Registration** | TRX-01 | P0 | tools/list — 정확히 3개 도구 이름·inputSchema 계약 검증 |
 | | TRX-02 | P0 | stdout 순수성 — 로그가 stderr 로만 나오고 MCP 프레임 외 stdout 오염 없음 |
 | | TRX-03 | P1 | 부팅 시 MKCOL 부수효과 — 도구 호출 전 원격 디렉터리 생성 PROPFIND 관측 |
 | | TRX-04 | P1 | initialize capabilities — 서버 반환 capabilities 구조 계약 검증 |
@@ -102,27 +99,23 @@
 | | TRX-09 | P2 | .env 로더 host-우선 override — 호스트 주입 env 가 ~/.wormhole/.env 보다 우선 |
 | | TRX-10 | P2 | .env 파서 견고성 — 따옴표 strip·인라인 # 보존·전체줄 주석 무시·ENOENT silent skip |
 | | TRX-11 | P1 | 평문 http 경고 — non-localhost http URL 부팅 시 stderr 경고 1회, localhost 무경고 |
-| | TRX-12 | P1 | tools/list description 와이어 계약 정밀화 — 쓰기4종 confirm 안전문구 1개 부분문자열만, 읽기2종 confirm 부재 |
+| | TRX-12 | P1 | tools/list description 와이어 계약 정밀화 — 쓰기2종 confirm 안전문구 1개 부분문자열만, 읽기전용 1종 confirm 부재 |
 | | TRX-13 | P2 | passphrase 소스 메타 override — WORMHOLE_PASSPHRASE_FILE 지정 시 'passphrase 소스: file', env 시 'env' |
 | | TRX-14 | P2 | normalizeBaseDir 정규화 — 지저분한 remoteBaseDir('//foo/bar//') 부팅 MKCOL 이 '/foo/bar' 컬렉션 생성 |
 | | TRX-15 | P2 | passphraseFile 기본경로 해석 — crypto.passphraseFile='' 이면 <stateDir>/passphrase 로 해석돼 부팅 'file' 소스 |
-| **confirm-gate-realwire** | CGW-01 | P0 | wormhole_push confirm 생략 → 원격 manifest generation 불변 증명 |
-| | CGW-02 | P0 | wormhole_pull confirm:false → 로컬 파일·manifest generation 불변 증명 |
-| | CGW-03 | P0 | wormhole_sync 미리보기 → pull+push 합본 구조 검증 및 와이어 불변 |
-| | CGW-04 | P1 | wormhole_resolve confirm:false → 충돌 목록 반환만, 파일 불변 증명 |
-| | CGW-05 | P1 | 읽기전용 도구에 confirm 전달 → 와이어 무변경 각도 (범위 축소) |
-| | CGW-06 | P1 | confirm:false 연속 후 confirm:true → generation 정확히 +1만 전진 |
-| | CGW-07 | P1 | wormhole_sync confirm:true + pull 충돌 시 resolve 자동 개입 검증 |
-| | CGW-08 | P1 | wormhole_sync confirm:true 비충돌 발산 실적용 — pull·push 실행, resolve 키 부재 |
-| | CGW-09 | P1 | wormhole_sync 미리보기 CORRUPT_REMOTE stop-on-error — pull throw 로 push 미산출, isError |
-| **input-schema-zod** | SCH-01 | P0 | wormhole_dry_run — direction 누락 시 zod 프로토콜 레벨 거부 |
-| | SCH-02 | P0 | wormhole_sync — policy:'manual' 전달 시 zod 거부 (resolve 와 발산) |
-| | SCH-03 | P1 | wormhole_resolve — keys 비배열/비문자열 원소 zod 거부 |
-| | SCH-04 | P0 | confirm 비불리언 전달 시 모든 confirm 수용 도구에서 zod 거부 |
-| | SCH-05 | P2 | wormhole_status 에 추가 프로퍼티 전달 시 통과/무시 여부 확인 |
-| | SCH-06 | P1 | wormhole_resolve keys 빈 배열 + confirm:false — dryRun note 확인 |
-| | SCH-07 | P1 | tools/list inputSchema JSON Schema 자체 유효성 + drift 감지 (범위 축소) |
-| | SCH-08 | P1 | wormhole_dry_run direction:pull 이 PullResult(dryRun:true) 형태 반환 |
+| **confirm-gate-realwire** | CGW-01 | P0 | wormhole_sync 미리보기 → pull+push 합본 구조 검증 및 와이어 불변 |
+| | CGW-02 | P1 | wormhole_resolve confirm:false → 충돌 목록 반환만, 파일 불변 증명 |
+| | CGW-03 | P1 | 읽기전용 도구에 confirm 전달 → 와이어 무변경 각도 (범위 축소) |
+| | CGW-04 | P1 | confirm:false 연속 후 confirm:true → generation 정확히 +1만 전진 |
+| | CGW-05 | P1 | wormhole_sync confirm:true + pull 충돌 시 resolve 자동 개입 검증 |
+| | CGW-06 | P1 | wormhole_sync confirm:true 비충돌 발산 실적용 — pull·push 실행, resolve 키 부재 |
+| | CGW-07 | P1 | wormhole_sync 미리보기 CORRUPT_REMOTE stop-on-error — pull throw 로 push 미산출, isError |
+| **input-schema-zod** | SCH-01 | P0 | wormhole_sync — policy:'manual' 전달 시 zod 거부 (resolve 와 발산) |
+| | SCH-02 | P1 | wormhole_resolve — keys 비배열/비문자열 원소 zod 거부 |
+| | SCH-03 | P0 | confirm 비불리언 전달 시 모든 confirm 수용 도구에서 zod 거부 |
+| | SCH-04 | P2 | wormhole_status 에 추가 프로퍼티 전달 시 통과/무시 여부 확인 |
+| | SCH-05 | P1 | wormhole_resolve keys 빈 배열 + confirm:false — dryRun note 확인 |
+| | SCH-06 | P1 | tools/list inputSchema JSON Schema 자체 유효성 + drift 감지 (범위 축소) |
 | **conflict-policies** | CFL-01 | P0 | 양측 발산 후 wormhole_status 가 conflicts[] 를 완전 구조로 노출 |
 | | CFL-02 | P0 | resolve preserve-both confirm:true — conflictCopies 기록, 원본 무변경 |
 | | CFL-03 | P0 | resolve latest-wins confirm:true — 원격 우선 채택, backupDir 생성 |
@@ -168,13 +161,13 @@
 | 차원 | 시나리오 수 | P0 | P1 | P2 |
 |---|---|---|---|---|
 | Transport & Registration | 15 | 3 | 6 | 6 |
-| confirm-gate-realwire | 9 | 3 | 6 | 0 |
-| input-schema-zod | 8 | 3 | 4 | 1 |
+| confirm-gate-realwire | 7 | 1 | 6 | 0 |
+| input-schema-zod | 6 | 2 | 3 | 1 |
 | conflict-policies | 8 | 3 | 5 | 0 |
 | settings-mcp-routing | 11 | 5 | 3 | 3 |
 | tombstone-convergence | 8 | 2 | 5 | 1 |
 | error-lock-cas | 12 | 6 | 6 | 0 |
-| **합계** | **71** | **25** | **35** | **11** |
+| **합계** | **67** | **22** | **34** | **11** |
 
 ---
 
@@ -184,7 +177,7 @@
 
 > **차원 개요**: MCP stdio 전송 경계에서 서버를 블랙박스로 관측한다. `tools/list` 응답의 도구 수·name·inputSchema JSON Schema 정합성, server name/version 문자열, stdout 의 MCP 프레이밍 순수성, SIGINT/SIGTERM graceful shutdown, `buildEngine` 이 도구 호출 전 원격 MKCOL 부수효과를 완료함을 PROPFIND 로 블랙박스 관측한다.
 
-#### TRX-01 · tools/list — 정확히 6개 도구 이름·inputSchema 계약 검증  `P0`
+#### TRX-01 · tools/list — 정확히 3개 도구 이름·inputSchema 계약 검증  `P0`
 
 - **전제조건**:
   - `WRITABLE_WEBDAV`: 로컬 WebDAV 서버(dufs/Caddy) 기동, 쓰기 가능
@@ -199,20 +192,17 @@
   5. 각 도구의 `inputSchema` 를 JSON Schema 로 파싱하고 필수/선택 파라미터 타입 확인
   6. server 메타(initialize 응답의 `serverInfo`)에서 name/version 필드 추출
 - **기대 결과**:
-  - `tools` 배열 길이 == 6
-  - name 집합 == `{"wormhole_status","wormhole_push","wormhole_pull","wormhole_dry_run","wormhole_resolve","wormhole_sync"}`
+  - `tools` 배열 길이 == 3
+  - name 집합 == `{"wormhole_status","wormhole_resolve","wormhole_sync"}`
   - `wormhole_status.inputSchema`: properties 없음 또는 빈 object (파라미터 없음)
-  - `wormhole_push.inputSchema`: `{confirm: {type:"boolean", default:false}}` optional
-  - `wormhole_pull.inputSchema`: 동일 패턴
-  - `wormhole_dry_run.inputSchema`: `{direction: {enum:["push","pull"]}}` required
   - `wormhole_resolve.inputSchema`: `{policy: enum 3종 optional, keys: array optional, confirm: boolean optional}`
   - `wormhole_sync.inputSchema`: `{policy: enum 2종("preserve-both","latest-wins") optional, confirm: boolean optional}` — `"manual"` 없음
-  - `serverInfo.name == "wormhole"`, `serverInfo.version == "0.1.1"` (package.json 0.1.3 와 불일치 관측)
+  - `serverInfo.name == "wormhole"`, `serverInfo.version == "0.1.1"` (package.json 불일치 관측)
 - **합격 기준**:
-  - `tools` 배열 길이 정확히 6
-  - 6개 도구명 집합 일치 (누락·추가 없음)
+  - `tools` 배열 길이 정확히 3
+  - 3개 도구명 집합 일치 (누락·추가 없음)
   - `wormhole_sync.inputSchema` 에 `"manual"` 이 없음 (wormhole_resolve 와 발산하는 의도적 제한)
-  - `serverInfo.version` 이 `"0.1.1"` 임 (0.1.3 이면 실패 — 코드 불일치 탐지)
+  - `serverInfo.version` 이 `"0.1.1"` 임 (코드 불일치 탐지)
   - `wormhole_status` inputSchema 가 파라미터 없음 계약 유지
 - **신선도**: (a) mock 단위테스트는 registerTool 호출을 직접 검증하지만 실제 MCP 프로토콜 직렬화·tools/list 응답 포맷은 검증하지 않았고, (b)(c) 는 tools/list 를 전혀 호출하지 않았다.
 - **자동화 힌트**: `npx @modelcontextprotocol/inspector --cli node plugin/dist/server.mjs --method tools/list` 의 JSON 출력을 jq 로 파싱하거나, 자체 stdio JSON-RPC 하네스로 응답을 assert 한다.
@@ -355,18 +345,18 @@
   - `WRITABLE_WEBDAV`: 로컬 WebDAV 서버 기동
   - `~/.wormhole/config.json` 유효, 환경변수 설정
   - `plugin/dist/server.mjs` 빌드 완료, initialize 완료
-- **대상 도구**: `wormhole_dry_run` (direction 필수), `wormhole_resolve` (policy enum 제한)
+- **대상 도구**: `wormhole_sync` (confirm 필수), `wormhole_resolve` (policy enum 제한)
 - **절차**:
   1. initialize + tools/list 완료
-  2. tools/call 전송: `{"name":"wormhole_dry_run","arguments":{}}` — direction 누락
+  2. tools/call 전송: `{"name":"wormhole_sync","arguments":{}}` — confirm 누락
   3. 응답 파싱, isError 확인
-  4. tools/call 전송: `{"name":"wormhole_dry_run","arguments":{"direction":"invalid_value"}}` — enum 외 값
+  4. tools/call 전송: `{"name":"wormhole_sync","arguments":{"confirm":"yes"}}` — boolean 외 값
   5. 응답 파싱
   6. tools/call 전송: `{"name":"wormhole_resolve","arguments":{"policy":"manual","confirm":true}}` — policy=manual 은 resolve 에서 허용됨 확인 (wormhole_sync 에는 없는 값)
   7. 응답이 줄바꿈 구분 JSON 메시지로 정상 파싱되는지 확인 (stdout 프레임 유지)
 - **기대 결과**:
-  - direction 누락: `isError:true`, content[0].text 에 zod 검증 오류 메시지 또는 MCP 프로토콜 수준 InvalidParams 에러
-  - direction=invalid_value: 동일하게 에러 응답
+  - confirm 누락: `isError:true`, content[0].text 에 zod 검증 오류 메시지 또는 MCP 프로토콜 수준 InvalidParams 에러
+  - confirm="yes"(string): 동일하게 에러 응답
   - `wormhole_resolve` policy=manual: isError 없이 정상 응답 (resolve 는 manual 허용)
   - 모든 에러 응답이 유효한 JSON-RPC 2.0 응답 프레임 내에 있음 (stdout 프레임 깨지지 않음)
 - **합격 기준**:
@@ -495,39 +485,36 @@
 - **신선도**: 기존 54 및 (a)(b)(c) 는 https 정상 부팅만 다뤘고 평문 http 보안 경고 채널(stderr)과 localhost 예외 분기를 검증하지 않음 — 본 시나리오는 경고 1회·정확 문구·stdout 무오염·localhost 무경고를 동시에 단언한다.
 - **자동화 힌트**: stdout/stderr 분리 캡처가 핵심. non-localhost vs localhost 2회 spawn 비교.
 
-#### TRX-12 · tools/list description 와이어 계약 정밀화 — 쓰기4종 confirm 안전문구 1개 부분문자열만, 읽기2종 confirm 부재  `P1`
+#### TRX-12 · tools/list description 와이어 계약 정밀화 — 쓰기 2종 confirm 안전문구 1개 부분문자열만, 읽기전용 1종 confirm 부재  `P1`
 
-- **갭 클로저**: universeGap(description) — F-WIRE description drift 회귀. tools/list 와이어로 노출되는 6개 도구 description 의 confirm 안전 가이드 문구 존재/부재를 코드 대조 정확값으로만 단언해 거짓양성(과도 부분문자열) 제거
+- **갭 클로저**: universeGap(description) — F-WIRE description drift 회귀. tools/list 와이어로 노출되는 3개 도구 description 의 confirm 안전 가이드 문구 존재/부재를 코드 대조 정확값으로만 단언해 거짓양성(과도 부분문자열) 제거
 - **전제조건**:
   - WRITABLE_WEBDAV 또는 READONLY_WEBDAV: 부팅 성공만 필요(tools/list 는 엔진 동작 무관, 도구 등록만 요구)
   - STDIO_RPC_CLIENT 또는 MCP_INSPECTOR(--cli): tools/list 호출 가능
-  - 정상 config + passphrase 로 buildEngine 성공 → registerAllTools 가 6개 도구 등록 완료
-- **대상 도구**: `wormhole_push`, `wormhole_pull`, `wormhole_resolve`, `wormhole_sync`, `wormhole_status`, `wormhole_dry_run`
+  - 정상 config + passphrase 로 buildEngine 성공 → registerAllTools 가 3개 도구 등록 완료
+- **대상 도구**: `wormhole_status`, `wormhole_resolve`, `wormhole_sync`
 - **절차**:
   1. server.mjs(plugin/dist/server.mjs) 를 child_process.spawn 으로 기동.
   2. stdin: initialize → initialized notification 전송.
   3. tools/list 요청 전송: {"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}} (또는 mcp-inspector --cli tools/list).
-  4. 응답 result.tools[] 에서 6개 도구의 name/description 추출(title 은 부정밀 신호이므로 단언 대상에서 제외 — name+description 만).
-  5. tools[] 길이가 정확히 6 이고 name 집합이 {wormhole_push, wormhole_pull, wormhole_resolve, wormhole_sync, wormhole_status, wormhole_dry_run} 임을 단언.
-  6. 쓰기4종(push/pull/resolve/sync) 각 description 이 부분문자열 '절대 자율적으로 confirm:true 를 넘기지 않는다.' 를 포함함을 단언(이 1개 부분문자열만 — 2차 부분문자열 '안전 기본값: ...' 단언은 제거).
+  4. 응답 result.tools[] 에서 3개 도구의 name/description 추출(title 은 부정밀 신호이므로 단언 대상에서 제외 — name+description 만).
+  5. tools[] 길이가 정확히 3 이고 name 집합이 {wormhole_status, wormhole_resolve, wormhole_sync} 임을 단언.
+  6. 쓰기 2종(resolve/sync) 각 description 이 부분문자열 '절대 자율적으로 confirm:true 를 넘기지 않는다.' 를 포함함을 단언(이 1개 부분문자열만 — 2차 부분문자열 '안전 기본값: ...' 단언은 제거).
   7. wormhole_resolve description 만 추가로 부분문자열 'keys 생략 시 전체 충돌 처리.' 포함을 단언.
-  8. 읽기2종(status/dry_run) 각 description 이 부분문자열 'confirm' 을 포함하지 않음을 단언(대소문자 그대로의 'confirm').
+  8. 읽기전용 1종(status) description 이 부분문자열 'confirm' 을 포함하지 않음을 단언(대소문자 그대로의 'confirm').
 - **기대 결과**:
-  - result.tools[] 길이 = 6, name 집합 = {wormhole_push, wormhole_pull, wormhole_resolve, wormhole_sync, wormhole_status, wormhole_dry_run}
-  - wormhole_push.description = '로컬 변경사항을 원격 WebDAV 로 업로드한다. 안전 기본값: confirm 없이 호출하면 실제 변경 없이 미리보기(dry-run)만 반환한다. 실제 적용은 confirm:true 가 필요하며, 이는 사용자의 명시적 확인이 있을 때만 전달한다 — 절대 자율적으로 confirm:true 를 넘기지 않는다.' (src/tools/push.ts:11-12) → 부분문자열 '절대 자율적으로 confirm:true 를 넘기지 않는다.' 포함
-  - wormhole_pull.description (src/tools/pull.ts:11-12) → 동일 부분문자열 '절대 자율적으로 confirm:true 를 넘기지 않는다.' 포함
+  - result.tools[] 길이 = 3, name 집합 = {wormhole_status, wormhole_resolve, wormhole_sync}
   - wormhole_resolve.description = '충돌 항목을 지정한 정책으로 해소한다. keys 생략 시 전체 충돌 처리. 안전 기본값: ... — 절대 자율적으로 confirm:true 를 넘기지 않는다.' (src/tools/resolve.ts:12-13) → '절대 자율적으로 confirm:true 를 넘기지 않는다.' 및 'keys 생략 시 전체 충돌 처리.' 둘 다 포함
   - wormhole_sync.description (src/tools/sync.ts:15-16) → '절대 자율적으로 confirm:true 를 넘기지 않는다.' 포함
   - wormhole_status.description = '현재 동기화 상태를 조회한다(읽기 전용, 변경 없음). 로컬/원격 diff·충돌·집계를 반환.' (src/tools/status.ts:11-12) → 'confirm' 문자열 부재
-  - wormhole_dry_run.description = 'push 또는 pull 을 실제 변경 없이 계획만 계산해 반환한다(데이터 변경 없음).' (src/tools/dry-run.ts:13) → 'confirm' 문자열 부재
 - **합격 기준**:
-  - 쓰기4종 description 4/4 가 '절대 자율적으로 confirm:true 를 넘기지 않는다.' 포함
-  - wormhole_resolve description 이 추가로 'keys 생략 시 전체 충돌 처리.' 포함(나머지 3종은 이 문구 비포함)
-  - 읽기2종 description 2/2 가 부분문자열 'confirm' 미포함
-  - tools 개수 정확히 6(추가/누락 시 fail), name 집합 정확 일치
-  - 제거 확인: 과도한 2차 부분문자열('안전 기본값: confirm 없이 호출하면 실제 변경 없이 미리보기(dry-run)만 반환한다.') 단언과 6개 title 정확값 단언은 본 정밀화에서 단언 대상이 아님(거짓양성 회피)
-- **신선도**: 기존 67 및 (a)(b)(c) 와 차이: 기존 TRX-12 본문은 쓰기4종에 confirm 안전문구 2개(주 문구 + '안전 기본값: ...' 2차 부분문자열)를 모두 단언하고 6개 title 정확값까지 단언했다. 2차 부분문자열·title 단언은 와이어 계약의 핵심(자율 confirm 금지 가이드)이 아닌 부수 문구라 description 미세 수정 시 거짓양성 fail 을 유발했다. 본 재증명은 코드 대조(push.ts:12 / pull.ts:12 / resolve.ts:13 / sync.ts:16 / status.ts:12 / dry-run.ts:13) 로 핵심 계약 부분문자열만 정밀 단언: 쓰기4종 공통 1개('절대 자율적으로 confirm:true 를 넘기지 않는다.'), resolve 전용 1개('keys 생략 시 전체 충돌 처리.'), 읽기2종 'confirm' 부재. 런타임 confirm 게이트(a)는 동작을, 본 와이어 회귀는 LLM 클라이언트가 읽는 메타데이터 텍스트의 핵심 안전 계약만 감지(재증명 정밀화).
-- **자동화 힌트**: tools/list 1회 호출로 6개 description 추출 후 핵심 부분문자열 단언만. 엔진 실행 불필요. title 비교·2차 부분문자열 비교 코드는 삭제.
+  - 쓰기 2종 description 2/2 가 '절대 자율적으로 confirm:true 를 넘기지 않는다.' 포함
+  - wormhole_resolve description 이 추가로 'keys 생략 시 전체 충돌 처리.' 포함(sync 는 이 문구 비포함)
+  - 읽기전용 1종 description 이 부분문자열 'confirm' 미포함
+  - tools 개수 정확히 3(추가/누락 시 fail), name 집합 정확 일치
+  - 제거 확인: 과도한 2차 부분문자열 단언과 title 정확값 단언은 본 정밀화에서 단언 대상이 아님(거짓양성 회피)
+- **신선도**: 기존 TRX-12 본문은 쓰기 4종에 confirm 안전문구 2개(주 문구 + 2차 부분문자열)를 모두 단언하고 6개 title 정확값까지 단언했다. 도구 표면이 3종으로 축소됐으므로 코드 대조(resolve.ts:13 / sync.ts:16 / status.ts:12) 로 핵심 계약 부분문자열만 정밀 단언: 쓰기 2종 공통 1개('절대 자율적으로 confirm:true 를 넘기지 않는다.'), resolve 전용 1개('keys 생략 시 전체 충돌 처리.'), 읽기전용 1종 'confirm' 부재.
+- **자동화 힌트**: tools/list 1회 호출로 3개 description 추출 후 핵심 부분문자열 단언만. 엔진 실행 불필요. title 비교·2차 부분문자열 비교 코드는 삭제.
 
 ---
 
@@ -643,68 +630,7 @@
 
 > **차원 개요**: confirm 게이트가 실제 원격 와이어에 무변경임을 MCP 도구 경계(stdio JSON-RPC tools/call)에서 증명한다. mock 엔진 분기 테스트(a)와 달리 `server.mjs` 를 실제 프로세스로 띄우고, confirm 생략/false 호출 전후 원격 manifest generation·blob 목록·로컬 파일을 독립 PROPFIND 또는 `wormhole_status` 로 교차확인한다. `confirm:true` 재호출 시에만 generation 이 전진하고 로컬이 변화함을 델타로 판정하여 "안전 기본값" 설계 계약을 블랙박스로 검증한다.
 
-#### CGW-01 · wormhole_push confirm 생략 → 원격 manifest generation 불변 증명  `P0`
-
-- **전제조건**:
-  - `WRITABLE_WEBDAV`: 로컬 dufs/rclone serve 등 쓰기 가능 WebDAV 기동
-  - `~/.wormhole/config.json` + `~/.wormhole/.env` 구성 완료
-  - 로컬 HOME 에 신규 파일 추가(예: `~/.claude/test-gate.md`) — push 대상 존재
-  - `server.mjs` 를 stdio 프로세스로 기동: `node plugin/dist/server.mjs`
-  - `STDIO_RPC_CLIENT` 또는 MCP Inspector 연결
-- **대상 도구**: `wormhole_push`, `wormhole_status`
-- **절차**:
-  1. tools/call: `wormhole_status {}` → 응답의 `structuredContent.manifestGeneration` 값을 `GEN_BEFORE` 로 기록
-  2. tools/call: `wormhole_push {}` (confirm 파라미터 완전 생략) → 응답 전체 캡처
-  3. tools/call: `wormhole_push {"confirm": false}` → 응답 전체 캡처
-  4. tools/call: `wormhole_status {}` → `structuredContent.manifestGeneration` 을 `GEN_AFTER_DRY` 로 기록
-  5. 독립 PROPFIND: WebDAV baseDir/`manifest.json.age` 의 Last-Modified / Content-Length 를 기록
-  6. tools/call: `wormhole_push {"confirm": true}` → 응답 캡처 후 `GEN_AFTER_REAL` 기록
-  7. tools/call: `wormhole_status {}` → `GEN_FINAL` 기록
-- **기대 결과**:
-  - step2 응답: `structuredContent.dryRun === true`, `structuredContent.note` 존재("미리보기" 포함 문자열), isError 없음
-  - step3 응답: `structuredContent.dryRun === true`, `structuredContent.note` 존재
-  - step4 `GEN_AFTER_DRY === GEN_BEFORE` (generation 불변)
-  - step5: `manifest.json.age` Last-Modified·Content-Length 가 step1 시점과 동일(PROPFIND 교차확인)
-  - step6 응답: `structuredContent.dryRun === false`, note 필드 없음, pushed 배열 비어 있지 않음
-  - step7 `GEN_FINAL > GEN_BEFORE` (confirm:true 후 generation 전진)
-- **합격 기준**:
-  - `GEN_AFTER_DRY === GEN_BEFORE` (confirm 없음/false 두 번 모두 generation 불변)
-  - step2·step3 응답에 dryRun:true AND note 문자열 존재
-  - step5 PROPFIND: `manifest.json.age` Content-Length·Last-Modified 불변
-  - `GEN_FINAL > GEN_BEFORE` (confirm:true 후 단 1회 전진)
-- **신선도**: (a)는 mock 엔진 분기만 확인했고 (b)는 엔진 직접호출이었으나, 본 시나리오는 `server.mjs` stdio 경계에서 호출하고 독립 PROPFIND 로 원격 파일 자체의 불변을 측정한다.
-
-#### CGW-02 · wormhole_pull confirm:false → 로컬 파일 및 manifest generation 불변 증명  `P0`
-
-- **전제조건**:
-  - `WRITABLE_WEBDAV` 기동
-  - 머신 A 에서 `wormhole_push confirm:true` 완료 → 원격에 파일 존재
-  - 머신 B(별도 HOME + stateDir, 동일 원격+passphrase) 에서 `server.mjs` 기동
-  - 머신 B 의 타깃 파일 초기 내용을 기록(예: `cat ~/.claude/CLAUDE.md | sha256sum`)
-  - `STDIO_RPC_CLIENT` 연결 (머신 B 기준)
-- **대상 도구**: `wormhole_pull`, `wormhole_status`
-- **절차**:
-  1. 머신 B: tools/call `wormhole_status {}` → `GEN_BEFORE`, items 목록의 remoteAdded/remoteModified 키 목록 기록
-  2. 머신 B: tools/call `wormhole_pull {}` (confirm 생략) → 응답 캡처
-  3. 머신 B: 대상 파일 체크섬 재측정(Bash: `sha256sum ~/.claude/CLAUDE.md` 등)
-  4. 머신 B: tools/call `wormhole_status {}` → `GEN_AFTER_DRY` 확인
-  5. 머신 B: tools/call `wormhole_pull {"confirm": true}` → 응답 캡처
-  6. 머신 B: 대상 파일 체크섬 재측정
-  7. 머신 B: tools/call `wormhole_status {}` → `GEN_FINAL`, items 목록 확인
-- **기대 결과**:
-  - step2 응답: `structuredContent.dryRun === true`, note 존재, applied 배열에 예상 키 나열
-  - step3: 체크섬이 step1 이전 값과 동일(파일 미변경)
-  - step4: `GEN_AFTER_DRY === GEN_BEFORE`
-  - step5 응답: `structuredContent.dryRun === false`, applied 배열 비어 있지 않음, backupDir 존재
-  - step6: 체크섬이 머신 A 원본과 일치(실제 적용 확인)
-  - step7: `summary.remoteAdded`/`remoteModified === 0` (수렴)
-- **합격 기준**:
-  - step3 체크섬 === step1 이전 체크섬 (confirm:false 후 로컬 파일 불변)
-  - `GEN_AFTER_DRY === GEN_BEFORE`
-  - step6 체크섬 !== step1 이전 체크섬 AND === 원격 원본 (confirm:true 후 적용)
-- **신선도**: (a)는 mock 으로 dryRun 분기만, (b)는 엔진 직접호출로 단일 머신이었으나, 본 시나리오는 2-머신 환경에서 MCP 도구 경계를 통해 로컬 파일 체크섬 불변을 직접 측정한다.
-
-#### CGW-03 · wormhole_sync 미리보기 → pull+push 합본 구조 검증 및 와이어 불변 확인  `P0`
+#### CGW-01 · wormhole_sync 미리보기 → pull+push 합본 구조 검증 및 와이어 불변 확인  `P0`
 
 - **전제조건**:
   - `TWO_MACHINE`: 머신 A(원격에 파일 있음) + 머신 B(독립 HOME, 원격과 diff 있음)
@@ -736,7 +662,7 @@
 - **신선도**: (b)는 엔진 직접호출 단일 해피패스였으나, 본 시나리오는 `wormhole_sync` 의 미리보기 응답 구조(pull+push 합본)와 confirm:true 비교를 MCP 도구 경계에서 교차 검증한다.
 - **자동화 힌트**: `STDIO_RPC_CLIENT` 로 JSON-RPC 배치 호출 가능. PROPFIND 는 `curl -X PROPFIND -H 'Depth:0' <url>/manifest.json.age` 로 Content-Length·Last-Modified 파싱.
 
-#### CGW-04 · wormhole_resolve confirm:false → 충돌 목록 반환만, 로컬·원격 파일 불변 증명  `P1`
+#### CGW-02 · wormhole_resolve confirm:false → 충돌 목록 반환만, 로컬·원격 파일 불변 증명  `P1`
 
 - **전제조건**:
   - `TWO_MACHINE`: 머신 A와 B가 동일 키(예: `.claude/CLAUDE.md`)를 각각 독립 수정하여 conflict 상태 유발
@@ -772,7 +698,7 @@
     5. 충돌 해소 확인이 목적이면 별도 latest-wins 케이스로 분리한다(latest-wins 는 `writeState` 로 watermark 전진 → conflicts 0)
 - **신선도**: (a)는 mock 분기로 confirm 게이트만, (b)는 충돌 경로 미검증이었으나, 본 시나리오는 실제 충돌 상태에서 resolve dry run 이 로컬·원격에 아무 사본도 생성하지 않음을 파일시스템 레벨로 증명한다.
 
-#### CGW-05 · wormhole_status·wormhole_dry_run 에 confirm 전달 → 와이어 무변경 각도만 유지 (범위 축소)  `P1`
+#### CGW-03 · wormhole_status 에 confirm 전달 → 와이어 무변경 각도만 유지 (범위 축소)  `P1`
 
 > **overlaps 재서술**: SCH-05(미선언 프로퍼티 strip/reject)와 핵심 질문이 겹쳐, 본 시나리오는 **confirm 전달이 원격 generation 을 불변으로 두는가(와이어 무변경) 각도만 유지** 한다. 미선언 프로퍼티 strip/reject 동작 자체는 SCH-05 로 일원화한다. 시나리오는 삭제하지 않고 범위만 축소한다.
 
@@ -780,59 +706,54 @@
   - `WRITABLE_WEBDAV` 기동 (읽기전용 `READONLY_WEBDAV` 도 병용 가능)
   - `server.mjs` stdio 기동
   - `STDIO_RPC_CLIENT` 연결
-- **대상 도구**: `wormhole_status`, `wormhole_dry_run`
+- **대상 도구**: `wormhole_status`
 - **절차**:
   1. tools/call: `wormhole_status {"confirm": true}` → 응답 캡처
   2. tools/call: `wormhole_status {"confirm": false}` → 응답 캡처
-  3. tools/call: `wormhole_dry_run {"direction": "push", "confirm": true}` → 응답 캡처
-  4. tools/call: `wormhole_dry_run {"direction": "pull", "confirm": false}` → 응답 캡처
-  5. tools/call: `wormhole_dry_run {"direction": "push"}` (정상 호출) → 응답 캡처
-  6. 호출 전후 독립 `wormhole_status` 로 원격 manifest generation 불변 교차확인
+  3. 호출 전후 독립 `wormhole_status` 로 원격 manifest generation 불변 교차확인
 - **기대 결과**:
-  - step1~4: confirm 추가 파라미터가 원격 와이어에 어떤 효과도 미치지 않음 — 실제 write 발생 없음
-  - step5: `structuredContent.dryRun === true`, isError 없음
-  - step1~4 어느 호출도 원격 manifest generation 을 변경하지 않음
+  - step1~2: confirm 추가 파라미터가 원격 와이어에 어떤 효과도 미치지 않음 — 실제 write 발생 없음
+  - step1~2 어느 호출도 원격 manifest generation 을 변경하지 않음
 - **합격 기준**:
-  - **(범위 축소 핵심)** step1~4 어느 호출도 원격 manifest generation 을 변경하지 않음(`wormhole_status` 로 교차확인) — 와이어 무변경
-  - step5: dryRun:true 결과 반환
+  - **(범위 축소 핵심)** step1~2 어느 호출도 원격 manifest generation 을 변경하지 않음(`wormhole_status` 로 교차확인) — 와이어 무변경
   - 미선언 프로퍼티의 strip vs reject 동작 판정은 본 시나리오 범위 밖이며 SCH-05 에서 일원화 검증
 - **신선도**: (a)는 inputSchema 거부를 mock 에서만, (b)는 이 경로 미검증이었으나, 본 시나리오는 읽기전용 도구에 confirm 을 실제로 전달했을 때 원격 와이어가 불변임을 서버 경계에서 확인한다.
 - **자동화 힌트**: MCP Inspector 의 'Extra parameters' 입력란에 `confirm:true` 를 추가하여 제출. 호출 전후 독립 PROPFIND 로 manifest generation 불변 확인.
 
-#### CGW-06 · confirm:false 연속 호출 후 confirm:true → generation 정확히 +1만 전진 (이중 쓰기 부재 증명)  `P1`
+#### CGW-04 · confirm:false 연속 호출 후 confirm:true → generation 정확히 +1만 전진 (이중 쓰기 부재 증명)  `P1`
 
 - **전제조건**:
   - `WRITABLE_WEBDAV` 기동
   - 로컬에 push 대상 파일 3개 이상 준비
   - `server.mjs` stdio 기동
   - `STDIO_RPC_CLIENT` 연결
-- **대상 도구**: `wormhole_push`, `wormhole_status`
+- **대상 도구**: `wormhole_sync`, `wormhole_status`
 - **절차**:
   1. tools/call `wormhole_status {}` → `GEN_0` 기록
-  2. tools/call `wormhole_push {}` → 응답 캡처 (dry #1)
-  3. tools/call `wormhole_push {"confirm": false}` → 응답 캡처 (dry #2)
-  4. tools/call `wormhole_push {}` → 응답 캡처 (dry #3)
+  2. tools/call `wormhole_sync {}` (confirm 생략) → 응답 캡처 (미리보기 #1)
+  3. tools/call `wormhole_sync {"confirm": false}` → 응답 캡처 (미리보기 #2)
+  4. tools/call `wormhole_sync {}` (confirm 생략) → 응답 캡처 (미리보기 #3)
   5. tools/call `wormhole_status {}` → `GEN_AFTER_3_DRY` 확인
-  6. tools/call `wormhole_push {"confirm": true}` → 응답 캡처, `manifestGeneration` 필드 기록(`GEN_RESULT`)
+  6. tools/call `wormhole_sync {"confirm": true}` → 응답 캡처, `push.manifestGeneration` 필드 기록(`GEN_RESULT`)
   7. tools/call `wormhole_status {}` → `GEN_AFTER_REAL` 확인
-  8. tools/call `wormhole_push {"confirm": true}` → 응답 캡처 (변경 없는 재push)
+  8. tools/call `wormhole_sync {"confirm": true}` → 응답 캡처 (변경 없는 재sync)
   9. tools/call `wormhole_status {}` → `GEN_FINAL` 확인
 - **기대 결과**:
-  - step2~4 응답: dryRun:true, note 존재
-  - step5: `GEN_AFTER_3_DRY === GEN_0` (3회 dry 후 불변)
-  - step6 응답: dryRun:false, pushed 비어있지 않음, `manifestGeneration === GEN_0 + 1`
+  - step2~4 응답: `pull.dryRun===true` AND `push.dryRun===true`, note 존재
+  - step5: `GEN_AFTER_3_DRY === GEN_0` (3회 미리보기 후 불변)
+  - step6 응답: `push.dryRun===false`, push.pushed 비어있지 않음, `push.manifestGeneration === GEN_0 + 1`
   - step7: `GEN_AFTER_REAL === GEN_0 + 1`
-  - step8 응답: pushed 빈 배열, deleted 빈 배열 (변경 없으면 manifest 쓰기 생략 — engine.ts 430행 early return)
-  - step9: `GEN_FINAL === GEN_AFTER_REAL` (재push 후 generation 불변)
+  - step8 응답: push.pushed 빈 배열, push.deleted 빈 배열 (변경 없으면 manifest 쓰기 생략 — engine.ts 430행 early return)
+  - step9: `GEN_FINAL === GEN_AFTER_REAL` (재sync 후 generation 불변)
 - **합격 기준**:
-  - `GEN_AFTER_3_DRY === GEN_0` (3회 dry run 이 generation 에 무영향)
+  - `GEN_AFTER_3_DRY === GEN_0` (3회 미리보기가 generation 에 무영향)
   - `GEN_AFTER_REAL === GEN_0 + 1` (confirm:true 1회 후 정확히 +1)
-  - `step8 pushed.length === 0` AND `GEN_FINAL === GEN_AFTER_REAL` (멱등성 확인)
-  - step6 응답의 `manifestGeneration === GEN_AFTER_REAL` (반환값과 실제 상태 일치)
-- **신선도**: (b)는 두 번째 pull 의 no-op 멱등만 확인했으나, 본 시나리오는 N회 dry run 이 generation 누적을 일으키지 않고 confirm:true 단일 호출이 정확히 +1만 전진시킴을 수치로 증명한다.
-- **자동화 힌트**: 각 단계 응답을 `JSON.parse(content[0].text).manifestGeneration` 으로 추출하여 산술 비교 자동화 가능.
+  - `step8 push.pushed.length === 0` AND `GEN_FINAL === GEN_AFTER_REAL` (멱등성 확인)
+  - step6 응답의 `push.manifestGeneration === GEN_AFTER_REAL` (반환값과 실제 상태 일치)
+- **신선도**: (b)는 두 번째 pull 의 no-op 멱등만 확인했으나, 본 시나리오는 N회 미리보기가 generation 누적을 일으키지 않고 confirm:true 단일 호출이 정확히 +1만 전진시킴을 수치로 증명한다.
+- **자동화 힌트**: 각 단계 응답을 `JSON.parse(content[0].text).push.manifestGeneration` 으로 추출하여 산술 비교 자동화 가능.
 
-#### CGW-07 · wormhole_sync confirm:true + pull 충돌 발생 시 resolve 자동 개입 → 각 단계 structuredContent 구조 및 와이어 효과 검증  `P1`
+#### CGW-05 · wormhole_sync confirm:true + pull 충돌 발생 시 resolve 자동 개입 → 각 단계 structuredContent 구조 및 와이어 효과 검증  `P1`
 
 - **전제조건**:
   - `TWO_MACHINE`: 머신 A와 B 동일 키 충돌 상태 유발(CGW-04 precondition 과 동일)
@@ -863,15 +784,15 @@
 - **신선도**: (a)는 sync tool 의 confirm 분기를 mock 에서만, (b)는 충돌 경로·sync 복합 실행 미검증이었으나, 본 시나리오는 충돌 존재 시 sync confirm:true 가 pull→resolve→push 세 단계를 실제 실행하고 `.conflict-*` 사본이 물리적으로 생성됨을 MCP 도구 경계에서 end-to-end 검증한다.
 - **자동화 힌트**: step6 은 Bash 도구로 `ls ~/.claude/*.conflict-* 2>/dev/null | wc -l` 실행 후 > 0 판정.
 
-#### CGW-08 · wormhole_sync confirm:true 비충돌 발산 실적용 — pull·push 실행, resolve 키 부재  `P1`
+#### CGW-06 · wormhole_sync confirm:true 비충돌 발산 실적용 — pull·push 실행, resolve 키 부재  `P1`
 
 - **갭 클로저**: universeGap:sync-no-conflict-apply — sync.ts confirm:true 경로에서 pull.conflicts.length>0 가 false 일 때 resolve 를 건너뛰고 pull→push 만 실제 적용하는 비충돌 실적용 분기
 - **전제조건**:
   - TWO_MACHINE: 두 HOME + 별도 stateDir, 동일 원격 WebDAV(WRITABLE_WEBDAV) + 동일 passphrase
-  - 머신A에서 정상 부팅 후 wormhole_push{confirm:true} 1회로 원격 매니페스트 베이스라인 수립(사전 status 의 manifestGeneration 값=베이스라인 기록)
+  - 머신A에서 정상 부팅 후 wormhole_sync{confirm:true} 1회로 원격 매니페스트 베이스라인 수립(사전 status 의 manifestGeneration 값=베이스라인 기록)
   - 발산 상태를 비충돌로 구성: 머신A 로컬 ~/.claude/ 내 동기대상 1개를 신규 추가(로컬만 변경, 원격 미반영). 동일 키를 양쪽이 동시 변경하지 않아 충돌이 생기지 않도록 함
   - STDIO_RPC_CLIENT 또는 MCP_INSPECTOR 로 머신A server.mjs 부팅 성공(ensureCryptoReady 통과)
-- **대상 도구**: `wormhole_sync`, `wormhole_status`, `wormhole_push`
+- **대상 도구**: `wormhole_sync`, `wormhole_status`
 - **절차**:
   1. 머신A: tools/call wormhole_status {} 로 added/modified 1건·conflicts 0건 사전 확인
   2. 머신A: tools/call wormhole_sync {"confirm": true} (policy 생략 → 기본 preserve-both)
@@ -892,7 +813,7 @@
 - **신선도**: 기존 CGW-07(confirm:true 충돌 자동개입 — resolve 키 존재)과 정반대로, 충돌 0건이라 resolve 분기를 건너뛰고 pull→push 만 실적용되어 payload 에 resolve 키가 없음을 검증한다 — (a)(b)(c) 미리보기/단일도구가 아닌 복합 실행 비충돌 경로. (critic 교정 반영)
 - **자동화 힌트**: structuredContent 의 Object.keys 정렬 비교로 resolve 부재를 단정. push.manifestGeneration 전진은 sync 직전 status 호출값과 수치 비교.
 
-#### CGW-09 · wormhole_sync 미리보기(confirm 생략) CORRUPT_REMOTE stop-on-error — pull 단계 throw 로 push 미산출, isError  `P1`
+#### CGW-07 · wormhole_sync 미리보기(confirm 생략) CORRUPT_REMOTE stop-on-error — pull 단계 throw 로 push 미산출, isError  `P1`
 
 - **갭 클로저**: universeGap:sync-preview-stop-on-error — sync.ts confirm 생략 미리보기 분기(line26-27)에서 engine.pull({dryRun:true}) 가 throw 하면 engine.push({dryRun:true}) 가 await 되지 않아 push 미리보기 미계산 → 핸들러 catch → isError:true
 - **전제조건**:
@@ -924,35 +845,7 @@
 
 > **차원 개요**: MCP 도구 경계에서 zod inputSchema 가 실제로 유효하지 않은 인자를 차단하고, 유효한 인자는 엔진에 도달시키는지를 검증한다. stdio JSON-RPC `tools/call` 메시지를 직접 전송하여 protocol-level 거부(MCP 에러 응답) 대 handler-level isError 를 구분하고, 엔진 미도달을 원격 상태 불변으로 증명한다. mock 엔진이 아닌 실제 `server.mjs` 프로세스 + 실제(또는 인메모리) WebDAV 를 사용하므로 (a) mock 단위테스트와 근본적으로 다르다.
 
-#### SCH-01 · wormhole_dry_run — direction 누락 시 zod 프로토콜 레벨 거부  `P0`
-
-- **전제조건**:
-  - `WRITABLE_WEBDAV`: 로컬 dufs/rclone serve WebDAV 구동, `~/.wormhole/config.json` + `.env` 설정 완료
-  - `STDIO_RPC_CLIENT`: stdio JSON-RPC 클라이언트(`node -e` 또는 `@modelcontextprotocol/inspector`)로 `server.mjs` 기동
-  - 원격 remoteBaseDir 초기화 완료(`wormhole_status` 한 번 호출 성공 확인)
-- **대상 도구**: `wormhole_dry_run`
-- **절차**:
-  1. `server.mjs` 를 stdio 모드로 기동: `node plugin/dist/server.mjs`
-  2. initialize 핸드셰이크 전송: `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"0"}}}`
-  3. tools/list 호출하여 `wormhole_dry_run` 등록 확인
-  4. direction 없이 호출: `{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"wormhole_dry_run","arguments":{}}}`
-  5. 응답 수신 후 error 필드 또는 `result.isError` 값 기록
-  6. direction 에 오enum 전달: `{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"wormhole_dry_run","arguments":{"direction":"sideways"}}}`
-  7. 응답 수신 후 동일 필드 기록
-  8. PROPFIND 로 원격 blobs 디렉터리 파일 수 확인 — 두 호출 모두 변화 없음 검증
-- **기대 결과**:
-  - id:2 응답: `result.isError===true` 또는 JSON-RPC error 객체 포함, content[0].text 에 zod/validation 관련 메시지
-  - id:3 응답: 동일 패턴(오enum 'sideways' 거부)
-  - 원격 blobs/ PROPFIND 파일 수 불변 — 엔진 push/pull 미도달 증명
-  - `engine.push` / `engine.pull` 이 호출되지 않았으므로 원격 `manifest.json.age` ETag 불변
-- **합격 기준**:
-  - 두 응답 모두 `isError===true` 이거나 JSON-RPC level error 코드 포함
-  - 원격 blobs 파일 수 검증 전후 동일(PROPFIND multistatus 아이템 수)
-  - `direction:'push'` 로 동일 id 재호출 시 정상 PushResult 반환 — zod 수용 확인
-- **신선도**: (a) mock 단위테스트는 MockEngine 으로 분기만 확인; 본 시나리오는 실제 `server.mjs` stdio 에 raw JSON-RPC 를 전송하여 MCP SDK zod 파이프라인 전체가 거부를 실제 와이어 효과 없이 처리하는지 검증한다.
-- **자동화 힌트**: node 스크립트로 `child_process.spawn('node', ['plugin/dist/server.mjs'])` 후 stdin/stdout 스트림에 JSON-RPC 라인 전송, 정규식으로 isError 파싱. PROPFIND 는 axios/fetch 로 WebDAV URL 직접 조회.
-
-#### SCH-02 · wormhole_sync — policy:'manual' 전달 시 zod 거부 (resolve 와 발산)  `P0`
+#### SCH-01 · wormhole_sync — policy:'manual' 전달 시 zod 거부 (resolve 와 발산)  `P0`
 
 - **전제조건**:
   - `WRITABLE_WEBDAV`: 구동 및 config 설정 완료
@@ -979,7 +872,7 @@
 - **신선도**: (a)에서 sync 도구의 policy enum 이 'manual' 을 제외함을 mock 으로만 확인; 본 시나리오는 실제 MCP 경계에서 resolve 와 sync 의 enum 범위 발산을 대조 호출로 증명한다.
 - **자동화 힌트**: 동일 프로세스에 순차 JSON-RPC 전송 후 id 별 응답 파싱. Jest/vitest expect 로 isError 필드 단언.
 
-#### SCH-03 · wormhole_resolve — keys 비배열/비문자열 원소 zod 거부  `P1`
+#### SCH-02 · wormhole_resolve — keys 비배열/비문자열 원소 zod 거부  `P1`
 
 - **전제조건**:
   - `WRITABLE_WEBDAV`: 구동 및 config 설정 완료
@@ -1006,37 +899,35 @@
 - **신선도**: (b) e2e 해피패스는 keys 파라미터 검증을 전혀 다루지 않음; 본 시나리오는 `z.array(z.string())` 의 원소 레벨 타입 검사를 실제 MCP 경계에서 3종 비유효 케이스로 검증한다.
 - **자동화 힌트**: 각 케이스 JSON-RPC id 분리, 응답 배열 순회하며 isError 단언. vitest `test.each` 로 케이스 매트릭스화 가능.
 
-#### SCH-04 · confirm 비불리언(문자열 'true', 숫자 1) 전달 시 모든 confirm 수용 도구에서 zod 거부  `P0`
+#### SCH-03 · confirm 비불리언(문자열 'true', 숫자 1) 전달 시 모든 confirm 수용 도구에서 zod 거부  `P0`
 
 - **전제조건**:
   - `WRITABLE_WEBDAV`: 구동 및 config 설정 완료
   - `STDIO_RPC_CLIENT`: `server.mjs` 기동 + initialize 완료
-  - 원격에 업로드할 로컬 파일(`.claude/CLAUDE.md` 등) 존재
-- **대상 도구**: `wormhole_push`, `wormhole_pull`, `wormhole_resolve`, `wormhole_sync`
+  - 원격에 동기화할 로컬 파일(`.claude/CLAUDE.md` 등) 존재
+- **대상 도구**: `wormhole_resolve`, `wormhole_sync`
 - **절차**:
-  1. `wormhole_push` 에 confirm:'true'(문자열) 전달: `{"name":"wormhole_push","arguments":{"confirm":"true"}}`
+  1. `wormhole_resolve` 에 confirm:'true'(문자열) 전달: `{"name":"wormhole_resolve","arguments":{"confirm":"true"}}`
   2. 응답 기록
-  3. `wormhole_push` 에 confirm:1(숫자) 전달: `{"name":"wormhole_push","arguments":{"confirm":1}}`
+  3. `wormhole_resolve` 에 confirm:1(숫자) 전달: `{"name":"wormhole_resolve","arguments":{"confirm":1}}`
   4. 응답 기록
-  5. `wormhole_pull` 에 confirm:"true" 전달, 응답 기록
-  6. `wormhole_resolve` 에 confirm:"true" 전달, 응답 기록
-  7. `wormhole_sync` 에 confirm:"true" 전달, 응답 기록
-  8. 비교군: `wormhole_push` 에 confirm:true(불리언) 전달 후 PROPFIND 로 원격 변화 확인
-  9. 비교군: `wormhole_push` 에 confirm 생략 후 `structuredContent.dryRun===true`, note 필드 존재 확인
+  5. `wormhole_sync` 에 confirm:"true" 전달, 응답 기록
+  6. 비교군: `wormhole_sync` 에 confirm:true(불리언) 전달 후 PROPFIND 로 원격 변화 확인
+  7. 비교군: `wormhole_sync` 에 confirm 생략 후 `structuredContent.pull.dryRun===true`, note 필드 존재 확인
 - **기대 결과**:
-  - confirm:"true" 4개 도구 모두: `isError===true` 또는 protocol error (z.boolean() 거부)
-  - confirm:1 push: `isError===true` (숫자는 z.boolean() 거부)
-  - confirm:true(불리언) push: `isError===false`, dryRun===false, pushed 배열 포함 — 실제 업로드 발생
-  - confirm 생략 push: `isError===false`, dryRun===true, note 필드 포함
+  - confirm:"true" 2개 도구(resolve·sync) 모두: `isError===true` 또는 protocol error (z.boolean() 거부)
+  - confirm:1 resolve: `isError===true` (숫자는 z.boolean() 거부)
+  - confirm:true(불리언) sync: `isError===false`, dryRun===false — 실제 동기화 발생
+  - confirm 생략 sync: `isError===false`, pull.dryRun===true, note 필드 포함
 - **합격 기준**:
-  - 문자열/숫자 confirm 케이스 5개 모두 `isError===true`
-  - confirm:true 불리언만 엔진 도달 — PROPFIND 원격 blobs 파일 수 증가로 증명
-  - confirm 생략 케이스 dryRun===true 이고 PROPFIND 파일 수 불변
-  - 4개 도구에서 동일 거부 패턴 — confirm 검증이 핸들러별이 아닌 zod 레이어에서 일관 적용됨을 증명
+  - 문자열/숫자 confirm 케이스 3개 모두 `isError===true`
+  - confirm:true 불리언만 엔진 도달 — PROPFIND 원격 generation 변화로 증명
+  - confirm 생략 케이스 pull.dryRun===true 이고 PROPFIND 불변
+  - 2개 도구에서 동일 거부 패턴 — confirm 검증이 핸들러별이 아닌 zod 레이어에서 일관 적용됨을 증명
 - **신선도**: (a) mock 단위테스트는 confirm 분기를 `confirm!==true` 조건으로만 검증; 본 시나리오는 타입 강제변환(coercion) 없이 비불리언이 거부되는지를 실제 MCP 경계 + 원격 와이어 효과로 검증한다.
-- **자동화 힌트**: PROPFIND 응답 multistatus 파싱으로 파일 수 비교. confirm:true 전 후 파일 수 delta 로 push 도달 여부 단언.
+- **자동화 힌트**: PROPFIND 응답 multistatus 파싱으로 generation 비교. confirm:true 전후 delta 로 sync 도달 여부 단언.
 
-#### SCH-05 · wormhole_status 에 추가 프로퍼티 전달 시 통과 또는 무시 여부 확인  `P2`
+#### SCH-04 · wormhole_status 에 추가 프로퍼티 전달 시 통과 또는 무시 여부 확인  `P2`
 
 > **(일원화 지점)** 미선언 프로퍼티 strip/reject 동작 및 null arguments 처리(MCP SDK zod strip 정책)는 본 시나리오로 일원화한다. CGW-05 는 와이어 무변경 각도만 다룬다.
 
@@ -1066,7 +957,7 @@
 - **신선도**: (a)에서 도구 등록 수만 확인; 본 시나리오는 파라미터 없는 도구의 추가 프로퍼티/null arguments 처리를 실제 MCP 경계에서 확인해 MCP SDK zod strip 정책을 문서화한다.
 - **자동화 힌트**: 추가 프로퍼티 케이스 결과를 테스트 레포트에 기록 후 subsequent 릴리스와 비교하여 SDK 버전 업그레이드 시 행동 변화 감지.
 
-#### SCH-06 · wormhole_resolve keys 빈 배열 + confirm:false — dryRun note 포함 확인 및 엔진 호출 증명  `P1`
+#### SCH-05 · wormhole_resolve keys 빈 배열 + confirm:false — dryRun note 포함 확인 및 엔진 호출 증명  `P1`
 
 - **전제조건**:
   - `WRITABLE_WEBDAV`: 구동 및 config 설정 완료
@@ -1095,22 +986,22 @@
 - **신선도**: (b) e2e 에서 resolve 는 미호출; 본 시나리오는 keys 빈배열/생략의 zod optional 처리 + dryRun note 자동 부가를 실제 MCP 경계에서 검증하며 manual policy 가 resolve 에서만 유효함을 재확인한다.
 - **자동화 힌트**: keys=undefined(생략)와 keys=[] 응답을 JSON.stringify 후 resolved/conflictCopies/backupDir 필드만 deep-equal 단언.
 
-#### SCH-07 · tools/list 응답 — inputSchema JSON Schema 자체 유효성 + 릴리스간 snapshot drift 감지 (범위 축소)  `P1`
+#### SCH-06 · tools/list 응답 — inputSchema JSON Schema 자체 유효성 + 릴리스간 snapshot drift 감지 (범위 축소)  `P1`
 
-> **overlaps 재서술**: TRX-01 이 이미 6개 도구 inputSchema 의 enum/required 재확인을 동형으로 검증한다. 단순 enum/required 재확인은 TRX-01 로 흡수하고, 본 시나리오는 **ajv 로 반환 JSON Schema 자체의 유효성 검증 + 릴리스간 snapshot drift 감지** 로 범위를 축소한다. 시나리오는 삭제하지 않고 차별화된 범위로 남긴다.
+> **overlaps 재서술**: TRX-01 이 이미 3개 도구 inputSchema 의 enum/required 재확인을 동형으로 검증한다. 단순 enum/required 재확인은 TRX-01 로 흡수하고, 본 시나리오는 **ajv 로 반환 JSON Schema 자체의 유효성 검증 + 릴리스간 snapshot drift 감지** 로 범위를 축소한다. 시나리오는 삭제하지 않고 차별화된 범위로 남긴다.
 
 - **전제조건**:
   - `WRITABLE_WEBDAV`: 구동 및 config 설정 완료
   - `STDIO_RPC_CLIENT`: `server.mjs` 기동 + initialize 완료
-- **대상 도구**: `wormhole_status`, `wormhole_push`, `wormhole_pull`, `wormhole_resolve`, `wormhole_dry_run`, `wormhole_sync`
+- **대상 도구**: `wormhole_status`, `wormhole_resolve`, `wormhole_sync`
 - **절차**:
   1. tools/list 호출: `{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}`
-  2. 응답의 tools 배열에서 6개 도구의 inputSchema 추출
+  2. 응답의 tools 배열에서 3개 도구의 inputSchema 추출
   3. **ajv 로 각 inputSchema 를 JSON Schema(draft) 메타스키마에 대해 컴파일하여 스키마 자체가 유효한 JSON Schema 인지 검증** (zod→JSON Schema 변환 산출물 무결성)
   4. **tools/list 응답 전체를 Jest/vitest snapshot 으로 저장** 후, 릴리스 간 비교로 inputSchema drift(필드 추가/삭제/타입 변경) 감지
   5. (enum/required 값 자체의 정합성 단언은 TRX-01 로 위임 — 본 시나리오 비대상)
 - **기대 결과**:
-  - 6개 inputSchema 모두 ajv `compile()` 에서 예외 없이 통과(유효한 JSON Schema)
+  - 3개 inputSchema 모두 ajv `compile()` 에서 예외 없이 통과(유효한 JSON Schema)
   - snapshot 저장 성공, 후속 릴리스에서 drift 발생 시 snapshot mismatch 로 감지
 - **합격 기준**:
   - **(범위 축소 핵심)** 반환된 JSON Schema 자체가 ajv 로 유효성 검증을 통과 — zod→JSON Schema 변환 결과 무결성
@@ -1118,32 +1009,6 @@
   - 단순 enum/required 재확인은 TRX-01 에서 검증하며 본 시나리오는 중복하지 않음
 - **신선도**: (a) mock 단위테스트는 등록 여부만 확인, zod→JSON Schema 변환 결과의 정확성을 미검증; 본 시나리오는 tools/list 반환 JSON Schema 를 ajv 로 검증하고 snapshot drift 를 감지해 API 소비자 관점에서 계약 안정성을 보장한다.
 - **자동화 힌트**: tools/list 응답을 Jest snapshot 으로 저장 후 릴리스별 스키마 drift 감지에 활용. ajv 로 반환된 JSON Schema 자체의 유효성도 검증.
-
-#### SCH-08 · wormhole_dry_run direction:pull 이 PullResult(dryRun:true) 형태 반환  `P1`
-
-> gaps 패치 신규 시나리오 — input-schema-zod 차원 보강.
-
-- **전제조건**:
-  - `WRITABLE_WEBDAV` (또는 `READONLY_WEBDAV` 도 가능 — dry_run 은 읽기전용)
-  - 원격에 머신 외부 변경이 있어 pull 미리보기가 비자명(applied/removed 일부 채워지도록). 없으면 빈 배열도 허용하되 타입 형태만 단언
-  - `STDIO_RPC_CLIENT` 또는 `MCP_INSPECTOR`
-- **대상 도구**: `wormhole_dry_run`
-- **절차**:
-  1. tools/call `wormhole_dry_run {direction:'pull'}` 호출
-  2. `dry-run.ts:23` `engine.pull({dryRun:true})` 경로 진입(push 아님)
-  3. 응답 `structuredContent` 의 키 집합 검사
-  4. 동일 직후 독립 PROPFIND 로 원격/로컬 무변경 확인(읽기전용 증명)
-- **기대 결과**:
-  - structuredContent 가 PullResult 형태: `{dryRun:true, applied:[], removed:[], conflicts:[], backupDir:null}` 키 보유
-  - PushResult 전용 키(pushed/deleted/skipped/manifestGeneration) 부재 — push 와 형태 발산 확인
-  - backupDir 이 null(dryRun 은 백업 미생성)
-  - 원격 manifest generation 및 로컬 파일 무변경
-- **합격 기준**:
-  - 응답 객체 키 집합 === `{dryRun, applied, removed, conflicts, backupDir}` (PullResult 계약)
-  - `dryRun === true`
-  - pushed/skipped 등 PushResult 키 미존재(direction 분기 정확성)
-  - 독립 PROPFIND: 호출 전후 원격 lock.json/manifest/blobs 불변(읽기전용 와이어 무변경)
-- **신선도**: SCH 차원이 direction:push + enum 거부에 편중 → pull 방향 결과타입 계약(PullResult≠PushResult) 미확인 칸. mock(a)은 엔진 직접 매핑이라 실제 도구경계 PullResult 직렬화 미검증.
 
 ---
 
@@ -1158,13 +1023,13 @@
   - `WRITABLE_WEBDAV`: 로컬 dufs/Caddy 등 쓰기 가능 WebDAV
   - `STDIO_RPC_CLIENT`: `server.mjs` 를 stdio 로 기동해 JSON-RPC 호출 가능
   - 픽스처: `HOME_A/.claude/CLAUDE.md = 'content-A'`, `HOME_B/.claude/CLAUDE.md = 'content-B'` (서로 다른 내용)
-  - 머신A 에서 `wormhole_push confirm:true` 선행 실행하여 원격에 content-A 업로드
-  - 머신B 에서는 아직 pull/push 없음 — state.json 비어있어 baseHash=null
-- **대상 도구**: `wormhole_status`
+  - 머신A 에서 `wormhole_sync {"confirm": true}` 선행 실행하여 원격에 content-A 업로드
+  - 머신B 에서는 아직 sync 없음 — state.json 비어있어 baseHash=null
+- **대상 도구**: `wormhole_status`, `wormhole_sync`
 - **절차**:
-  1. 머신A: tools/call `wormhole_push {"confirm": true}` — 원격에 CLAUDE.md(content-A) 업로드
+  1. 머신A: tools/call `wormhole_sync {"confirm": true}` — 원격에 CLAUDE.md(content-A) 업로드(push 단계)
   2. 머신B: `HOME_B/.claude/CLAUDE.md` 에 'content-B' 기록
-  3. 머신B: tools/call `wormhole_push {"confirm": true}` — 머신B 의 content-B 를 원격 push (기존 generation 위에 덮어씀, machineId=B)
+  3. 머신B: tools/call `wormhole_sync {"confirm": true}` — 머신B 의 content-B 를 원격 반영(push 단계, 기존 generation 위에 덮어씀, machineId=B)
   4. 머신A: `HOME_A/.claude/CLAUDE.md` 를 'content-A-modified' 로 로컬 수정
   5. 머신A: tools/call `wormhole_status {}` — 충돌 감지 확인
   6. 응답 `structuredContent.conflicts` 배열 검사
@@ -1330,8 +1195,8 @@
 
 - **전제조건**:
   - `TWO_MACHINE` + `WRITABLE_WEBDAV` + `STDIO_RPC_CLIENT`
-  - 초기 상태: 양측 모두 '.claude/CLAUDE.md' push/pull 완료, 동기화됨
-  - 머신B: `HOME_B/.claude/CLAUDE.md` 삭제 후 `wormhole_push confirm:true` (tombstone 원격 기록)
+  - 초기 상태: 양측 모두 '.claude/CLAUDE.md' sync 완료, 동기화됨
+  - 머신B: `HOME_B/.claude/CLAUDE.md` 삭제 후 `wormhole_sync {"confirm": true}` (tombstone 원격 기록)
   - 머신A: `HOME_A/.claude/CLAUDE.md` 를 'content-A-modified' 로 수정 (삭제 전 기록된 base 기준 로컬 변경)
 - **대상 도구**: `wormhole_status`, `wormhole_resolve`
 - **절차**:
@@ -1406,16 +1271,16 @@
     }
     ```
   - `~/.wormhole/config.json` 및 `~/.wormhole/.env` 정상 설정(`WEBDAV_URL`/`USER`/`PASS`/`WORMHOLE_PASSPHRASE`)
-- **대상 도구**: `wormhole_push`, `wormhole_status`
+- **대상 도구**: `wormhole_sync`, `wormhole_status`
 - **절차**:
-  1. tools/call `wormhole_push {"confirm": false}` — dry-run 반환 확인
-  2. tools/call `wormhole_push {"confirm": true}` — 실제 push 수행
+  1. tools/call `wormhole_sync {"confirm": false}` — 미리보기 반환 확인
+  2. tools/call `wormhole_sync {"confirm": true}` — 실제 sync(push 단계) 수행
   3. WebDAV PROPFIND `<remoteBaseDir>/blobs/` 로 업로드된 blob 파일명 목록 수집
   4. settings.json 에 해당하는 blob(`.claude/settings.json` 의 sha256 기반 이름)을 GET 후 age 복호+gunzip
   5. 복호된 평문 JSON 파싱
   6. tools/call `wormhole_status {}` — summary.unchanged 에 `.claude/settings.json` 포함 확인
 - **기대 결과**:
-  - step 2: `structuredContent.pushed` 에 `.claude/settings.json` 포함, dryRun: false
+  - step 2: `structuredContent.push.pushed` 에 `.claude/settings.json` 포함, push.dryRun: false
   - step 5 복호 평문 JSON: mcpServers 키 자체가 없거나 mcpServers.my-tool 이 없음 (로컬키 pruneLocal 제거)
   - step 5: permissions 키 없음, hooks 키 없음, statusLine.command 키 없음
   - step 5: `theme: "dark"`, `model: "claude-opus-4-5"` 는 존재 (공유 키 보존)
@@ -1436,25 +1301,25 @@
   - 머신 A `~/.claude/settings.json`: `{ "model": "claude-opus-4-5", "mcpServers": { "shared-tool": { "type": "stdio" } } }` — shared-tool 에 command/args 없음(공유 키만)
   - 머신 A `~/.claude/.mcp.json`: `{ "mcpServers": { "data-tool": { "command": "/home/alice/bin/datatool", "args": [] }, "wormhole": { "command": "/home/alice/.npm/bin/wormhole" } } }`
   - 머신 B 는 별도 stateDir, HOME=/home/bob, `~/.claude/.mcp.json` 미존재 또는 빈 상태
-- **대상 도구**: `wormhole_push`, `wormhole_pull`
+- **대상 도구**: `wormhole_sync`
 - **절차**:
-  1. 머신 A: tools/call `wormhole_push {"confirm": true}`
+  1. 머신 A: tools/call `wormhole_sync {"confirm": true}`
   2. WebDAV GET `blobs/<.mcp.json blob 이름>` 후 age 복호+gunzip
   3. 복호 평문 JSON 에서 data-tool.command 값 확인
-  4. 머신 B: tools/call `wormhole_pull {"confirm": true}`
+  4. 머신 B: tools/call `wormhole_sync {"confirm": true}`
   5. 머신 B `~/.claude/.mcp.json` 파일 내용 읽기
-  6. 머신 B: tools/call `wormhole_push {"confirm": false}` — dry-run 으로 .mcp.json 상태 확인
+  6. 머신 B: tools/call `wormhole_sync {"confirm": false}` — 미리보기로 .mcp.json 상태 확인
 - **기대 결과**:
   - step 3: `data-tool.command` 값이 `"${HOME}/bin/datatool"` (토큰화됨, /home/alice 제거)
   - step 3: wormhole 엔트리 없음 (self 제거)
   - step 5: `data-tool.command = "/home/bob/bin/datatool"` (머신 B HOME 으로 detokenize)
   - step 5: wormhole 엔트리는 머신 B 로컬 값 보존 (self 항목 원격에서 덮어쓰지 않음)
-  - step 6: `structuredContent.pushed` 에 `.claude/.mcp.json` 미포함 또는 dryRun:true + pushed:[] (pull 직후 unchanged)
+  - step 6: `structuredContent.push.pushed` 에 `.claude/.mcp.json` 미포함 또는 push.dryRun:true + push.pushed:[] (sync 직후 unchanged)
 - **합격 기준**:
   - 원격 blob 에 /home/alice 리터럴 경로가 없고 `${HOME}` 토큰으로 저장됨
   - 머신 B .mcp.json 에 /home/bob 로 정확히 복원된 data-tool.command 존재
   - 머신 B .mcp.json 에 wormhole 엔트리 보존 (remote-wins 가 self 에 적용 안 됨)
-  - 머신 B pull 직후 push dry-run 에서 .mcp.json 이 modified 로 잡히지 않음 (contentHash 안정)
+  - 머신 B sync(pull 단계) 직후 sync 미리보기에서 .mcp.json 이 modified 로 잡히지 않음 (contentHash 안정)
 - **신선도**: (b) 엔진 직접 호출 단일 HOME roundtrip 과 달리, `TWO_MACHINE` 환경에서 MCP tools/call 경계로 머신 A→원격→머신 B 의 `${HOME}` 토큰화 왕복을 실제 파일 내용으로 검증한다.
 
 #### SMR-03 · contentHash 안정성 — push 직후 wormhole_status 가 settings.json/.mcp.json 을 modified 로 재분류하지 않음 (영구 modified 루프 부재)  `P0`
@@ -1464,22 +1329,22 @@
   - 머신 A: `~/.claude/settings.json` 에 공유 키(theme, model) + 로컬키(hooks, permissions.*) 혼재
   - 머신 A: `~/.claude/.mcp.json` 에 wormhole self 엔트리 + 비-self 엔트리 혼재
   - 첫 push 가 완료된 상태 (state.json, base 스냅샷 존재)
-- **대상 도구**: `wormhole_push`, `wormhole_status`
+- **대상 도구**: `wormhole_sync`, `wormhole_status`
 - **절차**:
-  1. tools/call `wormhole_push {"confirm": true}` — 1차 push (이미 완료 상태라면 스킵해도 됨)
+  1. tools/call `wormhole_sync {"confirm": true}` — 1차 sync (이미 완료 상태라면 스킵해도 됨)
   2. tools/call `wormhole_status {}` — status 조회 #1
   3. 로컬 settings.json / .mcp.json 파일을 수정하지 않음
   4. tools/call `wormhole_status {}` — status 조회 #2 (동일 파일, 변경 없음)
-  5. tools/call `wormhole_push {"confirm": false}` — dry-run push (변경 없음 확인)
+  5. tools/call `wormhole_sync {"confirm": false}` — sync 미리보기 (변경 없음 확인)
 - **기대 결과**:
   - step 2: `structuredContent.items` 에서 `.claude/settings.json` 의 kind = "unchanged" 또는 "converged"
   - step 2: `structuredContent.items` 에서 `.claude/.mcp.json` 의 kind = "unchanged" 또는 "converged"
   - step 4: step 2 와 동일 결과 (결정적 해시, 호출 간 불변)
-  - step 5: `structuredContent.pushed = []`, `structuredContent.dryRun = true`
+  - step 5: `structuredContent.push.pushed = []`, `structuredContent.push.dryRun = true`
   - step 5: `structuredContent.note` 포함 (미리보기 문자열)
 - **합격 기준**:
   - 연속 `wormhole_status` 호출 2회에서 `.claude/settings.json`, `.claude/.mcp.json` 가 모두 unchanged/converged (modified 미출현)
-  - push dry-run 결과 pushed 배열이 비어 있음
+  - sync 미리보기 결과 push.pushed 배열이 비어 있음
   - `wormhole_status` 의 summary.modified 카운트가 0 (로컬 파일 미변경 시)
 - **신선도**: (a) mock 단위테스트는 normalizeSettingsForSync 호출 여부만 검증했으나, 이 시나리오는 실제 MCP 도구 경계에서 연속 status 호출로 해시 안정성을 관측한다. (b) e2e 는 두 번째 pull no-op 만 검증했고 settings 특수 라우팅 후 modified 루프는 미검증.
 
@@ -1489,29 +1354,29 @@
   - `TWO_MACHINE`: 머신 A + 머신 B, 동일 원격 WebDAV, 동일 passphrase
   - `WRITABLE_WEBDAV`
   - 초기 상태: 양 머신 동일 settings.json = `{ "theme": "light", "model": "claude-sonnet-4-5", "hooks": { "PreToolUse": [] }, "permissions": { "allow": [] } }`
-  - 양 머신 모두 1회 push+pull 로 base 스냅샷 수립 완료
-  - 머신 A: theme 을 "dark" 로 변경, model 을 "claude-opus-4-5" 로 변경 후 push
+  - 양 머신 모두 1회 sync 로 base 스냅샷 수립 완료
+  - 머신 A: theme 을 "dark" 로 변경, model 을 "claude-opus-4-5" 로 변경 후 sync
   - 머신 B: hooks 를 `{ "PreToolUse": ["echo hook"] }` 로 변경, permissions.allow 에 "Bash" 추가 (로컬키만 수정)
-- **대상 도구**: `wormhole_push`, `wormhole_pull`, `wormhole_status`
+- **대상 도구**: `wormhole_sync`, `wormhole_status`
 - **절차**:
-  1. 머신 A: tools/call `wormhole_push {"confirm": true}` — theme/model 변경 push
-  2. 머신 B: tools/call `wormhole_pull {"confirm": true}` — 머신 A 변경 수신
+  1. 머신 A: tools/call `wormhole_sync {"confirm": true}` — theme/model 변경 반영(push 단계)
+  2. 머신 B: tools/call `wormhole_sync {"confirm": true}` — 머신 A 변경 수신(pull 단계)
   3. 머신 B `~/.claude/settings.json` 파일 내용 직접 읽기
   4. 머신 B: tools/call `wormhole_status {}` — 결과 확인
-  5. 머신 B: tools/call `wormhole_push {"confirm": false}` — dry-run (추가 변경 없음 확인)
+  5. 머신 B: tools/call `wormhole_sync {"confirm": false}` — 미리보기 (추가 변경 없음 확인)
 - **기대 결과**:
-  - step 2: `structuredContent.applied` 에 `.claude/settings.json` 포함, conflicts = []
+  - step 2: `structuredContent.pull.applied` 에 `.claude/settings.json` 포함, pull.conflicts = []
   - step 3: `theme = "dark"` (머신 A 공유 키 변경 반영)
   - step 3: `model = "claude-opus-4-5"` (머신 A 공유 키 변경 반영)
   - step 3: `hooks = { "PreToolUse": ["echo hook"] }` (머신 B 로컬키 보존)
   - step 3: `permissions.allow = ["Bash"]` (머신 B 로컬키 보존)
   - step 4: `.claude/settings.json` kind = "unchanged" 또는 summary.conflicts = 0
-  - step 5: pushed = [] (pull 후 즉시 push 필요 없음)
+  - step 5: push.pushed = [] (pull 단계 후 추가 push 필요 없음)
 - **합격 기준**:
-  - pull 결과 파일에 공유 키(theme/model) 는 원격 최신값으로 업데이트됨
-  - pull 결과 파일에 로컬키(hooks/permissions) 는 머신 B 로컬 값 그대로 보존됨
+  - pull 단계 결과 파일에 공유 키(theme/model) 는 원격 최신값으로 업데이트됨
+  - pull 단계 결과 파일에 로컬키(hooks/permissions) 는 머신 B 로컬 값 그대로 보존됨
   - conflicts 배열 비어 있음 (로컬키 vs 원격 공유키 충돌 미발생)
-  - pull 직후 status 에서 settings.json 이 modified 로 잡히지 않음
+  - sync(pull 단계) 직후 status 에서 settings.json 이 modified 로 잡히지 않음
 - **신선도**: (b) e2e 해피패스는 동일 파일 바이트충실도만 검증했고, 이 시나리오는 `TWO_MACHINE` 에서 MCP 도구 경계로 공유 키 변경과 로컬키 독립 보존이 3-way 머지에서 올바르게 분리됨을 검증한다.
 
 #### SMR-05 · .mcp.json self 엔트리 머신 간 격리 — 머신 B pull 후 B 자체 wormhole 엔트리 유지, 머신 A wormhole 엔트리 비적용  `P1`
@@ -1522,11 +1387,11 @@
   - 머신 A `~/.claude/.mcp.json`: `{ "mcpServers": { "wormhole": { "command": "/home/alice/.npm/bin/wormhole-mcp", "args": ["--config", "/home/alice/.wormhole/config.json"] }, "context7": { "command": "npx", "args": ["-y", "@upstash/context7-mcp"] } } }`
   - 머신 B `~/.claude/.mcp.json`: `{ "mcpServers": { "wormhole": { "command": "/home/bob/.local/bin/wormhole-mcp", "args": ["--config", "/home/bob/.wormhole/config.json"] } } }`
   - 양 머신 config.json 에 `selfMcpServerNames: ["wormhole"]`
-- **대상 도구**: `wormhole_push`, `wormhole_pull`
+- **대상 도구**: `wormhole_sync`, `wormhole_status`
 - **절차**:
-  1. 머신 A: tools/call `wormhole_push {"confirm": true}`
+  1. 머신 A: tools/call `wormhole_sync {"confirm": true}`
   2. WebDAV GET `blobs/<.mcp.json blob>` 후 age 복호, wormhole 키 존재 여부 확인
-  3. 머신 B: tools/call `wormhole_pull {"confirm": true}`
+  3. 머신 B: tools/call `wormhole_sync {"confirm": true}`
   4. 머신 B `~/.claude/.mcp.json` 파일 내용 읽기
   5. 머신 B: tools/call `wormhole_status {}` 조회
 - **기대 결과**:
@@ -1552,11 +1417,11 @@
   - 머신 A HOME: `~/.claude/my.token = "tok_abc123"` 생성
   - 머신 A HOME: `~/.claude/age-key.key = "AGE-SECRET-KEY-..."` 생성
   - 머신 A HOME: `~/.claude/settings.json = { "model": "claude-opus-4-5" }` (정상 파일)
-- **대상 도구**: `wormhole_push`, `wormhole_status`, `wormhole_dry_run`
+- **대상 도구**: `wormhole_sync`, `wormhole_status`
 - **절차**:
-  1. tools/call `wormhole_dry_run {"direction": "push"}` — 계획 조회
+  1. tools/call `wormhole_sync {"confirm": false}` — 미리보기(dry-run) 계획 조회
   2. tools/call `wormhole_status {}` — 스캔 결과 확인
-  3. tools/call `wormhole_push {"confirm": true}` — 실제 push
+  3. tools/call `wormhole_sync {"confirm": true}` — 실제 sync(push 경로)
   4. WebDAV PROPFIND `<remoteBaseDir>/blobs/` 로 업로드 blob 목록 수집
   5. 각 blob 이름이 제외 대상 파일 logicalKey sha256 과 일치하는지 검사
 - **기대 결과**:
@@ -1566,8 +1431,8 @@
   - step 3: `structuredContent.pushed` 에 비밀 파일 경로 미포함
   - step 4: blob 목록에서 비밀 파일 해시 이름 미출현
 - **합격 기준**:
-  - `wormhole_dry_run` pushed 배열에 DEFAULT_EXCLUDE 패턴 매칭 파일이 없음
-  - `wormhole_push` 실행 후 원격 blob 디렉터리에 비밀 파일 blob 이름이 없음
+  - `wormhole_sync {confirm:false}` pushed 배열에 DEFAULT_EXCLUDE 패턴 매칭 파일이 없음
+  - `wormhole_sync {confirm:true}` 실행 후 원격 blob 디렉터리에 비밀 파일 blob 이름이 없음
   - `wormhole_status` items 배열에 비밀 파일 logicalKey 가 없음
 - **신선도**: (b) e2e 해피패스는 CLAUDE.md/settings.json 양성 케이스만 검증했고, 이 시나리오는 MCP 도구 경계에서 DEFAULT_EXCLUDE 패턴의 실제 적용을 원격 blob 레벨까지 추적해 비밀 유출 부재를 증명한다.
 
@@ -1578,20 +1443,20 @@
   - 머신 A `~/.claude/settings.json`: `{ "mcpServers": { "all-local": { "command": "/usr/bin/tool", "args": [], "cwd": "/tmp", "env": {} } }, "theme": "dark" }`
   - mcpServers.all-local 에 로컬키(command/args/cwd/env) 만 존재, 공유 키(type 등) 없음
   - config.json `settingsLocalKeys = DEFAULT_SETTINGS_LOCAL_KEYS` (mcpServers.*.command/args/cwd/env 포함)
-- **대상 도구**: `wormhole_push`, `wormhole_status`
+- **대상 도구**: `wormhole_sync`, `wormhole_status`
 - **절차**:
-  1. tools/call `wormhole_push {"confirm": true}`
+  1. tools/call `wormhole_sync {"confirm": true}`
   2. WebDAV GET `blobs/<settings.json blob>` 후 age 복호+gunzip
   3. 복호 평문 JSON 파싱, mcpServers 키 존재/내용 확인
   4. tools/call `wormhole_status {}` — settings.json 상태 확인
 - **기대 결과**:
   - step 2 복호 JSON: mcpServers 키 자체가 없거나, 존재하더라도 {} 빈 객체 아님 (pruneLocal 의 빈 컨테이너 생략 로직 적용)
   - step 2 복호 JSON: `theme: "dark"` 존재 (공유 스칼라 보존)
-  - step 4: `.claude/settings.json` kind = "unchanged" (push 후 안정)
+  - step 4: `.claude/settings.json` kind = "unchanged" (sync 후 안정)
 - **합격 기준**:
   - 원격 blob JSON 에 `mcpServers: {}` 빈 객체가 없음 — pruneLocal 이 로컬키만 있는 컨테이너를 부모까지 제거함을 증명
   - 공유 스칼라(theme)는 정상 보존됨
-  - push 후 status 에서 settings.json unchanged (contentHash 안정)
+  - sync 후 status 에서 settings.json unchanged (contentHash 안정)
 - **신선도**: (a) mock 테스트는 pruneLocal 분기가 실행되는지만 확인했고, 이 시나리오는 실제 MCP push 경로에서 원격 blob 복호 내용을 직접 검사해 빈 컨테이너 누출 부재를 와이어 레벨로 증명한다.
 - **자동화 힌트**: blob GET + age decrypt + JSON.parse 후 `assert('mcpServers' in json === false || Object.keys(json.mcpServers).length > 0)`.
 
@@ -1601,14 +1466,14 @@
 
 - **전제조건**:
   - `TWO_MACHINE` (머신 A/B = 별도 HOME+stateDir, 동일 `WRITABLE_WEBDAV` + 동일 passphrase)
-  - 양 머신이 동일 base 스냅샷에서 출발(최초 1회 push→pull 로 base 정합)
+  - 양 머신이 동일 base 스냅샷에서 출발(최초 1회 sync 로 base 정합)
   - 공유키 후보: settings.json 의 비-localKey leaf(예: 'theme' 또는 임의 shared scalar). settingsLocalKeys(mcpServers.*.command/args/cwd/env, permissions.*, hooks, statusLine.command) 에 포함되지 않는 키여야 함
   - `STDIO_RPC_CLIENT` 두 인스턴스
-- **대상 도구**: `wormhole_push`, `wormhole_pull`, `wormhole_status`
+- **대상 도구**: `wormhole_sync`, `wormhole_status`
 - **절차**:
-  1. 머신 A: settings.json 공유키 theme='dark' 로 변경 후 `wormhole_push {confirm:true}`
+  1. 머신 A: settings.json 공유키 theme='dark' 로 변경 후 `wormhole_sync {confirm:true}`
   2. 머신 B: 동일 공유키 theme='light' 로(base 와 다르게) 변경 — 양측이 base 대비 상이 변경(발산)
-  3. 머신 B: `wormhole_pull {confirm:true}` 실행 → engine 이 applyPullSettings 의 threeWayMerge(local=light, remote=dark, base=원본) 수행
+  3. 머신 B: `wormhole_sync {confirm:true}` 실행 → engine 이 applyPullSettings 의 threeWayMerge(local=light, remote=dark, base=원본) 수행
   4. settings-merge.ts mergeRecursive(153,209-210): 양측 상이 leaf → conflictKeys.push + local('light') 유지
   5. engine.ts:684-704: result.conflictKeys/hasConflict 미사용 — merged(local 유지분) 무조건 atomicWriteFile + nextState 정상 동기화 갱신
   6. 머신 B: 직후 `wormhole_status` 로 conflicts 표면화 여부 점검 + settings.json 실파일 theme 값 확인
@@ -1621,7 +1486,7 @@
   - settings.json deep-equal: theme === 'light'(로컬 보존), 나머지 키는 정상 머지
   - PullResult.conflicts 길이에 settings.json logicalKey 부재
   - `wormhole_status` 응답에서 settings.json 의 kind 가 conflict 아님(converged 또는 modified-없음)
-  - 재현: 두 번째 `wormhole_pull` 이 동일 키로 충돌/변경 재발생 안 함(base 전진 확인)
+  - 재현: 두 번째 `wormhole_sync` 가 동일 키로 충돌/변경 재발생 안 함(base 전진 확인)
 - **신선도**: SMR-04(공유키 vs 로컬키 비충돌 분리) 미답. 동일 공유 leaf 양측 발산 시 settings-merge 의 conflictKeys 가 엔진 표면으로 전파되지 않고 silent local-wins 로 적용되는 라우팅×충돌 교차점. critic 가정(충돌분류 또는 remote-wins) 둘 다와 다른 실제 동작 실증.
 
 #### SMR-09 · 악성 원격 blob 의 __proto__/constructor/prototype 페이로드가 pull 경로(detokenize/mergeRecursive/deepAssign) 가드에 차단되어 Object.prototype 무오염  `P0`
@@ -1632,22 +1497,22 @@
   - 테스트가 passphrase 를 보유하므로 머신B 와 동일한 age recipient 로 임의 평문을 armored 암호문으로 직접 만들 수 있음(crypto.encrypt 등가). 원격 keyparams.json 의 salt/N/r/p 로 동일 identity 재파생 가능.
   - 공격 대상 키: settings.json(isSettingsKey → applyPullSettings, threeWayMerge 경로) 과 .mcp.json(isMcpJsonKey → applyPullMcpJson → mergeMcpJsonForPull 경로) 둘 다.
   - 코드 불변 확인(직접 read): `src/sync/settings-merge.ts` FORBIDDEN_KEYS={__proto__,constructor,prototype}(L15) + isForbiddenKey(L16). pull 측 가드 지점 — detokenizeHome L62(continue), mergeRecursive L169(continue), deepAssign L433(continue), mergeMcpJsonForPull 내 detokenizeHome 호출 L355. `src/sync/engine.ts` applyPullSettings L667(threeWayMerge L684 + detokenizeHome L692), applyPullMcpJson L707(mergeMcpJsonForPull L721).
-- **대상 도구**: `wormhole_pull`
+- **대상 도구**: `wormhole_sync`, `wormhole_status`
 - **절차**:
-  1. 머신A: tools/call wormhole_push {"confirm":true} 로 정상 settings.json + .mcp.json shared subset 을 원격에 업로드해 vault 부트스트랩. (또는 buildEngine 직접 push) 원격에 blobs/<settings 키>, blobs/<mcp 키>, manifest, keyparams.json 존재 확인.
+  1. 머신A: tools/call wormhole_sync {"confirm":true} 로 정상 settings.json + .mcp.json shared subset 을 원격에 업로드해 vault 부트스트랩(push 단계). (또는 buildEngine 직접 push) 원격에 blobs/<settings 키>, blobs/<mcp 키>, manifest, keyparams.json 존재 확인.
   2. 공격 페이로드 준비(테스트 하니스, MCP 외부): settings 용 평문 JSON = {"__proto__":{"polluted":"SETTINGS_PWNED"},"constructor":{"prototype":{"polluted2":"x"}},"fontSize":99} 을 머신B recipient 로 age armored 암호화 → 원격 blobs 의 settings 키 blob 을 이 암호문으로 직접 덮어씀(CORRUPT_REMOTE 주입). 동일하게 .mcp.json 용 평문 = {"__proto__":{"polluted":"MCP_PWNED"},"mcpServers":{"evil":{"command":"x","__proto__":{"polluted3":"y"}}}} 을 암호화해 mcp 키 blob 을 덮어씀. manifest 의 contentHash/generation 도 머신B 가 변경 감지하도록 정합 갱신(또는 generation 증가).
-  3. 머신B: tools/call wormhole_pull {"confirm":true}. applyPull 이 downloadBlob 로 악성 암호문 복호 → settings 는 parseJson → tokenizeHome(local) → threeWayMerge(L684, mergeRecursive L169 가드 통과) → detokenizeHome(L692, L62 가드) → applyShared→deepAssign(L433 가드). .mcp.json 은 mergeMcpJsonForPull(L721) → detokenizeHome(L355) → deepAssign(deepAssign L433 미경유나 detokenize/구조복제 가드).
+  3. 머신B: tools/call wormhole_sync {"confirm":true}. pull 단계의 applyPull 이 downloadBlob 로 악성 암호문 복호 → settings 는 parseJson → tokenizeHome(local) → threeWayMerge(L684, mergeRecursive L169 가드 통과) → detokenizeHome(L692, L62 가드) → applyShared→deepAssign(L433 가드). .mcp.json 은 mergeMcpJsonForPull(L721) → detokenizeHome(L355) → deepAssign(deepAssign L433 미경유나 detokenize/구조복제 가드).
   4. 동일 머신B 프로세스(또는 동일 Node 런타임) 에서 즉시 오염 프로브: ({}).polluted, ({}).polluted2, ({}).polluted3, Object.prototype.polluted 가 전부 undefined 인지 검사. (MCP 서버가 별도 프로세스면 pull 직후 동일 프로세스 내 후속 tools/call 이 정상 응답하는지로 간접 관측).
   5. tools/call wormhole_status {} 로 pull 후 엔진이 정상 동작(다음 RPC 응답 정상, 크래시 없음)임을 확인.
 - **기대 결과**:
-  - wormhole_pull 응답이 정상 종료 — isError 없음(또는 무결성/머지 실패 시에도 graceful error 반환이지 프로세스 크래시 아님).
+  - wormhole_sync 응답이 정상 종료 — isError 없음(또는 무결성/머지 실패 시에도 graceful error 반환이지 프로세스 크래시 아님).
   - 오염 프로브 전부 undefined: ({}).polluted===undefined, ({}).polluted2===undefined, ({}).polluted3===undefined, Object.prototype.polluted===undefined. Object.prototype 에 어떤 신규 enumerable 키도 추가되지 않음.
   - 로컬 settings.json 에는 __proto__/constructor/prototype 키가 자기 프로퍼티로 기록되지 않음 — 이 키들은 detokenizeHome(L62)/mergeRecursive(L169)/deepAssign(L433) 의 isForbiddenKey continue 로 결과 객체에서 누락됨. 무해한 키(fontSize:99 등)는 원격 우선으로 정상 머지 반영 가능.
   - 로컬 .mcp.json 머지 결과에 __proto__ 자기 프로퍼티 없음. evil.command 같은 무해 키는 보존되나 중첩 __proto__ 는 detokenize 단계서 제거.
   - pull 직후 wormhole_status 응답 정상 — 엔진 프로세스 생존, 후속 RPC 처리 가능.
 - **합격 기준**:
-  - pull tools/call 결과 isError 가 truthy 가 아니거나, 무결성 사유로 isError 면 응답 본문이 명시적 오류 메시지(크래시·미정의 동작 아님).
-  - pull 완료 후 동일 런타임의 4개 오염 프로브가 모두 strictly undefined.
+  - sync tools/call 결과 isError 가 truthy 가 아니거나, 무결성 사유로 isError 면 응답 본문이 명시적 오류 메시지(크래시·미정의 동작 아님).
+  - sync(pull 단계) 완료 후 동일 런타임의 4개 오염 프로브가 모두 strictly undefined.
   - Object.getOwnPropertyNames(Object.prototype) 에 polluted/polluted2/polluted3 미포함.
   - 후속 wormhole_status tools/call 이 정상 응답(엔진 생존 증명).
 - **신선도**: 기존 67 시나리오 중 SMR-09 본문을 전면 대체(REVISE). 기존 SMR-09 는 push 측 tokenizeHome 가드(L40)만 행사해 송신 경로 한쪽만 증명 → 본 재증명은 ★pull 측 detokenizeHome(L62)+mergeRecursive(L169)+deepAssign(L433)★ 3지점 가드를 신뢰불가 원격 blob 으로 직접 행사. (a) push 단방향 → 양방향(pull 까지) 커버, (b) tokenize 단일 가드 → detokenize/merge/deepAssign 3가드 + .mcp.json 경로 추가, (c) settings.json 단일 파일 → settings + .mcp.json 두 적용 경로 동시. CORRUPT_REMOTE 직접 암호화 주입(테스트 passphrase 보유)으로 black-box 관측. 줄끝 (재증명 강화) 표기.
@@ -1660,21 +1525,21 @@
   - 로컬 ~/.claude/settings.json 을 비-JSON 텍스트 '{broken' 로 기록(JSON.parse 시 SyntaxError 유발)
   - config.json 의 settings 동기화 대상에 settings.json 포함, settingsLocalKeys 설정됨
   - STDIO_RPC_CLIENT 또는 MCP_INSPECTOR 준비
-- **대상 도구**: `wormhole_status`, `wormhole_push`
+- **대상 도구**: `wormhole_status`, `wormhole_sync`
 - **절차**:
   1. 로컬 ~/.claude/settings.json 내용을 '{broken'(닫히지 않은 비-JSON)으로 설정
   2. 파일 mtime/내용 스냅샷 기록(후속 부작용 관측용)
   3. STDIO_RPC_CLIENT: tools/call wormhole_status {} 호출 → scanWithHashes→normalizeSettingsForSync(L49991) 경로가 settings.json 을 catch 폴백으로 원본바이트 해시
-  4. STDIO_RPC_CLIENT: tools/call wormhole_push {"confirm":false} 호출 → planPush(dryRun) 경로, preparePushSettings 미호출(dryRun 은 status.summary 분류만) 확인
-  5. push{confirm:false} 응답 관측 후 로컬 settings.json 파일 내용·mtime 재확인 — '{broken' 그대로인지(영구 modified 부작용 없음)
+  4. STDIO_RPC_CLIENT: tools/call wormhole_sync {"confirm":false} 호출 → 미리보기 분기의 push planPush(dryRun) 경로, preparePushSettings 미호출(dryRun 은 status.summary 분류만) 확인
+  5. sync{confirm:false} 응답 관측 후 로컬 settings.json 파일 내용·mtime 재확인 — '{broken' 그대로인지(영구 modified 부작용 없음)
 - **기대 결과**:
   - wormhole_status 응답: isError 없음. structuredContent = {summary:{added/modified/deleted/remoteAdded/remoteModified/remoteDeleted/unchanged}, conflicts:[], manifestGeneration}. settings.json 논리키가 added 또는 modified 에 분류(원본바이트 해시가 원격과 불일치 시), unchanged 에는 미포함
-  - wormhole_push{confirm:false} 응답: isError 없음. structuredContent = {dryRun:true, pushed:[...], deleted:[], skipped:number, manifestGeneration, conflicts:[], note:'미리보기 — 실제 적용하려면 confirm:true (사용자 확인 후)'}. pushed 에 settings.json 포함 가능
+  - wormhole_sync{confirm:false} 응답: isError 없음. structuredContent = {pull:{...,dryRun:true}, push:{dryRun:true, pushed:[...], deleted:[], skipped:number, manifestGeneration, conflicts:[]}, note:'미리보기 — 실제 적용하려면 confirm:true (사용자 확인 후)'}. push.pushed 에 settings.json 포함 가능
   - normalizeSettingsForSync 가 throw 하지 않음 — JSON.parse catch 에서 {text:rawText('{broken'), hash:sha256(Buffer.from('{broken')), size:7} 반환(원본 7바이트)
-  - 로컬 settings.json 파일은 '{broken' 원본 유지 — status/push-preview 경로는 파일을 재기록하지 않으므로 영구 modified 부작용 없음(atomicWriteFile 은 runPush/runPull 적용 단계에서만 호출)
+  - 로컬 settings.json 파일은 '{broken' 원본 유지 — status/sync-preview 경로는 파일을 재기록하지 않으므로 영구 modified 부작용 없음(atomicWriteFile 은 runPush/runPull 적용 단계에서만 호출)
 - **합격 기준**:
-  - wormhole_status 와 wormhole_push{confirm:false} 둘 다 응답 객체에 isError 속성 없음(파싱실패가 핸들러 try/catch→isError 로 새지 않음)
-  - push 응답 structuredContent.note 가 정확히 '미리보기 — 실제 적용하려면 confirm:true (사용자 확인 후)' 이고 dryRun:true
+  - wormhole_status 와 wormhole_sync{confirm:false} 둘 다 응답 객체에 isError 속성 없음(파싱실패가 핸들러 try/catch→isError 로 새지 않음)
+  - sync 응답 structuredContent.note 가 정확히 '미리보기 — 실제 적용하려면 confirm:true (사용자 확인 후)' 이고 push.dryRun:true
   - 호출 전후 로컬 settings.json 의 바이트열·내용이 '{broken' 으로 불변(mtime 변화 무관하게 내용 동일)
   - settings.json 논리키가 status.summary.unchanged 에 없음(파싱실패해도 동기화 후보로 정상 분류됨)
 - **신선도**: 기존 SMR-01~08 은 정상 JSON settings 의 머지·정규화·멱등성을 다루지만 비-JSON 로컬 settings 의 push 폴백(throw 없이 원본바이트 해시)과 미리보기 무부작용을 검증하는 케이스가 없으며, (a)(b)(c) 어느 것도 손상 입력에 대한 graceful degradation 을 표적하지 않는다.
@@ -1684,28 +1549,28 @@
 - **갭 클로저**: F-SETTINGS-13 — mergeMcpJsonForPull(L340-396)의 local===null 분기(L375 return stableStringify(remote))가 로컬 .mcp.json 부재/파싱실패 시 원격 비-self 엔트리 기반으로 복구 가능한 .mcp.json 을 throw 없이 재생성함을 실증
 - **전제조건**:
   - TWO_MACHINE: 머신A/머신B 별도 HOME+stateDir, 동일 원격+passphrase
-  - 머신A 가 비-self 서버 엔트리(예: {"mcpServers":{"other":{"command":"node","args":["${HOME}/x.js"]}}})를 포함한 .mcp.json 을 push{confirm:true} 로 원격에 올림(stripSelfMcpServers 로 self/wormhole 제거+tokenize 상태)
+  - 머신A 가 비-self 서버 엔트리(예: {"mcpServers":{"other":{"command":"node","args":["${HOME}/x.js"]}}})를 포함한 .mcp.json 을 sync{confirm:true} 로 원격에 올림(push 단계에서 stripSelfMcpServers 로 self/wormhole 제거+tokenize 상태)
   - 머신B 의 selfMcpServerNames 에 'wormhole' 포함, config.home 설정됨
   - 머신B STDIO_RPC_CLIENT/MCP_INSPECTOR 부팅 가능
-- **대상 도구**: `wormhole_pull`, `wormhole_status`
+- **대상 도구**: `wormhole_sync`, `wormhole_status`
 - **절차**:
   1. 케이스1(손상): 머신B 로컬 ~/.claude/.mcp.json 을 '{broken' 으로 기록 / 케이스2(부재): 머신B 로컬 .mcp.json 삭제
   2. 머신B STDIO_RPC_CLIENT: tools/call wormhole_status {} 호출 → remoteAdded/remoteModified 에 .mcp.json 분류 확인
-  3. 머신B STDIO_RPC_CLIENT: tools/call wormhole_pull {"confirm":true} 호출 → applyPullMcpJson(L50369)→fs.readFile catch 시 localText=null→mergeMcpJsonForPull(L377) 경로 실행
+  3. 머신B STDIO_RPC_CLIENT: tools/call wormhole_sync {"confirm":true} 호출 → pull 단계의 applyPullMcpJson(L50369)→fs.readFile catch 시 localText=null→mergeMcpJsonForPull(L377) 경로 실행
   4. 머신B 로컬 ~/.claude/.mcp.json 재생성 내용 관측 — 원격 'other' 엔트리 존재, 'wormhole'(self) 엔트리 비거나 로컬 기본
   5. 재생성 파일을 JSON.parse 하여 유효 JSON(복구가능)인지, ${HOME} 토큰이 머신B home 절대경로로 detokenize 됐는지 확인
 - **기대 결과**:
-  - wormhole_pull 응답: isError 없음. structuredContent = {dryRun:false, applied:['.mcp.json' 논리키 포함], removed:[], conflicts:[], backupDir:백업있으면 경로/없으면 null}
+  - wormhole_sync 응답: isError 없음. structuredContent.pull = {dryRun:false, applied:['.mcp.json' 논리키 포함], removed:[], conflicts:[], backupDir:백업있으면 경로/없으면 null}
   - 재생성 .mcp.json = stableStringify(remote) 결과 — 키 정렬된 유효 JSON, 끝에 개행 1개. mcpServers.other.args[0] 이 머신B home 절대경로로 detokenize(${HOME}→config.home, posix→path.sep 재구성)
   - self/wormhole 엔트리: localText===null 분기는 로컬 self 보존 로직(L382-393)을 타지 않으므로 self 엔트리는 비어있음(원격은 이미 self 제거 상태 + L358 방어적 재삭제) — 로컬 기본 없으면 mcpServers 에 'wormhole' 부재
   - mergeMcpJsonForPull 이 throw 하지 않음 — 손상('{broken') localText 는 L369 catch 로 local=null 처리, 부재는 applyPullMcpJson L374 catch 로 localText=null
   - applyPullMcpJson 이 atomicWriteFile 로 복구 .mcp.json 기록 + writeBaseSnapshot(remoteSharedText) + nextState 갱신
 - **합격 기준**:
-  - wormhole_pull 응답 객체에 isError 속성 없음(손상/부재 입력이 예외로 새지 않음)
+  - wormhole_sync 응답 객체에 isError 속성 없음(손상/부재 입력이 예외로 새지 않음)
   - 케이스1·케이스2 모두 재생성된 ~/.claude/.mcp.json 이 JSON.parse 성공(복구가능 파일)
   - 재생성 .mcp.json 에 원격 비-self 엔트리 'other' 존재하고 args 경로가 머신B home 절대경로(${HOME} 토큰 잔존 없음)
   - 재생성 .mcp.json 의 mcpServers 에 self('wormhole') 엔트리 없음(또는 로컬 기본만) — local===null 경로라 self 보존 미적용
-  - pull 응답 structuredContent.applied 에 .mcp.json 논리키 포함, dryRun:false
+  - sync 응답 structuredContent.pull.applied 에 .mcp.json 논리키 포함, pull.dryRun:false
 - **신선도**: 기존 SMR 시나리오는 정상 로컬 .mcp.json 존재 시 self 엔트리 보존 머지를 다루지만 로컬 부재/손상('{broken')에서 원격기반 복구(stableStringify(remote)) 산출과 self 미보존 경로를 검증하는 케이스가 없으며, (a)(b)(c) 와 달리 결손 로컬 상태로부터의 자기복구(recovery) 를 표적한다.
 
 ---
@@ -1718,29 +1583,29 @@
 
 - **전제조건**:
   - `WRITABLE_WEBDAV`: 로컬 dufs/Caddy 등 쓰기가능 WebDAV 서버 가동
-  - 머신A HOME 에 '.claude/custom.md' 파일이 존재하고, 직전 push(confirm:true)로 원격에 동기화된 상태(state.json baseline 존재)
+  - 머신A HOME 에 '.claude/custom.md' 파일이 존재하고, 직전 sync(confirm:true)로 원격에 동기화된 상태(state.json baseline 존재)
   - `MCP_INSPECTOR` 또는 `STDIO_RPC_CLIENT` 로 `server.mjs` 기동 완료
   - 초기 manifestGeneration=N 을 `wormhole_status` 로 기록해 둠
-- **대상 도구**: `wormhole_push`, `wormhole_status`
+- **대상 도구**: `wormhole_sync`, `wormhole_status`
 - **절차**:
   1. 머신A 로컬에서 '.claude/custom.md' 파일을 OS 명령으로 삭제
   2. tools/call `wormhole_status {}` → items 중 '.claude/custom.md' kind='deleted' 확인
-  3. tools/call `wormhole_push {"confirm":false}` → dryRun:true, deleted 에 '.claude/custom.md' 포함, pushed 비어있음 확인
-  4. tools/call `wormhole_push {"confirm":true}` → 실제 push 실행
+  3. tools/call `wormhole_sync {"confirm":false}` → push.dryRun:true, push.deleted 에 '.claude/custom.md' 포함, push.pushed 비어있음 확인
+  4. tools/call `wormhole_sync {"confirm":true}` → 실제 sync(push 단계) 실행
   5. WebDAV PROPFIND `{remoteBaseDir}/manifest.json.age` 로 ETag 변경 여부 확인
   6. tools/call `wormhole_status {}` → 해당 키 summary.deleted 사라지고 unchanged 또는 사라짐 확인
 - **기대 결과**:
-  - step4 `structuredContent.dryRun = false`
-  - step4 `structuredContent.deleted = [".claude/custom.md"]`
-  - step4 `structuredContent.pushed = []`
-  - step4 `structuredContent.manifestGeneration = N+1` (N은 초기값)
-  - step4 `structuredContent.conflicts = []`
+  - step4 `structuredContent.push.dryRun = false`
+  - step4 `structuredContent.push.deleted = [".claude/custom.md"]`
+  - step4 `structuredContent.push.pushed = []`
+  - step4 `structuredContent.push.manifestGeneration = N+1` (N은 초기값)
+  - step4 `structuredContent.push.conflicts = []`
   - step5 PROPFIND ETag 변경 확인(원격 manifest 덮어써짐)
   - step6 `structuredContent.summary.deleted = []` (더 이상 deleted 로 분류 안됨)
 - **합격 기준**:
-  - `wormhole_push(confirm:true)` 응답 isError 필드 없음(truthy 아님)
-  - `structuredContent.deleted` 배열에 '.claude/custom.md' 정확히 1회 포함
-  - `structuredContent.pushed` 빈 배열
+  - `wormhole_sync(confirm:true)` 응답 isError 필드 없음(truthy 아님)
+  - `structuredContent.push.deleted` 배열에 '.claude/custom.md' 정확히 1회 포함
+  - `structuredContent.push.pushed` 빈 배열
   - 연속 2회 `wormhole_status` 호출 시 두 번째에도 deleted 빈 배열 (멱등 확인)
 - **신선도**: (b) e2e 해피패스는 push/pull 왕복 성공만 검증했고 tombstone 생성 + manifest generation 전진 + 후속 status 분류 변화는 미검증.
 
@@ -1749,31 +1614,31 @@
 - **전제조건**:
   - `TWO_MACHINE`: 머신A(HOME_A, stateDir_A) + 머신B(HOME_B, stateDir_B), 동일 `WRITABLE_WEBDAV` + 동일 `WORMHOLE_PASSPHRASE`
   - '.claude/custom.md' 가 양 머신에 동기화된 상태(양측 state.json baseline 존재)
-  - TMB-01 선행 완료 — 머신A 가 tombstone push 완료
+  - TMB-01 선행 완료 — 머신A 가 sync(confirm:true)로 tombstone 원격 기록 완료
   - 머신B 에서 `server.mjs` 기동(별도 stdio 채널)
-- **대상 도구**: `wormhole_pull`, `wormhole_status`
+- **대상 도구**: `wormhole_sync`, `wormhole_status`
 - **절차**:
   1. 머신B tools/call `wormhole_status {}` → items 중 '.claude/custom.md' kind='remoteDeleted' 확인
-  2. 머신B tools/call `wormhole_pull {"confirm":false}` → dryRun:true, removed=['.claude/custom.md'], applied=[] 확인
-  3. 머신B tools/call `wormhole_pull {"confirm":true}` → 실제 pull 실행
+  2. 머신B tools/call `wormhole_sync {"confirm":false}` → pull.dryRun:true, pull.removed=['.claude/custom.md'], pull.applied=[] 확인
+  3. 머신B tools/call `wormhole_sync {"confirm":true}` → 실제 sync(pull 단계) 실행
   4. 머신B OS 에서 `HOME_B/.claude/custom.md` 파일 존재 여부 확인
   5. 머신B tools/call `wormhole_status {}` → '.claude/custom.md' 항목 분류 확인
-  6. `structuredContent.backupDir` 경로 존재 및 파일 내용 확인
+  6. `structuredContent.pull.backupDir` 경로 존재 및 파일 내용 확인
 - **기대 결과**:
-  - step3 `structuredContent.dryRun = false`
-  - step3 `structuredContent.removed = [".claude/custom.md"]`
-  - step3 `structuredContent.applied = []`
-  - step3 `structuredContent.conflicts = []`
-  - step3 `structuredContent.backupDir` 가 null 아닌 절대경로 문자열 (기존 파일 있었으므로 백업 생성)
+  - step3 `structuredContent.pull.dryRun = false`
+  - step3 `structuredContent.pull.removed = [".claude/custom.md"]`
+  - step3 `structuredContent.pull.applied = []`
+  - step3 `structuredContent.pull.conflicts = []`
+  - step3 `structuredContent.pull.backupDir` 가 null 아닌 절대경로 문자열 (기존 파일 있었으므로 백업 생성)
   - step4 `HOME_B/.claude/custom.md` 파일 부재 (ENOENT)
   - step5 summary.deleted/remoteDeleted 모두 빈 배열 (더 이상 추적 대상 아님)
   - step6 backupDir 하위에 '.claude/custom.md' 사본 바이트 일치
 - **합격 기준**:
-  - `wormhole_pull(confirm:true)` isError 없음
-  - removed 배열에 tombstone 키 정확히 포함
-  - backupDir 경로가 null 이 아니고 해당 디렉터리가 OS 파일시스템에 실재
+  - `wormhole_sync(confirm:true)` isError 없음
+  - pull.removed 배열에 tombstone 키 정확히 포함
+  - pull.backupDir 경로가 null 이 아니고 해당 디렉터리가 OS 파일시스템에 실재
   - 백업 사본 내용이 삭제 전 원본과 동일
-  - pull 후 `wormhole_status` 에서 해당 키 remoteDeleted 분류 사라짐
+  - sync(pull 단계) 후 `wormhole_status` 에서 해당 키 remoteDeleted 분류 사라짐
 - **신선도**: (b) e2e 해피패스는 파일 생성/수정 왕복만 검증했고 tombstone pull→로컬 삭제 + backupDir 실제 생성은 미검증.
 - **자동화 힌트**: 머신B HOME 디렉터리를 tmpdir 로 격리하면 파일 존재 여부 단언이 쉬움.
 
@@ -1783,27 +1648,27 @@
   - `TWO_MACHINE`: 머신A + 머신B, 동일 원격
   - '.claude/synced.md' 가 양 머신에 동기화된 상태(state.json baseline 해시=H0)
   - 머신A 와 머신B 가 각각 오프라인 상태에서 동일한 콘텐츠(해시 H1)로 파일을 독립 수정 (state.json baseline 은 여전히 H0)
-- **대상 도구**: `wormhole_push`, `wormhole_status`
+- **대상 도구**: `wormhole_sync`, `wormhole_status`
 - **절차**:
-  1. 머신A tools/call `wormhole_push {"confirm":true}` → 원격에 H1 업로드, manifestGeneration=N+1
+  1. 머신A tools/call `wormhole_sync {"confirm":true}` → 원격에 H1 업로드, manifestGeneration=N+1
   2. 머신B tools/call `wormhole_status {}` → '.claude/synced.md' kind 확인
-  3. 머신B tools/call `wormhole_push {"confirm":true}`
+  3. 머신B tools/call `wormhole_sync {"confirm":true}`
   4. 머신B tools/call `wormhole_status {}` → converged 분류 또는 사라짐 확인
-  5. 머신B tools/call `wormhole_push {"confirm":true}` 2회차 실행
-  6. step5 응답 pushed/deleted 확인
+  5. 머신B tools/call `wormhole_sync {"confirm":true}` 2회차 실행
+  6. step5 응답 push.pushed/push.deleted 확인
 - **기대 결과**:
   - step2 `structuredContent.summary.converged = [".claude/synced.md"]` (로컬=원격=H1, base=H0 → 양측 변경+동일 해시)
-  - step3 `structuredContent.pushed = []` (업로드 불필요)
-  - step3 `structuredContent.deleted = []`
-  - step3 `structuredContent.skipped >= 0`
-  - step3 `structuredContent.manifestGeneration = N+1` (전진 없음 — 수렴은 manifest 재쓰기 안함)
+  - step3 `structuredContent.push.pushed = []` (업로드 불필요)
+  - step3 `structuredContent.push.deleted = []`
+  - step3 `structuredContent.push.skipped >= 0`
+  - step3 `structuredContent.push.manifestGeneration = N+1` (전진 없음 — 수렴은 manifest 재쓰기 안함)
   - step4 `summary.converged = []` 또는 해당 키 unchanged 분류 (watermark 전진으로 base=H1)
-  - step5 pushed=[], deleted=[], skipped 증가 (멱등)
+  - step5 push.pushed=[], push.deleted=[], push.skipped 증가 (멱등)
 - **합격 기준**:
   - step2 status 에서 converged 배열에 해당 키 포함
-  - step3 push 이후 pushed/deleted 빈 배열 (실제 전송 없음)
-  - step3 manifestGeneration 이 머신A push 이후 값과 동일 (manifest 재쓰기 없음)
-  - step5 2회차 push 에서도 pushed/deleted 빈 배열 (완전 멱등)
+  - step3 sync(push 단계) 이후 push.pushed/push.deleted 빈 배열 (실제 전송 없음)
+  - step3 push.manifestGeneration 이 머신A sync 이후 값과 동일 (manifest 재쓰기 없음)
+  - step5 2회차 sync 에서도 push.pushed/push.deleted 빈 배열 (완전 멱등)
 - **신선도**: (b) e2e 해피패스는 단일 머신 왕복만 검증했고 양측 독립 수렴 → converged 분류 → manifest 불변 경로는 미검증.
 - **자동화 힌트**: 두 HOME 을 별도 tmpdir 로, state.json 을 각각 H0 baseline 으로 사전 준비하면 오프라인 시뮬레이션 가능.
 
@@ -1811,28 +1676,28 @@
 
 - **전제조건**:
   - `WRITABLE_WEBDAV`
-  - 머신A 에서 '.claude/revive.md' tombstone push 완료(TMB-01 유사 선행)
+  - 머신A 에서 '.claude/revive.md' tombstone 을 sync(confirm:true)로 원격 기록 완료(TMB-01 유사 선행)
   - 원격 manifest 에 '.claude/revive.md' entry.deleted=true, generation=K
-- **대상 도구**: `wormhole_push`, `wormhole_status`, `wormhole_pull`
+- **대상 도구**: `wormhole_sync`, `wormhole_status`
 - **절차**:
   1. 머신A 에서 `HOME_A/.claude/revive.md` 를 새 콘텐츠로 재생성
   2. tools/call `wormhole_status {}` → '.claude/revive.md' kind='added' 확인 (tombstone 있지만 로컬 신규생성)
-  3. tools/call `wormhole_push {"confirm":true}`
+  3. tools/call `wormhole_sync {"confirm":true}`
   4. tools/call `wormhole_status {}` → '.claude/revive.md' kind 확인
-  5. `TWO_MACHINE` 환경: 머신B tools/call `wormhole_pull {"confirm":true}`
+  5. `TWO_MACHINE` 환경: 머신B tools/call `wormhole_sync {"confirm":true}`
   6. 머신B `HOME_B/.claude/revive.md` 파일 내용 확인
 - **기대 결과**:
   - step2 `structuredContent.summary.added = [".claude/revive.md"]` 또는 modified
-  - step3 `structuredContent.pushed = [".claude/revive.md"]`
-  - step3 `structuredContent.deleted = []`
-  - step3 `structuredContent.manifestGeneration = K+1` (tombstone generation K 에서 +1)
+  - step3 `structuredContent.push.pushed = [".claude/revive.md"]`
+  - step3 `structuredContent.push.deleted = []`
+  - step3 `structuredContent.push.manifestGeneration = K+1` (tombstone generation K 에서 +1)
   - step4 '.claude/revive.md' kind='unchanged' (되살리기 성공 후 watermark 전진)
-  - step5 `structuredContent.applied = [".claude/revive.md"]` (머신B 에 복원)
+  - step5 `structuredContent.pull.applied = [".claude/revive.md"]` (머신B 에 복원)
   - step6 파일 내용이 재생성 콘텐츠와 바이트 일치
 - **합격 기준**:
-  - step3 push isError 없음, pushed 에 해당 키 포함
-  - step3 manifestGeneration 이 tombstone generation 보다 정확히 1 큰 값
-  - step5 pull applied 에 해당 키 포함
+  - step3 sync(push 단계) isError 없음, push.pushed 에 해당 키 포함
+  - step3 push.manifestGeneration 이 tombstone generation 보다 정확히 1 큰 값
+  - step5 sync(pull 단계) pull.applied 에 해당 키 포함
   - step6 머신B 파일이 재생성 콘텐츠와 동일 (암호화 왕복 바이트 충실도)
 - **신선도**: (b) e2e 해피패스는 신규 파일 push/pull 만 검증했고 tombstone 후 동일 키 재생성(upsertEntry 의 deleted→alive generation 전진)은 미검증.
 
@@ -1840,21 +1705,21 @@
 
 - **전제조건**:
   - `TWO_MACHINE`
-  - TMB-02 선행 완료 — 머신B 에서 tombstone pull 이미 적용됨 (state.json 에 삭제 baseline 존재, 로컬 파일 부재)
-- **대상 도구**: `wormhole_pull`, `wormhole_status`
+  - TMB-02 선행 완료 — 머신B 에서 tombstone sync(pull 단계) 이미 적용됨 (state.json 에 삭제 baseline 존재, 로컬 파일 부재)
+- **대상 도구**: `wormhole_sync`, `wormhole_status`
 - **절차**:
-  1. 머신B tools/call `wormhole_pull {"confirm":true}` (2회차)
-  2. 머신B tools/call `wormhole_pull {"confirm":true}` (3회차)
+  1. 머신B tools/call `wormhole_sync {"confirm":true}` (2회차)
+  2. 머신B tools/call `wormhole_sync {"confirm":true}` (3회차)
   3. 머신B tools/call `wormhole_status {}`
 - **기대 결과**:
-  - step1 `structuredContent.applied = []`
-  - step1 `structuredContent.removed = []`
-  - step1 `structuredContent.conflicts = []`
-  - step1 `structuredContent.backupDir = null`
+  - step1 `structuredContent.pull.applied = []`
+  - step1 `structuredContent.pull.removed = []`
+  - step1 `structuredContent.pull.conflicts = []`
+  - step1 `structuredContent.pull.backupDir = null`
   - step2 동일 결과 반복
   - step3 '.claude/custom.md' 항목이 items 에 없거나 kind='unchanged'
 - **합격 기준**:
-  - 2회 연속 pull(confirm:true) 모두 applied=[], removed=[], backupDir=null
+  - 2회 연속 sync(confirm:true) 모두 pull.applied=[], pull.removed=[], pull.backupDir=null
   - isError 없음
   - OS 파일시스템에 `HOME_B/.claude/custom.md` 여전히 부재
 - **신선도**: (b) e2e 해피패스는 pull no-op 멱등을 콘텐츠 존재 케이스로만 검증했고 tombstone 이후의 removed 멱등(2회차 removed 빈 배열 + backupDir null)은 미검증.
@@ -1864,18 +1729,18 @@
 - **전제조건**:
   - `TWO_MACHINE`
   - '.claude/shared.md' 가 양 머신에 동기화된 state
-  - 머신A 가 콘텐츠를 변경하고 push(confirm:true) 완료 (원격에 새 콘텐츠 H2)
+  - 머신A 가 콘텐츠를 변경하고 sync(confirm:true) 완료 (원격에 새 콘텐츠 H2)
   - 머신B 로컬에는 여전히 이전 콘텐츠 H1 (state.json baseline = H1)
-- **대상 도구**: `wormhole_pull`
+- **대상 도구**: `wormhole_sync`
 - **절차**:
   1. 머신B 로컬 파일 H1 내용 기록
-  2. 머신B tools/call `wormhole_pull {"confirm":true}`
-  3. `structuredContent.backupDir` 경로 추출
+  2. 머신B tools/call `wormhole_sync {"confirm":true}`
+  3. `structuredContent.pull.backupDir` 경로 추출
   4. backupDir 하위 '.claude/shared.md' 파일 내용 확인
   5. `HOME_B/.claude/shared.md` 내용 확인
 - **기대 결과**:
-  - step2 `structuredContent.applied = [".claude/shared.md"]`
-  - step2 `structuredContent.backupDir != null`
+  - step2 `structuredContent.pull.applied = [".claude/shared.md"]`
+  - step2 `structuredContent.pull.backupDir != null`
   - step4 backupDir 사본 내용 = H1 (적용 전 원본)
   - step5 `HOME_B/.claude/shared.md` 내용 = H2 (새 원격 콘텐츠)
 - **합격 기준**:
@@ -1891,24 +1756,24 @@
 - **전제조건**:
   - `TWO_MACHINE`
   - '.claude/both-deleted.md' 가 양 머신에 동기화된 상태 (baseline=H0)
-  - 머신A 가 파일 삭제 후 push(confirm:true) → 원격 tombstone (deleted=true)
+  - 머신A 가 파일 삭제 후 sync(confirm:true) → 원격 tombstone (deleted=true)
   - 머신B 도 동일 파일을 오프라인에서 삭제 (state.json baseline 은 여전히 H0, 로컬 파일 부재)
-- **대상 도구**: `wormhole_status`, `wormhole_push`, `wormhole_pull`
+- **대상 도구**: `wormhole_status`, `wormhole_sync`
 - **절차**:
   1. 머신B tools/call `wormhole_status {}`
-  2. 머신B tools/call `wormhole_push {"confirm":true}`
-  3. 머신B tools/call `wormhole_pull {"confirm":true}`
+  2. 머신B tools/call `wormhole_sync {"confirm":true}`
+  3. 머신B tools/call `wormhole_sync {"confirm":true}` (2회차)
   4. 머신B tools/call `wormhole_status {}` (2회차)
 - **기대 결과**:
   - step1 '.claude/both-deleted.md' kind='converged' (로컬=null, 원격=null, 양측 삭제 수렴)
-  - step2 `structuredContent.pushed = []`, `deleted = []` (tombstone 재전송 불필요)
-  - step2 `structuredContent.manifestGeneration` 불변 (원격 재쓰기 없음)
-  - step3 `structuredContent.removed = []`, `applied = []`, `backupDir = null`
+  - step2 `structuredContent.push.pushed = []`, `push.deleted = []` (tombstone 재전송 불필요)
+  - step2 `structuredContent.push.manifestGeneration` 불변 (원격 재쓰기 없음)
+  - step3 `structuredContent.pull.removed = []`, `pull.applied = []`, `pull.backupDir = null`
   - step4 '.claude/both-deleted.md' 항목 absent 또는 kind='unchanged'
 - **합격 기준**:
   - step1 summary.converged 에 해당 키 포함 (kind=converged, localHash=null)
-  - step2 push 가 manifest 를 재쓰지 않음 (manifestGeneration 불변)
-  - step3 pull 의 removed 빈 배열 (이미 수렴된 삭제를 재삭제 안함)
+  - step2 sync(push 단계)가 manifest 를 재쓰지 않음 (push.manifestGeneration 불변)
+  - step3 sync(pull 단계)의 pull.removed 빈 배열 (이미 수렴된 삭제를 재삭제 안함)
   - step4 status 에서 해당 키 더 이상 deleted/remoteDeleted 미분류
 - **신선도**: (b) e2e 해피패스는 양측 동시 삭제 케이스를 다루지 않았고, diff.ts 의 양측 삭제 수렴 분기(localHash===null, remoteHash===null → converged)가 MCP 도구 경계에서 올바르게 전파되는지 미검증.
 - **자동화 힌트**: advanceConverged 의 localHash===null 분기(removeBaseSnapshot + delete nextState[key])가 실행되어 state.json 에서 키 제거되는지 state 파일 직접 검사로 보완 가능.
@@ -1920,27 +1785,27 @@
   - TWO_MACHINE: 머신A(HOME_A,stateDir_A)·머신B(HOME_B,stateDir_B)가 동일 WRITABLE_WEBDAV 원격 + 동일 passphrase 공유
   - STDIO_RPC_CLIENT 또는 MCP_INSPECTOR 로 머신B 의 plugin/dist/server.mjs 를 머신B HOME 환경에서 기동(buildEngine 부팅: config로드→machineId→remote.ensureDir(MKCOL)→passphrase→ensureCryptoReady(원격 keyparams sentinel 복호 검증) 통과)
   - 머신B 로컬에 이미 두 개 이상의 동기화 대상 파일이 존재(예: ~/.claude/CLAUDE.md='B-local-CLAUDE', ~/.claude/settings.json 또는 추가 일반키 파일='B-local-2'). 이들이 pull 적용 시 덮어쓰기될 기존 파일이어야 backupFile 이 null 아닌 backupPath 를 만든다
-  - 머신A 에서 같은 키 2건+ 을 수정 후 wormhole_push{confirm:true} 로 원격 manifest+blobs/* 갱신(머신B 입장에서 두 키가 remoteModified 로 분류되도록)
+  - 머신A 에서 같은 키 2건+ 을 수정 후 wormhole_sync{confirm:true} 로 원격 manifest+blobs/* 갱신(머신B 입장에서 두 키가 remoteModified 로 분류되도록)
   - CORRUPT_REMOTE 주입: 원격 blobs/ 아래 적용 대상 키 중 정확히 1건의 blob 파일을 손상시킨다 — 복호/gunzip 이 throw 하도록 암호문 바이트를 변조(decrypt 실패 유발) 또는 CSZ1 매직 뒤 gzip 페이로드를 깨뜨림(gunzipAsync 실패 유발). 나머지 1건 이상은 정상 blob 으로 둔다
   - 주의: blob 파일 자체를 삭제하면 getTextIfExists→null→downloadBlob null→해당 키만 조용히 skip(throw 아님)이 되어 롤백이 트리거되지 않는다. 반드시 '존재하지만 손상된' blob 이어야 catch 경로 진입
-- **대상 도구**: `wormhole_status`, `wormhole_pull`
+- **대상 도구**: `wormhole_status`, `wormhole_sync`
 - **절차**:
   1. 머신B 부팅 직후 pull 이전 베이스라인 캡처: tools/call wormhole_status {} 로 두 키가 remoteModified(적용 예정)임을 확인하고, 로컬 파일 두 건의 현재 바이트 내용을 디스크에서 직접 스냅샷('B-local-CLAUDE','B-local-2')
   2. 머신B 의 backupsDir(backups/) 하위 기존 runTs 디렉터리 목록을 사전 기록(신규 생성분 식별용)
-  3. tools/call wormhole_pull {"confirm": true} 호출 — runPull 이 toApply 2건을 mapLimit 병렬 적용하다가 손상 blob 키에서 downloadBlob 내부 decrypt/gunzip 예외 발생
+  3. tools/call wormhole_sync {"confirm": true} 호출 — pull 단계의 runPull 이 toApply 2건을 mapLimit 병렬 적용하다가 손상 blob 키에서 downloadBlob 내부 decrypt/gunzip 예외 발생
   4. 핸들러 catch 가 결과를 isError 로 래핑한 응답을 수신
   5. 응답 수신 후 머신B 로컬 파일 두 건의 현재 디스크 내용을 다시 읽어 step1 스냅샷과 바이트 비교
   6. backups/ 하위에 이번 run 의 신규 runTs 디렉터리가 생겼는지, 그 안에 적용 직전 원본 사본(키 경로 분할 구조)이 보존됐는지 확인
   7. 머신B stderr 로그에서 롤백 트레이스 문자열 확인
 - **기대 결과**:
-  - wormhole_pull 응답: isError === true. content[0].type==='text', content[0].text === 예외 메시지 문자열(String(err.message)) — decrypt 실패 또는 gunzip 실패 유래 메시지. structuredContent 필드는 없음(에러 경로는 structuredContent 미포함)
+  - wormhole_sync 응답: isError === true. content[0].type==='text', content[0].text === 예외 메시지 문자열(String(err.message)) — decrypt 실패 또는 gunzip 실패 유래 메시지. structuredContent 필드는 없음(에러 경로는 structuredContent 미포함)
   - 로컬 파일 원복: 정상 blob 키가 mapLimit 병렬에서 먼저 atomicWriteFile 로 적용됐더라도, rollback 이 backedUp[].backupPath(null 아님)에서 원본을 atomicWriteFile 로 되써서 step1 스냅샷과 바이트 동일('B-local-CLAUDE','B-local-2' 그대로). 부분 적용된 원격 내용('A-modified...')이 어느 파일에도 잔존하지 않음
   - 적용으로 새로 생성됐을 키(백업 시 ENOENT→backupPath=null)가 있었다면 rollback 이 deleteLocalFile 로 제거 — 적용 산물 파일 미존재
   - stderr 로그에 '[engine] pull 적용 중 오류 — 롤백 시도: ' 접두 메시지 1건 출력(this.logger.error). 개별 롤백 실패 시에만 '[engine] 롤백 실패 <key>: ' 출력되며 정상 롤백에서는 미출력
   - backups/<runTs>/ 신규 디렉터리 실존하고 그 하위에 키 경로(key.split('/'))로 분할된 원본 사본 파일이 존재(backupFile 이 fs.writeFile 로 기록) — 단, 이 backupDir 경로는 throw 로 인해 PullResult 로 반환되지 않으므로 디스크 직접 관측으로만 확인
   - engine 의 nextState 는 writeState 도달 전 throw 되므로 syncState 파일이 갱신되지 않음(다음 pull 재시도 시 동일 remoteModified 재분류 가능)
 - **합격 기준**:
-  - wormhole_pull{confirm:true} 응답의 isError === true 이고 structuredContent 키 부재
+  - wormhole_sync{confirm:true} 응답의 isError === true 이고 structuredContent 키 부재
   - pull 이후 로컬 두 파일의 바이트가 step1 pull-이전 스냅샷과 완전 일치(deep byte-equal) — 정상 blob 키조차 원격 신규 내용으로 남지 않음(부분 적용 0건)
   - backups/<신규 runTs>/ 디렉터리가 OS 파일시스템에 실재하고 적용 직전 원본 사본 1건 이상 포함
   - stderr 에 '[engine] pull 적용 중 오류 — 롤백 시도:' 정확히 1회 등장, '[engine] 롤백 실패' 0회
@@ -1961,25 +1826,25 @@
   - `~/.wormhole/config.json` 존재, `WEBDAV_URL`/`USER`/`PASS` 설정, `WORMHOLE_PASSPHRASE` 설정
   - **remoteBaseDir 디렉터리는 존재하나 `<remoteBaseDir>/blobs` 는 미존재 (또는 둘 다 미존재)** 로 명확화. 근거: `client.ts` ensureDir(61-72)는 `client.exists()` 후 미존재일 때만 createDirectory(MKCOL) 호출 → 둘 다 이미 존재하면 MKCOL 시도 자체가 없어 405/warn 미발생. READONLY_WEBDAV 에서 미존재 blobs 에 대한 MKCOL 405 를 강제하려면 blobs 미존재 상태가 필수. (critic 교정 반영)
   - `STDIO_RPC_CLIENT`: `server.mjs` 를 `node plugin/dist/server.mjs` 로 실행하는 클라이언트 하네스
-- **대상 도구**: `wormhole_status`, `wormhole_push`
+- **대상 도구**: `wormhole_status`, `wormhole_sync`
 - **절차**:
   1. `node plugin/dist/server.mjs` 를 stdio 로 실행하고 MCP 핸드셰이크 완료 대기 (initialize + initialized)
   2. tools/list 요청 전송 → 응답 수신
   3. tools/call `{name:'wormhole_status', arguments:{}}` 전송 → 응답 수신
-  4. tools/call `{name:'wormhole_push', arguments:{confirm:false}}` 전송 → 응답 수신
+  4. tools/call `{name:'wormhole_sync', arguments:{confirm:false}}` 전송 → 응답 수신
   5. 서버 stderr 에서 ensureDir 경고 메시지 확인
 - **기대 결과** (분기 명시, critic 교정 반영):
   - **(a) blobs(또는 remoteBaseDir) 미존재 + READONLY 서버** → createDirectory MKCOL 405 → catch 블록 stderr `'warn [RemoteStore] ensureDir 실패, 무시: <resolved>'` 출력 후 부팅 계속
   - **(b) 모든 대상 디렉터리 이미 존재** → MKCOL 미시도, warn 미출력(no-op)
-  - 어느 경우든 핵심 패스 판정(도구 6개 노출 + `wormhole_status`·`wormhole_dry_run direction:push` 정상 응답 + 프로세스 생존)은 유효
+  - 어느 경우든 핵심 패스 판정(도구 3개 노출 + `wormhole_status` 정상 응답 + 프로세스 생존)은 유효
   - 서버 프로세스가 종료되지 않음 (exit code 없음) — ensureDir 는 warn+continue 라 부팅 성공
-  - tools/list 응답에 6개 도구 포함
+  - tools/list 응답에 3개 도구 포함
   - `wormhole_status` 응답: isError 없음, structuredContent.summary 포함
-  - `wormhole_push {confirm:false}` 응답: isError 없음, structuredContent.dryRun=true (읽기전용 드라이런은 MKCOL 불필요)
+  - `wormhole_sync {confirm:false}` 응답: isError 없음, structuredContent.push.dryRun=true (읽기전용 미리보기는 MKCOL 불필요)
 - **합격 기준**:
-  - tools/list 에서 도구 6개 정확히 열거됨
+  - tools/list 에서 도구 3개 정확히 열거됨
   - `wormhole_status` 응답 content[0].type === 'text', JSON 파싱 성공, generatedAt 필드 존재
-  - `wormhole_push(dryRun)` isError 필드 없거나 false
+  - `wormhole_sync(미리보기)` isError 필드 없거나 false
   - 프로세스 pid 가 응답 수신 후에도 살아 있음 (kill -0 확인)
 - **신선도**: (c)는 Apache 실서버의 PUT 405 쓰기 블록 현상을 문서화했을 뿐이고, (a)(b)는 mock/직접호출이라 실 MCP stdio 경계에서 ensureDir 실패가 부팅에 미치는 영향을 한 번도 블랙박스 관측한 적 없음.
 - **자동화 힌트**: nc/socat 또는 Node `child_process.spawn` 으로 `server.mjs` 실행 후 JSON-RPC 라인을 stdin/stdout 으로 교환; stderr 파이프로 warn 메시지 grep.
@@ -2042,23 +1907,23 @@
   - 두 머신 각각 `server.mjs` 실행 중 (두 개의 독립 MCP 프로세스)
   - 두 머신 모두 원격과 초기 동기화 완료 상태 (push 하나씩 해서 매니페스트 존재)
   - `STDIO_RPC_CLIENT` x2
-- **대상 도구**: `wormhole_push`
+- **대상 도구**: `wormhole_sync`
 - **절차**:
-  1. 머신 A에 tools/call `{name:'wormhole_push', arguments:{confirm:true}}` 전송 (응답 대기 없이 비동기)
-  2. 동시에 (< 100ms 간격) 머신 B에 tools/call `{name:'wormhole_push', arguments:{confirm:true}}` 전송
+  1. 머신 A에 tools/call `{name:'wormhole_sync', arguments:{confirm:true}}` 전송 (응답 대기 없이 비동기)
+  2. 동시에 (< 100ms 간격) 머신 B에 tools/call `{name:'wormhole_sync', arguments:{confirm:true}}` 전송
   3. 두 응답 모두 수집
   4. 원격 lock.json 을 PROPFIND 로 조회하여 최종 상태 확인
 - **기대 결과**:
   - 두 응답 중 정확히 하나는 `isError:true`, content[0].text 에 'failed to acquire remote lock' 포함
-  - 나머지 하나는 isError 없음, `structuredContent.dryRun === false`
-  - 성공한 push 는 pushed[] 또는 deleted[] 비어있더라도 `structuredContent.manifestGeneration` 존재
+  - 나머지 하나는 isError 없음, `structuredContent.push.dryRun === false`
+  - 성공한 sync 는 push.pushed[] 또는 push.deleted[] 비어있더라도 `structuredContent.push.manifestGeneration` 존재
   - 원격 lock.json 이 TTL 만료 후 삭제되거나 부재 상태 (정상 release)
 - **합격 기준**:
   - 두 응답 중 정확히 하나에 `isError:true` 존재
   - 실패 응답 content[0].text === 'failed to acquire remote lock' (withLock 실패 메시지 정확히 일치)
   - 성공 응답에 structuredContent 필드 존재
   - 30초 후 원격 lock.json PROPFIND 가 404 또는 응답에 lock.json 없음 (정상 해제 확인)
-- **신선도**: (a)는 mock 엔진이라 실 RemoteLock CAS 경쟁 미검증; (b)는 단일 머신 단일 경로라 경합 없음; 실 두 MCP 프로세스가 동시 push 할 때 acquireRetries 소진 후 isError 변환까지의 실 와이어 경로가 미답.
+- **신선도**: (a)는 mock 엔진이라 실 RemoteLock CAS 경쟁 미검증; (b)는 단일 머신 단일 경로라 경합 없음; 실 두 MCP 프로세스가 동시 sync(push 단계) 할 때 acquireRetries 소진 후 isError 변환까지의 실 와이어 경로가 미답.
 - **자동화 힌트**: Promise.all 로 두 tools/call 동시 발사; 응답에 isError 분류 후 카운트 단언; 30초 후 PROPFIND 로 lock.json 부재 확인.
 
 #### ELC-05 · 만료 lock.json 탈취 — TTL 경과 후 다음 push가 CAS putIfMatch로 락 탈취하고 성공  `P1`
@@ -2069,13 +1934,13 @@
   - 원격 lock.json 을 수동으로 `acquiredAt=(now - 35000)`, `ttlMs=30000` 인 JSON 으로 직접 PUT 주입 (TTL 초과 상태)
   - **`WORMHOLE_LOG_LEVEL=debug` (탈취 머신 프로세스 env) 추가.** 근거: `lock.ts:154` 'remote lock acquired' 는 `logger?.debug` 이고 `logger.ts:30` defaultLevel 은 `WORMHOLE_LOG_LEVEL ?? 'info'` 라 기본 환경(info)에서 debug 로그 미출력 → 단언 실패. (critic 교정 반영)
   - `STDIO_RPC_CLIENT`
-- **대상 도구**: `wormhole_push`
+- **대상 도구**: `wormhole_sync`
 - **절차**:
   1. 원격 WebDAV 에 만료된 lock.json 직접 PUT: `{"machineId":"other-machine","acquiredAt":<now-35000>,"ttlMs":30000}`
-  2. tools/call `{name:'wormhole_push', arguments:{confirm:true}}` 전송
+  2. tools/call `{name:'wormhole_sync', arguments:{confirm:true}}` 전송
   3. 응답 수신 및 stderr 수집
 - **기대 결과**:
-  - `wormhole_push` 응답: isError 없음, `structuredContent.dryRun === false`
+  - `wormhole_sync` 응답: isError 없음, `structuredContent.push.dryRun === false`
   - 원격 lock.json 이 자기 machineId 로 교체된 후 작업 완료 시 삭제됨
   - **(보조 신호)** `WORMHOLE_LOG_LEVEL=debug` 설정 시에만 stderr 에 'remote lock acquired' 로그 포함 (탈취 성공). 기본 info 환경에서는 미출력 (critic 교정 반영)
   - stderr 에 'remote lock held by other-machine' 메시지 없음 (대기 없이 즉시 탈취)
@@ -2095,22 +1960,22 @@
   - 단일 머신, `server.mjs` 실행 중 (해당 WebDAV 사용)
   - 로컬에 동기화 대상 파일 1개 이상 존재 (예: `~/.claude/CLAUDE.md`)
   - `STDIO_RPC_CLIENT`
-- **대상 도구**: `wormhole_push`
+- **대상 도구**: `wormhole_sync`
 - **절차**:
-  1. tools/call `{name:'wormhole_push', arguments:{confirm:true}}` 전송 → 응답 수신
+  1. tools/call `{name:'wormhole_sync', arguments:{confirm:true}}` 전송 → 응답 수신
   2. stderr 수집하여 warn 메시지 확인
-  3. 즉시 동일 호출 재전송 (rapid back-to-back): tools/call `{name:'wormhole_push', arguments:{confirm:true}}`
+  3. 즉시 동일 호출 재전송 (rapid back-to-back): tools/call `{name:'wormhole_sync', arguments:{confirm:true}}`
   4. 두 번째 응답 수신
 - **기대 결과**:
-  - 첫 번째 push: isError 없음, `structuredContent.pushed` 배열에 파일 포함
+  - 첫 번째 sync: isError 없음, `structuredContent.push.pushed` 배열에 파일 포함
   - stderr 에 'putIfMatch: ETag 없음(서버 미지원?)' 및 'best-effort PUT으로 폴백' 경고 포함
-  - 두 번째 push: isError 없음 (no-op 멱등 또는 skipped 처리), dryRun:false
+  - 두 번째 sync: isError 없음 (no-op 멱등 또는 skipped 처리), push.dryRun:false
   - 원격 `manifest.json.age` 는 두 번 PUT 되었으나 generation 충돌 없음 (보조 generation CAS 가 ETag 없이도 충돌 검출)
 - **합격 기준**:
   - 두 응답 모두 isError 없거나 false
   - stderr 에 'best-effort PUT으로 폴백' 패턴 포함
-  - 두 번째 push 의 `structuredContent.pushed` 배열이 비어 있음 (no-op 멱등)
-  - 원격 manifest generation 이 정확히 1 증가 (첫 번째 push 만 실제 업로드)
+  - 두 번째 sync 의 `structuredContent.push.pushed` 배열이 비어 있음 (no-op 멱등)
+  - 원격 manifest generation 이 정확히 1 증가 (첫 번째 sync 만 실제 업로드)
 - **신선도**: (b)e2e 해피패스는 인메모리 WebDAV 하네스(strong ETag 반환)를 썼고, (c)는 Apache ETag 현상을 문서화했지만 NO_ETAG 서버(ETag 완전 부재)는 별개 시나리오임; putIfMatch etag=null 분기의 폴백 경고와 보조 generation CAS 동작을 MCP 도구 경계에서 미검증.
 - **자동화 힌트**: nginx/Caddy 리버스 프록시 설정에서 ETag 헤더 strip; tools/call 2회 연속 실행; `stderr grep 'best-effort PUT'`.
 
@@ -2150,9 +2015,9 @@
   - `MCP_INSPECTOR` 또는 `STDIO_RPC_CLIENT` 로 `server.mjs` stdio 기동(머신 A)
   - 외부 경합 에이전트: 매 push 시도 사이에 원격 manifest.json 의 generation 을 선점 전진시키는 독립 스크립트(별도 WebDAV 클라이언트로 manifest 를 read→generation+1→putIfMatch). MAX_CAS_RETRIES(3) 회 이상 매번 선점하도록 동기화
   - 머신 A 로컬에 push 대상 변경 1건 이상 존재(빈 push 가 아니어야 runPush 가 manifest 쓰기 단계 도달)
-- **대상 도구**: `wormhole_push`
+- **대상 도구**: `wormhole_sync`
 - **절차**:
-  1. tools/call `wormhole_push {confirm:true}` 호출 시작
+  1. tools/call `wormhole_sync {confirm:true}` 호출 시작 (내부 push 단계가 manifest 쓰기에 도달)
   2. 경합 에이전트가 runPush 의 매 시도 직전(또는 putIfMatch 직전 윈도)마다 원격 manifest generation 을 전진시켜 ManifestConflictError(412/409) 를 3회 유발
   3. runPushWithRetry(engine.ts 299-319) 가 지수백오프(`min(2000,100*2^attempt)+지터`)로 attempt 0..2 재시도 후 소진
   4. 소진 시 `throw lastErr`(ManifestConflictError) → 핸들러 try/catch 가 `isError:true` 로 변환
@@ -2177,19 +2042,19 @@
   - STDIO_RPC_CLIENT: server.mjs 단일 프로세스 기동 + initialize 핸드셰이크 완료 (buildEngine 통과: loadConfig→machineId→ensureDir(MKCOL)→passphrase→ensureCryptoReady 성공)
   - 로컬에 동기화 대상 변경 1건 이상 존재(push 가 manifest generation 을 실제 전진시키도록)
   - 독립 PROPFIND/GET 와이어 관측 클라이언트(webdav npm 또는 curl) 준비 — manifest.json 복호 후 generation 비교용
-- **대상 도구**: `wormhole_push`, `wormhole_pull`
+- **대상 도구**: `wormhole_sync`
 - **절차**:
   1. 호출 전 독립 status 또는 PROPFIND+복호로 GEN_BEFORE 기록 (wormhole_status 의 structuredContent.manifestGeneration)
-  2. 동일 STDIO_RPC_CLIENT 연결에서 응답 대기 없이 두 JSON-RPC 요청을 연속 전송: req A = tools/call {"name":"wormhole_push","arguments":{"confirm":true}} (id=101), 직후 req B = tools/call {"name":"wormhole_pull","arguments":{"confirm":true}} (id=102) — 두 요청을 flush 사이 await 없이 같은 tick 에 stdin 으로 write
+  2. 동일 STDIO_RPC_CLIENT 연결에서 응답 대기 없이 두 JSON-RPC 요청을 연속 전송: req A = tools/call {"name":"wormhole_sync","arguments":{"confirm":true}} (id=101), 직후 req B = tools/call {"name":"wormhole_sync","arguments":{"confirm":true}} (id=102) — 두 요청을 flush 사이 await 없이 같은 tick 에 stdin 으로 write. 각 sync 는 내부적으로 pull→push 를 순차 수행하므로 두 호출이 동일 mutex 를 두고 경쟁한다
   3. 두 응답(id=101, id=102) 모두 수신될 때까지 수집
   4. 각 응답의 isError 부재 확인, structuredContent 파싱
   5. 호출 후 독립 PROPFIND+복호로 GEN_AFTER 기록 및 manifest.json 단일 정합본(파싱 가능, KeyParamsSchema/Manifest 구조 유효) 확인
   6. 원격 blobs/ 및 manifest.json 에 orphan tmp(.tmp.* 접미사 잔존) 부재 확인(putAtomic move 완료)
 - **기대 결과**:
-  - id=101(push) 응답: isError 필드 없음, structuredContent.manifestGeneration = 정수(GEN_BEFORE 보다 큼)
-  - id=102(pull) 응답: isError 필드 없음, structuredContent 가 PullResult 형태(정상 객체)
+  - id=101(sync) 응답: isError 필드 없음, structuredContent.push.manifestGeneration = 정수(GEN_BEFORE 보다 큼)
+  - id=102(sync) 응답: isError 필드 없음, structuredContent 가 {pull, push} 합본(정상 객체)
   - 두 응답 모두 content[0].text 가 JSON.stringify(payload) 와 동일(핸들러 정상 경로)
-  - GEN_AFTER 는 단일 generation 경로 — push 가 정확히 +1 전진시킨 값이며 pull 은 generation 미변경(읽기), 즉 GEN_AFTER === GEN_BEFORE+1
+  - GEN_AFTER 는 단일 generation 경로 — 먼저 직렬화된 sync 의 push 가 정확히 +1 전진시키고 뒤따른 sync 의 push 는 변경 없음 no-op, 즉 GEN_AFTER === GEN_BEFORE+1
   - 원격 manifest.json 은 손상 없이 1개 정합 복호본(armored age 페이로드 복호 성공), orphan .tmp.* 잔존 없음
   - 로깅(stderr)에 push CAS 충돌 재시도 흔적 없거나 있어도 최종 수렴(isError 없음) — 인터리브로 인한 ManifestConflictError 영구 실패 부재
 - **합격 기준**:
@@ -2238,21 +2103,21 @@
   - TWO_MACHINE 등가: 동일 원격 base + 동일 passphrase 를 가진 두 server.mjs 인스턴스를 별도 HOME+stateDir 로 준비, 각각 로컬에 push 할 변경 1건 보유
   - STDIO_RPC_CLIENT x2: 두 인스턴스 각각 stdin/stdout/stderr 분리 캡처
   - 독립 PROPFIND/GET 관측 클라이언트로 manifest.json generation 복호 비교 준비
-- **대상 도구**: `wormhole_push`
+- **대상 도구**: `wormhole_sync`
 - **절차**:
   1. 두 server.mjs 인스턴스를 거의 동시에 spawn — buildEngine 의 ensureCryptoReady 가 keyparams 부재를 보고 첫 기기 경로(putAtomic)로 keyparams.json 생성 경쟁(한쪽 created:true). 두 부팅 모두 핸드셰이크 성공까지 확인
-  2. 두 인스턴스에 거의 동시에 tools/call {"name":"wormhole_push","arguments":{"confirm":true}} 발사 — 둘 다 원격 manifest 부재(read()==null)를 보고 create 경로 진입 → 각자 putIfNoneMatch(If-None-Match:*) 시도
-  3. 두 응답 수집: 승자 isError 없음·structuredContent.manifestGeneration 기록, 패자는 putIfNoneMatch 412/405/409 → PreconditionFailedError → ManifestConflictError → runPushWithRetry 재시도(원격 재read 시 manifest 존재 → update 경로) 후 최종 수렴
+  2. 두 인스턴스에 거의 동시에 tools/call {"name":"wormhole_sync","arguments":{"confirm":true}} 발사 — 각 sync 의 push 단계가 둘 다 원격 manifest 부재(read()==null)를 보고 create 경로 진입 → 각자 putIfNoneMatch(If-None-Match:*) 시도
+  3. 두 응답 수집: 승자 isError 없음·structuredContent.push.manifestGeneration 기록, 패자는 putIfNoneMatch 412/405/409 → PreconditionFailedError → ManifestConflictError → runPushWithRetry 재시도(원격 재read 시 manifest 존재 → update 경로) 후 최종 수렴
   4. NO_ETAG 서버이므로 패자 재시도의 update 경로에서 putIfMatch etag=null 분기 진입 — 각 인스턴스 stderr 에서 '[RemoteStore] putIfMatch: ETag 없음(서버 미지원?) — best-effort PUT 으로 폴백' warn 관측
   5. 독립 PROPFIND+복호로 최종 manifest.json 단일 정합본·generation 수렴값 확인
 - **기대 결과**:
-  - 승자 push 응답: isError 없음, structuredContent.manifestGeneration = 정수(create 경로 +1)
-  - 패자 push 응답: 최종 isError 없음(재시도 수렴) — runPushWithRetry 가 MAX_CAS_RETRIES 내 재read→update 경로로 성공. (재시도 소진 시에만 isError:true + 'ManifestConflictError' 메시지)
+  - 승자 sync 응답: isError 없음, structuredContent.push.manifestGeneration = 정수(create 경로 +1)
+  - 패자 sync 응답: 최종 isError 없음(재시도 수렴) — runPushWithRetry 가 MAX_CAS_RETRIES 내 재read→update 경로로 성공. (재시도 소진 시에만 isError:true + 'ManifestConflictError' 메시지)
   - 패자 인스턴스 stderr: '[engine] push CAS 충돌' 재시도 로그 1회 이상
   - NO_ETAG 환경 stderr: '[RemoteStore] putIfMatch: ETag 없음(서버 미지원?) — best-effort PUT 으로 폴백:' warn 문자열 관측(client.ts putIfMatch etag===null 분기) — 진짜 CAS 상실 경고
   - 최종 원격 manifest.json: manifest.json 이 ManifestSchema 로 파싱 성공(손상 없음), generation 은 두 push 중 최소 하나 이상 반영(승자 +1, NO_ETAG 환경에서 패자 update 는 best-effort 폴백이라 lost-update 가능)
 - **합격 기준**:
-  - 두 push 응답 중 최소 하나는 즉시 isError 없이 성공, 다른 하나도 재시도 후 isError 없이 수렴(생성경쟁 패자가 PreconditionFailedError→ManifestConflictError→CAS 재시도로 정합 도달)
+  - 두 sync 응답 중 최소 하나는 즉시 isError 없이 성공, 다른 하나도 재시도 후 isError 없이 수렴(생성경쟁 패자가 PreconditionFailedError→ManifestConflictError→CAS 재시도로 정합 도달)
   - 패자 stderr 에 'push CAS 충돌' 재시도 흔적 존재(putIfNoneMatch 412/405/409 경로 발동 증거)
   - NO_ETAG 환경에서 stderr 에 'putIfMatch: ETag 없음' + 'best-effort PUT 으로 폴백' warn 정확 매칭(폴백 발동·CAS 상실 명시)
   - 독립 PROPFIND 로 읽은 최종 manifest.json 이 ManifestSchema 로 파싱 성공(손상 없음)하며, generation 이 두 push 중 최소 하나 이상 반영(NO_ETAG 환경 lost-update 가능성 허용)
@@ -2302,17 +2167,17 @@
 
 | 시나리오 | 중복 대상 | 처리 |
 |---|---|---|
-| SCH-07 | TRX-01 | 단순 enum/required 재확인은 TRX-01 로 흡수. SCH-07 은 **ajv 로 반환 JSON Schema 자체 유효성 검증 + 릴리스간 snapshot drift 감지** 로 범위 축소(삭제하지 않음). |
-| CGW-05 | SCH-05 | 미선언 프로퍼티 strip/reject 동작은 SCH-05 로 일원화. CGW-05 는 **confirm 전달이 원격 generation 을 불변으로 두는가(와이어 무변경) 각도만 유지**(삭제하지 않음). |
+| SCH-06 | TRX-01 | 단순 enum/required 재확인은 TRX-01 로 흡수. SCH-06 은 **ajv 로 반환 JSON Schema 자체 유효성 검증 + 릴리스간 snapshot drift 감지** 로 범위 축소(삭제하지 않음). |
+| CGW-03 | SCH-05 | 미선언 프로퍼티 strip/reject 동작은 SCH-05 로 일원화. CGW-03 은 **confirm 전달이 원격 generation 을 불변으로 두는가(와이어 무변경) 각도만 유지**(삭제하지 않음). |
 
 ### 7.3 corrections 반영 목록
 
 | 시나리오 | 교정 대상 필드 | 교정 내용 |
 |---|---|---|
-| CGW-04 | step8 expected / passCriteria | preserve-both 는 watermark 미전진이라 충돌이 감소하지 않고 **동일 잔존**. 성공 판정을 conflictCopies 파일 존재 + 로컬 원본 무변경 + backupDir null + conflicts 카운트 동일로 한정. 충돌 해소 확인은 latest-wins 케이스로 분리. |
+| CGW-02 | step8 expected / passCriteria | preserve-both 는 watermark 미전진이라 충돌이 감소하지 않고 **동일 잔존**. 성공 판정을 conflictCopies 파일 존재 + 로컬 원본 무변경 + backupDir null + conflicts 카운트 동일로 한정. 충돌 해소 확인은 latest-wins 케이스로 분리. |
 | ELC-05 | preconditions / passCriteria | `WORMHOLE_LOG_LEVEL=debug` precondition 추가(debug 로그 기본 미출력). 탈취 성공 판정을 **stderr 로그 비의존**(isError 없음 + PROPFIND 로 machineId 교체 + release 404 + ~4초 미만)으로 재정의. |
 | ELC-01 | preconditions / expected | precondition 을 'remoteBaseDir 는 존재하나 blobs 미존재(또는 둘 다 미존재)'로 명확화하여 MKCOL 405 경로 강제. expected 를 (a) 미존재→405 warn / (b) 존재→no-op 분기로 명시. |
-| CGW-07 | step5 / passCriteria | generation 전진 원인을 **sync 의 push 단계(resolve 아님)**로 귀속. preserve-both resolve 는 manifest 미쓰기. GEN_FINAL > GEN_BEFORE 는 push 기여로만 단언. |
+| CGW-05 | step5 / passCriteria | generation 전진 원인을 **sync 의 push 단계(resolve 아님)**로 귀속. preserve-both resolve 는 manifest 미쓰기. GEN_FINAL > GEN_BEFORE 는 push 기여로만 단언. |
 | TRX-04 | passCriteria | `-32002 ServerNotInitialized` 단언은 MCP SDK 구현 의존이라 pass/fail 에서 제거하고 '관측·기록(문서화)'로 강등. wormhole 자체 계약(serverInfo.name=wormhole, version=0.1.1, capabilities.tools 존재)에만 pass/fail. |
 
 > 위 5건은 critic `corrections` + patch `appliedCorrections`(9개 revisedField) 를 합산 반영한 것이다. 각 해당 시나리오 본문(6절)의 교정 지점에는 `(critic 교정 반영)` 표기를 두었다.
@@ -2324,7 +2189,7 @@
 | error-lock-cas | push CAS 재시도 소진 → ManifestConflictError isError 표면화 | **ELC-08** |
 | transport-registration | WEBDAV_USER 부재 + remoteBaseDir 미설정 시 부팅 halt | **TRX-08** |
 | settings-mcp-routing | settings.json 공유키 양측 발산 시 3-way 머지 동작 | **SMR-08** |
-| input-schema-zod | dry_run direction:pull 의 PullResult 결과타입 계약 | **SCH-08** |
+| input-schema-zod | (v4 제거) dry_run direction:pull 의 PullResult 결과타입 계약 — dry_run 도구 노출 제거로 시나리오 삭제, sync 미리보기 {pull,push} 합본 계약은 CGW-01 이 흡수 | **삭제(구 SCH-08)** |
 | conflict-policies | preserve-both resolve 멱등성(사본 중복 미생성) | **CFL-08** |
 
 ### 7.6 커버리지 갭 클로저 (v2 보강)
@@ -2336,9 +2201,9 @@
 | F-CONFIG-04 — loadDotEnvIntoProcess 가 이미 존재하는 process.env 키를 덮지 않음(host env 우선)을 부팅 산출물로 관측 | **TRX-09** | Medium |
 | F-CONFIG-02/03/05 — loadDotEnvIntoProcess 파싱 규칙(따옴표 1쌍 1회 제거, 트레일링 # 값 보존, 전체줄 주석 skip, 파일 부재 silent) 도출 config 로 관측 | **TRX-10** | Medium |
 | F-CONFIG-17 — buildEngine 의 평문 http 감지 분기가 logger.warn 을 stderr 로 1회 방출하고 stdout 미오염임을 관측 | **TRX-11** | High |
-| universeGap(description) — tools/list 와이어 노출되는 6개 도구 title/description 의 confirm 안전 가이드 문구 존재/부재 단언(문구 drift 회귀 감지) | **TRX-12** | High |
-| universeGap:sync-no-conflict-apply — sync.ts confirm:true 비충돌 경로에서 resolve 를 건너뛰고 pull→push 만 실제 적용하는 분기 | **CGW-08** | High |
-| universeGap:sync-preview-stop-on-error — sync.ts 미리보기 분기에서 pull dryRun throw 가 push dryRun 산출을 막아 isError 로 귀결 | **CGW-09** | High |
+| universeGap(description) — tools/list 와이어 노출되는 3개 도구 title/description 의 confirm 안전 가이드 문구 존재/부재 단언(문구 drift 회귀 감지) | **TRX-12** | High |
+| universeGap:sync-no-conflict-apply — sync.ts confirm:true 비충돌 경로에서 resolve 를 건너뛰고 pull→push 만 실제 적용하는 분기 | **CGW-06** | High |
+| universeGap:sync-preview-stop-on-error — sync.ts 미리보기 분기에서 pull dryRun throw 가 push dryRun 산출을 막아 isError 로 귀결 | **CGW-07** | High |
 | F-SETTINGS-14 — settings-merge 의 isForbiddenKey/FORBIDDEN_KEYS 가드가 원격 신뢰불가 JSON 의 프로토타입 오염 키를 모든 객체 재구성 지점에서 차단 | **SMR-09** | High |
 | F-SETTINGS-06 — normalizeSettingsForSync 의 try/catch 폴백이 비-JSON 로컬 settings 를 throw 없이 원본 바이트 hash/size 로 처리 | **SMR-10** | Medium |
 | F-SETTINGS-13 — mergeMcpJsonForPull 의 local===null 분기가 로컬 .mcp.json 부재/손상 시 원격기반 stableStringify 로 복구 산출 | **SMR-11** | Medium |
@@ -2394,8 +2259,8 @@
 | 차원 | 실행 시나리오 |
 |---|---|
 | Transport·등록 | smoke, TRX-01, TRX-04, TRX-12, TRX-13, TRX-14 |
-| confirm-gate | CGW-01, CGW-02, CGW-03, CGW-06, CGW-07, CGW-08, CGW-09 |
-| input-schema | SCH-01, SCH-02, SCH-03, SCH-04, SCH-08 |
+| confirm-gate | CGW-01, CGW-02, CGW-03, CGW-04, CGW-05, CGW-06, CGW-07 |
+| input-schema | SCH-01, SCH-02, SCH-03, SCH-04 |
 | conflict | CFL-01, CFL-02, CFL-03, CFL-04, CFL-06 |
 | settings-routing | SMR-01, SMR-02, SMR-03, SMR-05, SMR-06, SMR-08, **SMR-09**(보안) |
 | tombstone | RT 왕복, TMB-02, TMB-03, TMB-08 |
@@ -2412,7 +2277,7 @@
 
 ### 8.1 권장 실행 순서 (P0 먼저)
 
-1. **전송·등록** (TRX 차원) — 환경 가볍고 격리 쉬움. 특히 무경합 부팅/스키마 시나리오(TRX-08, SCH-08) 우선.
+1. **전송·등록** (TRX 차원) — 환경 가볍고 격리 쉬움. 특히 무경합 부팅/스키마 시나리오(TRX-08, SCH-01) 우선.
 2. **confirm 게이트** (CGW 차원) — 단일 머신 또는 경량 TWO_MACHINE.
 3. **스키마** (SCH 차원) — zod 거부·계약 검증, 환경 가벼움.
 4. **충돌** (CFL 차원) — 단일 머신 충돌 주입(CFL-08) 후 TWO_MACHINE 발산.
@@ -2420,7 +2285,7 @@
 6. **tombstone** (TMB 차원) — 삭제 전파·수렴, TWO_MACHINE.
 7. **에러/락/CAS** (ELC 차원) — CORRUPT_REMOTE/경합에이전트/NO_ETAG 등 가장 무거운 셋업.
 
-> crossCuttingNotes 실행 순서 권고: (1) 부팅·스키마 무경합(TRX-08, SCH-08) → (2) 단일 머신 충돌주입(CFL-08, ELC-08, CORRUPT_REMOTE/경합 셋업) → (3) TWO_MACHINE(SMR-08, CGW-07) 마지막. 각 시나리오는 신선한 remote prefix(또는 purge)로 격리해 generation 누적 오염을 방지한다.
+> crossCuttingNotes 실행 순서 권고: (1) 부팅·스키마 무경합(TRX-08, SCH-01) → (2) 단일 머신 충돌주입(CFL-08, ELC-08, CORRUPT_REMOTE/경합 셋업) → (3) TWO_MACHINE(SMR-08, CGW-05) 마지막. 각 시나리오는 신선한 remote prefix(또는 purge)로 격리해 generation 누적 오염을 방지한다.
 
 ### 8.2 환경별 묶음 실행
 
@@ -2435,11 +2300,11 @@
 
 ### 8.3 판정 자동화 요약
 
-- **structuredContent 키 집합 단언**: 응답을 JSON Schema(ajv) 또는 키 셋 비교로 단언한다. PullResult vs PushResult 발산은 키 집합 차이로 자동판정(SCH-08).
+- **structuredContent 키 집합 단언**: 응답을 JSON Schema(ajv) 또는 키 셋 비교로 단언한다. sync 미리보기의 {pull, push} 합본 키 집합은 키 셋 비교로 자동판정(CGW-01).
 - **isError 단언**: `응답.isError===true && structuredContent 부재` 로 판정.
 - **로그 단언**(ELC-01/05/08): stderr 라인 정규식 매칭. 단, 레벨 의존성 주의 — debug 로그는 `WORMHOLE_LOG_LEVEL=debug` 선결(ELC-05).
 - **재시도 횟수 단언**(ELC-08): 'push CAS 충돌' warn 라인 카운트 === `MAX_CAS_RETRIES`(코드 상수)로 일치 검증.
-- **와이어 무변경 단언**(CGW/SCH-08): 독립 PROPFIND/GET 으로 `manifest.json` generation·`lock.json` machineId·`blobs/*` 존재를 호출 전후 비교. generation 은 평문 필드면 직접, 암호화면 도구 status 의 `manifestGeneration` 보조 사용.
+- **와이어 무변경 단언**(CGW 차원): 독립 PROPFIND/GET 으로 `manifest.json` generation·`lock.json` machineId·`blobs/*` 존재를 호출 전후 비교. generation 은 평문 필드면 직접, 암호화면 도구 status 의 `manifestGeneration` 보조 사용.
 - **stdout/stderr 분리**(TRX-08, ELC-01/05): `spawn` 시 `stdio:['pipe','pipe','pipe']` 로 fd1/fd2 독립 수집.
 
 ---
@@ -2455,5 +2320,5 @@
 
 ---
 
-> 본 계획서는 설계(7차원) → critic 검토(overlaps/corrections/gaps) → 패치(appliedCorrections/additionalScenarios/crossCuttingNotes) 산출물을 조립한 것이다. 총 71개 시나리오, P0 25 / P1 35 / P2 11.
+> 본 계획서는 설계(7차원) → critic 검토(overlaps/corrections/gaps) → 패치(appliedCorrections/additionalScenarios/crossCuttingNotes) 산출물을 조립한 것이다. push/pull/dry_run 도구 제거(v4) 반영 후 총 67개 시나리오, P0 22 / P1 34 / P2 11.
 

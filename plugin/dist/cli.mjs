@@ -33604,11 +33604,8 @@ var USAGE = `wormhole \u2014 Claude Code \uC804\uC5ED \uC124\uC815 \uB3D9\uAE30\
 
 Usage:
   wormhole status                                  \uC6D0\uACA9/\uB85C\uCEEC diff \uC0C1\uD0DC\uB97C JSON \uC73C\uB85C \uCD9C\uB825
-  wormhole push  [--dry-run]                        \uB85C\uCEEC \uBCC0\uACBD\uC744 \uC6D0\uACA9\uC73C\uB85C \uC5C5\uB85C\uB4DC
-  wormhole pull  [--dry-run]                        \uC6D0\uACA9 \uBCC0\uACBD\uC744 \uB85C\uCEEC\uB85C \uC801\uC6A9
   wormhole resolve [--policy P] [--keys k1,k2] [--dry-run]
                                                     \uCDA9\uB3CC \uD574\uC18C (P = preserve-both|latest-wins|manual)
-  wormhole dry-run <push|pull>                      push/pull \uACC4\uD68D\uB9CC \uC0B0\uCD9C (\uBCC0\uACBD \uC5C6\uC74C)
   wormhole sync  [--policy preserve-both|latest-wins]
                                                     \uBCF5\uD569: pull \u2192 (\uCDA9\uB3CC \uC2DC) resolve \u2192 push
   wormhole --help | -h                              \uC774 \uB3C4\uC6C0\uB9D0\uC744 \uCD9C\uB825
@@ -33668,34 +33665,11 @@ async function run() {
       emit(await engine.status());
       return;
     }
-    case "push": {
-      const { engine } = await buildEngine(logger);
-      emit(await engine.push({ dryRun: dryRunFlag }));
-      return;
-    }
-    case "pull": {
-      const { engine } = await buildEngine(logger);
-      emit(await engine.pull({ dryRun: dryRunFlag }));
-      return;
-    }
     case "resolve": {
       const policy = parsePolicy(flags.policy);
       const keys = parseKeys(flags.keys);
       const { engine } = await buildEngine(logger);
       emit(await engine.resolve(policy, keys, { dryRun: dryRunFlag }));
-      return;
-    }
-    case "dry-run": {
-      const target = positionals[1];
-      if (target !== "push" && target !== "pull") {
-        throw new Error(`dry-run \uB300\uC0C1\uC740 push \uB610\uB294 pull \uC774\uC5B4\uC57C \uD568 (\uBC1B\uC74C: ${String(target)})`);
-      }
-      const { engine } = await buildEngine(logger);
-      if (target === "push") {
-        emit(await engine.push({ dryRun: true }));
-      } else {
-        emit(await engine.pull({ dryRun: true }));
-      }
       return;
     }
     case "sync": {

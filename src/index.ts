@@ -15,7 +15,7 @@ async function main(): Promise<void> {
   const { engine } = await buildEngine(logger);
 
   // 7) MCP 서버 + 툴 등록.
-  const server = new McpServer({ name: "wormhole", version: "0.1.4" });
+  const server = new McpServer({ name: "wormhole", version: "0.2.0" });
   registerAllTools(server, engine);
 
   // 8) graceful shutdown — 진행 작업 정리 후 종료.

@@ -1,6 +1,8 @@
 // Batch 1 — 단일 머신 MCP 도구 경계 계약 시나리오.
-// TRX-01(tools/list 스키마), CGW-01/03/06(confirm 게이트 실와이어),
-// SCH-01/02/04(zod 입력검증), ELC-02/03/10(부팅 실패 경로).
+// TRX-01(tools/list 스키마), CGW-03(sync confirm 게이트 실와이어),
+// SCH-02(zod 입력검증), ELC-02/03/10(부팅 실패 경로).
+// push/pull/dry_run 노출 제거: 해당 도구 동작 검증 케이스(CGW-01/06, SCH-01/04)는 삭제,
+// 안전 기본값(confirm 없는 미리보기)은 sync(CGW-03)로 이전됨.
 // 모드 B: 실패 시 테스트결함이면 본 파일 수정, 코드버그면 src 수정 + 발견 리포트.
 
 import { test } from "node:test";
@@ -30,61 +32,33 @@ function rejected(res) {
 }
 
 // ── TRX-01: tools/list 입력스키마 계약 ───────────────────────
-test("TRX-01: tools/list 6개 도구 inputSchema 계약", async (t) => {
+test("TRX-01: tools/list 3개 도구 inputSchema 계약", async (t) => {
   const { client } = await bootClient(t);
   await client.initialize();
   const tools = (await client.listTools()).result.tools;
   const by = Object.fromEntries(tools.map((x) => [x.name, x]));
 
-  assert.equal(tools.length, 6, "정확히 6개");
+  assert.equal(tools.length, 3, "정확히 3개");
+
+  // 음성 단언: push/pull/dry_run 은 더 이상 노출되지 않음.
+  for (const removed of ["wormhole_push", "wormhole_pull", "wormhole_dry_run"]) {
+    assert.equal(by[removed], undefined, `${removed} 미노출`);
+  }
 
   // status: 파라미터 없음
   const statusProps = by.wormhole_status.inputSchema?.properties ?? {};
   assert.equal(Object.keys(statusProps).length, 0, "status 파라미터 없음");
-
-  // dry_run: direction enum required
-  const dr = by.wormhole_dry_run.inputSchema;
-  assert.deepEqual(dr.properties.direction.enum, ["push", "pull"], "dry_run.direction enum");
-  assert.ok((dr.required ?? []).includes("direction"), "dry_run.direction required");
-
-  // push/pull: confirm boolean optional
-  for (const n of ["wormhole_push", "wormhole_pull"]) {
-    assert.equal(by[n].inputSchema.properties.confirm.type, "boolean", `${n}.confirm boolean`);
-    assert.ok(!(by[n].inputSchema.required ?? []).includes("confirm"), `${n}.confirm optional`);
-  }
 
   // resolve: policy 3-enum, keys array, confirm
   const rp = by.wormhole_resolve.inputSchema.properties;
   assert.deepEqual(rp.policy.enum, ["preserve-both", "latest-wins", "manual"], "resolve.policy 3종");
   assert.equal(rp.keys.type, "array", "resolve.keys array");
 
-  // sync: policy 2-enum (manual 제외)
+  // sync: policy 2-enum (manual 제외), confirm boolean optional
   const sp = by.wormhole_sync.inputSchema.properties;
   assert.deepEqual(sp.policy.enum, ["preserve-both", "latest-wins"], "sync.policy 2종(manual 없음)");
-});
-
-// ── CGW-01: push confirm 생략 → 미리보기, 와이어 불변; confirm:true → 적용 ──
-test("CGW-01: push confirm 게이트 실와이어 무변경 증명", async (t) => {
-  const { client } = await bootClient(t, { files: { ".claude/CLAUDE.md": CLAUDE_MD } });
-  await client.initialize();
-
-  const gen0 = statusGen(await client.callTool("wormhole_status"));
-
-  const preview = parseToolResult(await client.callTool("wormhole_push")); // confirm 생략
-  assert.equal(preview.structured.dryRun, true, "confirm 생략 → dryRun:true");
-  assert.ok(typeof preview.structured.note === "string" && preview.structured.note.length > 0, "note 존재");
-  assert.equal(statusGen(await client.callTool("wormhole_status")), gen0, "미리보기 후 generation 불변");
-
-  const previewFalse = parseToolResult(await client.callTool("wormhole_push", { confirm: false }));
-  assert.equal(previewFalse.structured.dryRun, true, "confirm:false → dryRun:true");
-  assert.equal(statusGen(await client.callTool("wormhole_status")), gen0, "confirm:false 후 generation 불변");
-
-  const applied = parseToolResult(await client.callTool("wormhole_push", { confirm: true }));
-  assert.equal(applied.structured.dryRun, false, "confirm:true → dryRun:false");
-  assert.equal(applied.structured.note, undefined, "실적용엔 note 없음");
-  assert.ok(applied.structured.pushed.includes(".claude/CLAUDE.md"), "CLAUDE.md push 됨");
-  const gen1 = statusGen(await client.callTool("wormhole_status"));
-  assert.ok(gen1 !== null && gen1 !== gen0, `generation 전진 (${gen0} -> ${gen1})`);
+  assert.equal(sp.confirm.type, "boolean", "sync.confirm boolean");
+  assert.ok(!(by.wormhole_sync.inputSchema.required ?? []).includes("confirm"), "sync.confirm optional");
 });
 
 // ── CGW-03: sync 미리보기 → {pull,push} 합본, resolve 키 부재 ──
@@ -102,30 +76,20 @@ test("CGW-03: sync 미리보기 구조 + 와이어 불변", async (t) => {
   assert.equal(statusGen(await client.callTool("wormhole_status")), gen0, "sync 미리보기 후 불변");
 });
 
-// ── CGW-06: 3× dry → gen 불변; confirm:true 1회 → 정확히 1회 전진 ──
-test("CGW-06: 반복 미리보기 후 단일 적용 전진", async (t) => {
+// ── CGW-06: 반복 sync 미리보기 후 단일 적용 전진 ──
+// (push 제거: 안전 기본값 반복 미리보기 불변 + 단일 confirm 적용 전진을 sync 로 이전.)
+test("CGW-06: 반복 sync 미리보기 후 단일 적용 전진", async (t) => {
   const { client } = await bootClient(t, { files: { ".claude/CLAUDE.md": CLAUDE_MD } });
   await client.initialize();
   const gen0 = statusGen(await client.callTool("wormhole_status"));
   for (let i = 0; i < 3; i++) {
-    const p = parseToolResult(await client.callTool("wormhole_push"));
-    assert.equal(p.structured.dryRun, true, `dry ${i} dryRun:true`);
+    const p = parseToolResult(await client.callTool("wormhole_sync"));
+    assert.equal(p.structured.push.dryRun, true, `dry ${i} push.dryRun:true`);
   }
-  assert.equal(statusGen(await client.callTool("wormhole_status")), gen0, "3회 dry 후 불변");
-  await client.callTool("wormhole_push", { confirm: true });
+  assert.equal(statusGen(await client.callTool("wormhole_status")), gen0, "3회 미리보기 후 불변");
+  await client.callTool("wormhole_sync", { confirm: true });
   const gen1 = statusGen(await client.callTool("wormhole_status"));
   assert.ok(gen1 !== gen0, "1회 적용 후 전진");
-});
-
-// ── SCH-01: dry_run direction 검증 ───────────────────────────
-test("SCH-01: dry_run direction 필수+enum", async (t) => {
-  const { client } = await bootClient(t);
-  await client.initialize();
-  assert.ok(rejected(await client.callTool("wormhole_dry_run", {})), "direction 누락 거부");
-  assert.ok(rejected(await client.callTool("wormhole_dry_run", { direction: "sideways" })), "오enum 거부");
-  const ok = parseToolResult(await client.callTool("wormhole_dry_run", { direction: "push" }));
-  assert.equal(ok.isError, false, "direction:push 수용");
-  assert.equal(ok.structured.dryRun, true, "dryRun:true 반환");
 });
 
 // ── SCH-02: sync policy 'manual' 거부 (resolve 와 발산) ──
@@ -138,12 +102,12 @@ test("SCH-02: sync 는 manual 거부, resolve 는 수용", async (t) => {
   assert.ok(!rejected(r) || parseToolResult(r).structured?.policy === "manual", "resolve manual 스키마 수용");
 });
 
-// ── SCH-04: confirm 비불리언 거부 ────────────────────────────
-test("SCH-04: confirm 비불리언 거부", async (t) => {
+// ── SCH-04: confirm 비불리언 거부 (sync) ────────────────────
+test("SCH-04: sync confirm 비불리언 거부", async (t) => {
   const { client } = await bootClient(t);
   await client.initialize();
-  assert.ok(rejected(await client.callTool("wormhole_push", { confirm: "true" })), "confirm 문자열 거부");
-  assert.ok(rejected(await client.callTool("wormhole_push", { confirm: 1 })), "confirm 숫자 거부");
+  assert.ok(rejected(await client.callTool("wormhole_sync", { confirm: "true" })), "confirm 문자열 거부");
+  assert.ok(rejected(await client.callTool("wormhole_sync", { confirm: 1 })), "confirm 숫자 거부");
 });
 
 // ── ELC-03: config.json 부재 → 부팅 실패 ─────────────────────
@@ -179,7 +143,7 @@ test("ELC-02: 잘못된 passphrase 부팅 실패(기존 vault)", async (t) => {
   const homeA = makeHome({ label: "vaultA", remoteUrl: dav.url, files: { ".claude/CLAUDE.md": CLAUDE_MD } });
   const a = new McpClient(childEnv(homeA.homeDir, homeA.configPath, dav.url)).spawn();
   await a.initialize();
-  await a.callTool("wormhole_push", { confirm: true });
+  await a.callTool("wormhole_sync", { confirm: true }); // 원격 keyparams 부트스트랩
   await a.close();
 
   // 머신 B: 신규 home, 같은 원격, 다른 passphrase → sentinel 복호 실패.

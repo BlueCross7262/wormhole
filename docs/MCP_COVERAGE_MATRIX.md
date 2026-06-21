@@ -1,9 +1,9 @@
 # wormhole MCP 검증 계획서 — 커버리지 추적 매트릭스 v3 (Coverage Traceability Matrix)
 
 - **작성일**: 2026-06-21
-- **대상**: `MCP_VERIFICATION_PLAN.md` (71 시나리오)
+- **대상**: `MCP_VERIFICATION_PLAN.md` (67 시나리오)
 - **방법**: 코드 기능우주(98 mcp-boundary 기능) 전수 재매핑 + 3차 적대적 재증명
-- **진화 이력**: v1(54 시나리오) → v2(67 시나리오) → v3(71 시나리오)
+- **진화 이력**: v1(54 시나리오) → v2(67 시나리오) → v3(71 시나리오) → v4(67 시나리오, push/pull/dry_run 제거)
 
 ---
 
@@ -57,6 +57,7 @@
 | v1 | 54 | false | mcp-boundary 갭 8 + 거짓커버(FP) 3 + 기능우주 누락(universeGap) 3 |
 | v2 | 67 | false | 13 시나리오 추가 → 12 클로즈, SMR-09 partial + 사각 4 잔존 |
 | v3 | 71 | **true(무사각)** | 6항목 보강 + F-CONFIG-10 완전화 → none = 0 |
+| v4 | 67 | **true(무사각)** | push/pull/dry_run 도구 제거 → 노출 표면 3종으로 축소, 시나리오 4개 제거·번호 재정렬 |
 
 - **v1 → v2**: 13 시나리오를 추가해 8 mcp-boundary 갭 중 다수와 FP·universeGap 을 정리했으나, SMR-09 가 partial 로 남고 사각 4개가 잔존해 proven = false.
 - **v2 → v3**: 6항목(SMR-09 강화 / TRX-12 FP 정밀화 / TRX-13 / TRX-14 / TRX-15 / ELC-12) + F-CONFIG-10 완전화로 사각 0(none = 0) 달성, 무사각 기준 proven = true.
@@ -82,59 +83,53 @@
 
 | featureId | 동작(요약) | scope | 커버 시나리오 | 강도 |
 |---|---|---|---|---|
-| F-TOOLS-01 | wormhole_status 도구는 빈 inputSchema({})로 등록되어 인자 없이 호출 가능하며, engine.status() 결… | mcp-boundary | TRX-01, CGW-01, CGW-05, SCH-05 | direct |
-| F-TOOLS-02 | wormhole_status 성공 시 content[0]=text(JSON.stringify(result))와 structuredCont… | mcp-boundary | CGW-01, CFL-01, SCH-05, ELC-01 | direct |
-| F-TOOLS-03 | 모든 6개 도구 핸들러는 try/catch로 감싸 예외 발생 시 content=err.message text + isError:true인… | mcp-boundary | ELC-07, ELC-08, ELC-02, ELC-04, SCH-01, SCH-02, SCH-04, TMB-08, CGW-09, ELC-11 | direct |
-| F-TOOLS-04 | wormhole_dry_run은 direction:z.enum(['push','pull']) 필수 인자를 받아, push면 engine.… | mcp-boundary | SCH-01, SCH-08, SMR-06, CGW-01 | direct |
-| F-TOOLS-05 | wormhole_dry_run은 항상 dryRun:true로 호출하므로 note 부가 없이 raw 계획 result를 content/st… | mcp-boundary | SCH-08, SMR-06, CGW-05 | direct |
-| F-TOOLS-06 | wormhole_push 입력스키마는 confirm:z.boolean().optional().default(false) 단일 인자만 노출… | mcp-boundary | TRX-01, SCH-04 | direct |
-| F-TOOLS-07 | wormhole_push의 confirm 게이트: dryRun=(confirm!==true). | mcp-boundary | CGW-01, CGW-06, SCH-04 | direct |
-| F-TOOLS-08 | wormhole_push가 dry-run일 때 payload.note='미리보기 — 실제 적용하려면 confirm:true (사용자 확인… | mcp-boundary | CGW-01, CGW-06 | direct |
-| F-TOOLS-09 | wormhole_pull 입력스키마(confirm default false)·confirm 게이트(dryRun=confirm!==true… | mcp-boundary | TRX-01, CGW-02, SCH-04, TMB-02, TMB-05, TMB-06, TMB-08 | direct |
-| F-TOOLS-10 | wormhole_resolve 입력스키마는 policy:z.enum(['preserve-both','latest-wins','manual… | mcp-boundary | TRX-01, SCH-02, SCH-03, SCH-04, SCH-06 | direct |
-| F-TOOLS-11 | wormhole_resolve는 engine.resolve(policy, keys, {dryRun})으로 위임하며, keys 생략 시 전… | mcp-boundary | CGW-04, CFL-02, CFL-03, CFL-04, CFL-05, CFL-06, SCH-06 | direct |
-| F-TOOLS-12 | wormhole_sync 입력스키마는 policy:z.enum(['preserve-both','latest-wins']).optional… | mcp-boundary | TRX-01, SCH-02, SCH-04 | direct |
-| F-TOOLS-13 | wormhole_sync 미리보기 분기(confirm!==true): engine.pull({dryRun:true})와 engine.pu… | mcp-boundary | CGW-03, CGW-07, CGW-09 | direct |
-| F-TOOLS-14 | wormhole_sync 실제 실행 분기(confirm:true): policy 기본값 'preserve-both' 적용 후 engine… | mcp-boundary | CGW-07, CGW-08 | direct |
-| F-TOOLS-15 | wormhole_sync의 stop-on-error: pull/resolve/push를 순차 await하므로 앞 단계가 throw하면 뒤… | mcp-boundary | ELC-07, CGW-09 | direct |
-| F-TOOLS-16 | registerAllTools는 status→push→pull→resolve→dry_run→sync 순으로 6개 도구를 단일 McpSer… | mcp-boundary | TRX-01, TRX-12 | direct |
-| F-TOOLS-17 | 서버 부팅: buildEngine(logger)으로 config·자격·원격·crypto·엔진 조립 후 McpServer({name:'wo… | mcp-boundary | TRX-04, TRX-03, TRX-06, TRX-08, ELC-02, ELC-03, TRX-09, TRX-10, TRX-11, ELC-10, TRX-13, TRX-14, TRX-15, ELC-12 | direct |
-| F-TOOLS-18 | 전송 계층: StdioServerTransport로 server.connect하여 stdio JSON-RPC 표면을 노출하고 연결 후 s… | mcp-boundary | TRX-02, TRX-11 | direct |
-| F-TOOLS-19 | 수명주기/graceful shutdown: SIGINT/SIGTERM 수신 시 shuttingDown 가드로 중복 방지 후 server.… | mcp-boundary | TRX-05, TRX-06, TRX-08, ELC-02, ELC-03, ELC-10 | direct |
-| F-TOOLS-20 | 엔진 위임 동작(engine.status/push/pull/resolve)의 내부 로직·crypto 왕복·바이트충실도·멱등 no-op은 … | prior-covered-internal | — | none |
-| F-TOOLS-21 | CLI 전용 경로(src/cli.ts 등)는 MCP 서버로 노출되지 않으며 src/index.ts 부트스트랩은 CLI를 등록하지 않으므로… | out-of-band | — | none |
+| F-TOOLS-01 | wormhole_status 도구는 빈 inputSchema({})로 등록되어 인자 없이 호출 가능하며, engine.status() 결… | mcp-boundary | TRX-01, CGW-01, CGW-03, SCH-04 | direct |
+| F-TOOLS-02 | wormhole_status 성공 시 content[0]=text(JSON.stringify(result))와 structuredCont… | mcp-boundary | CGW-01, CFL-01, SCH-04, ELC-01 | direct |
+| F-TOOLS-03 | 모든 3개 도구 핸들러는 try/catch로 감싸 예외 발생 시 content=err.message text + isError:true인… | mcp-boundary | ELC-07, ELC-08, ELC-02, ELC-04, SCH-01, SCH-02, SCH-03, TMB-08, CGW-07, ELC-11 | direct |
+| F-TOOLS-04 | wormhole_resolve 입력스키마는 policy:z.enum(['preserve-both','latest-wins','manual… | mcp-boundary | TRX-01, SCH-01, SCH-02, SCH-03, SCH-05 | direct |
+| F-TOOLS-05 | wormhole_resolve는 engine.resolve(policy, keys, {dryRun})으로 위임하며, keys 생략 시 전… | mcp-boundary | CGW-02, CFL-02, CFL-03, CFL-04, CFL-05, CFL-06, SCH-05 | direct |
+| F-TOOLS-06 | wormhole_sync 입력스키마는 policy:z.enum(['preserve-both','latest-wins']).optional… | mcp-boundary | TRX-01, SCH-01, SCH-03 | direct |
+| F-TOOLS-07 | wormhole_sync 미리보기 분기(confirm!==true): engine.pull({dryRun:true})와 engine.pu… | mcp-boundary | CGW-01, CGW-05, CGW-07 | direct |
+| F-TOOLS-08 | wormhole_sync 실제 실행 분기(confirm:true): policy 기본값 'preserve-both' 적용 후 engine… | mcp-boundary | CGW-05, CGW-06 | direct |
+| F-TOOLS-09 | wormhole_sync의 stop-on-error: pull/resolve/push를 순차 await하므로 앞 단계가 throw하면 뒤… | mcp-boundary | ELC-07, CGW-07 | direct |
+| F-TOOLS-10 | registerAllTools는 status→resolve→sync 순으로 3개 도구를 단일 McpSer… | mcp-boundary | TRX-01, TRX-12 | direct |
+| F-TOOLS-11 | 서버 부팅: buildEngine(logger)으로 config·자격·원격·crypto·엔진 조립 후 McpServer({name:'wo… | mcp-boundary | TRX-04, TRX-03, TRX-06, TRX-08, ELC-02, ELC-03, TRX-09, TRX-10, TRX-11, ELC-10, TRX-13, TRX-14, TRX-15, ELC-12 | direct |
+| F-TOOLS-12 | 전송 계층: StdioServerTransport로 server.connect하여 stdio JSON-RPC 표면을 노출하고 연결 후 s… | mcp-boundary | TRX-02, TRX-11 | direct |
+| F-TOOLS-13 | 수명주기/graceful shutdown: SIGINT/SIGTERM 수신 시 shuttingDown 가드로 중복 방지 후 server.… | mcp-boundary | TRX-05, TRX-06, TRX-08, ELC-02, ELC-03, ELC-10 | direct |
+| F-TOOLS-14 | 엔진 위임 동작(engine.status/push/pull/resolve)의 내부 로직·crypto 왕복·바이트충실도·멱등 no-op은 … | prior-covered-internal | — | none |
+| F-TOOLS-15 | CLI 전용 경로(src/cli.ts 등)는 MCP 서버로 노출되지 않으며 src/index.ts 부트스트랩은 CLI를 등록하지 않으므로… | out-of-band | — | none |
 
 ### 3.2 엔진 동작 (engine-behaviors)
 
 | featureId | 동작(요약) | scope | 커버 시나리오 | 강도 |
 |---|---|---|---|---|
-| F-ENGINE-01 | status() 가 부수효과 없이 SyncStatus 를 계산해 반환: manifestGeneration(원격 세대 또는 null), i… | mcp-boundary | CGW-01, CGW-02, CGW-03, CGW-04, CGW-06, CGW-07, CGW-08, CFL-01, TMB-01, TMB-02, TMB-03, TMB-05, SMR-03, SMR-04 | direct |
-| F-ENGINE-02 | classifyKey 가 콘텐츠 3-way 해시(localChanged=localHash!==baseHash, remoteChanged=… | mcp-boundary | CFL-01, TMB-01, TMB-02, TMB-03, TMB-07, CGW-02, SMR-03 | direct |
+| F-ENGINE-01 | status() 가 부수효과 없이 SyncStatus 를 계산해 반환: manifestGeneration(원격 세대 또는 null), i… | mcp-boundary | CGW-01, CGW-02, CGW-04, CGW-05, CGW-06, CFL-01, TMB-01, TMB-02, TMB-03, TMB-05, SMR-03, SMR-04 | direct |
+| F-ENGINE-02 | classifyKey 가 콘텐츠 3-way 해시(localChanged=localHash!==baseHash, remoteChanged=… | mcp-boundary | CFL-01, TMB-01, TMB-02, TMB-03, TMB-07, SMR-03 | direct |
 | F-ENGINE-03 | 양측 변경 시 localHash===remoteHash 면 converged(충돌 아님), 다르면 conflict 로 분기 — wormh… | mcp-boundary | TMB-03, TMB-07 | direct |
-| F-ENGINE-04 | 원격 tombstone(deleted) 시 로컬 존재→remoteDeleted, 로컬 부재→unchanged 로 분기; 원격 변경+bas… | mcp-boundary | TMB-02, TMB-05, CGW-02, SCH-08 | partial |
+| F-ENGINE-04 | 원격 tombstone(deleted) 시 로컬 존재→remoteDeleted, 로컬 부재→unchanged 로 분기; 원격 변경+bas… | mcp-boundary | TMB-02, TMB-05 | partial |
 | F-ENGINE-05 | computeStatus 가 conflict 항목에 대해 ConflictItem 구성(localHash/remoteHash/remoteM… | mcp-boundary | CFL-01, CFL-07 | direct |
-| F-ENGINE-06 | computeStatus 가 로컬+원격엔트리+state baseline 세 출처 키 합집합(정렬)을 순회하고 summarize 로 9개 … | mcp-boundary | CFL-01, TMB-01, TMB-03, TMB-07, SMR-03, CGW-01 | direct |
-| F-ENGINE-07 | push(dryRun) → planPush: status 기반으로 added+modified 를 pushed, deleted, uncha… | mcp-boundary | CGW-01, CGW-06, SMR-06 | direct |
-| F-ENGINE-08 | push 실제 실행: added/modified 항목 blob 업로드 후 upsertEntry, deleted 는 tombstoneEnt… | mcp-boundary | CGW-01, TMB-01, CGW-06, SMR-01, CGW-08 | direct |
-| F-ENGINE-09 | push 멱등: pushed+deleted+converged 모두 0 이면 매니페스트 쓰기 생략하고 기존 manifestGeneratio… | mcp-boundary | CGW-06 | direct |
-| F-ENGINE-10 | ManifestStore.upsertEntry: 신규 엔트리 generation=1, 콘텐츠 변경 또는 tombstone 부활 시 gen… | mcp-boundary | TMB-01, TMB-04, CGW-06 | partial |
+| F-ENGINE-06 | computeStatus 가 로컬+원격엔트리+state baseline 세 출처 키 합집합(정렬)을 순회하고 summarize 로 9개 … | mcp-boundary | CFL-01, TMB-01, TMB-03, TMB-07, SMR-03 | direct |
+| F-ENGINE-07 | push(dryRun) → planPush: status 기반으로 added+modified 를 pushed, deleted, uncha… | mcp-boundary | CGW-01, CGW-04, SMR-06 | direct |
+| F-ENGINE-08 | push 실제 실행: added/modified 항목 blob 업로드 후 upsertEntry, deleted 는 tombstoneEnt… | mcp-boundary | TMB-01, CGW-04, SMR-01, CGW-06 | direct |
+| F-ENGINE-09 | push 멱등: pushed+deleted+converged 모두 0 이면 매니페스트 쓰기 생략하고 기존 manifestGeneratio… | mcp-boundary | CGW-04 | direct |
+| F-ENGINE-10 | ManifestStore.upsertEntry: 신규 엔트리 generation=1, 콘텐츠 변경 또는 tombstone 부활 시 gen… | mcp-boundary | TMB-01, TMB-04, CGW-04 | partial |
 | F-ENGINE-11 | ManifestStore.tombstoneEntry: 엔트리 없으면 null(→state 에서 키 제거), 이미 tombstone 이면 … | mcp-boundary | TMB-01, TMB-02 | partial |
 | F-ENGINE-12 | runPushWithRetry: ManifestConflictError 발생 시 지수백오프+지터로 MAX_CAS_RETRIES(3)회 재… | mcp-boundary | ELC-08, ELC-11 | direct |
 | F-ENGINE-13 | ManifestStore.write CAS: 보조 generation 비교 불일치→ManifestConflictError; 생성경로 pu… | mcp-boundary | ELC-08, ELC-05, ELC-06, ELC-11 | direct |
-| F-ENGINE-14 | pull(dryRun) → planPull: remoteAdded+remoteModified 를 applied, remoteDeleted… | mcp-boundary | SCH-08, CGW-02, TMB-02 | direct |
-| F-ENGINE-15 | pull 실제 실행: 원격 매니페스트 null 이면 빈 결과; toApply 다운로드·적용, toRemove 삭제, 각 키 백업 후 적용… | mcp-boundary | TMB-02, TMB-06, CGW-02, CGW-08 | direct |
-| F-ENGINE-16 | pull 멱등/충돌-only: toApply+toRemove+converged 모두 0 이면 적용 없이 conflicts 만 보고하고 b… | mcp-boundary | TMB-05, CGW-04 | direct |
+| F-ENGINE-14 | pull(dryRun) → planPull: remoteAdded+remoteModified 를 applied, remoteDeleted… | mcp-boundary | TMB-02, CGW-01 | direct |
+| F-ENGINE-15 | pull 실제 실행: 원격 매니페스트 null 이면 빈 결과; toApply 다운로드·적용, toRemove 삭제, 각 키 백업 후 적용… | mcp-boundary | TMB-02, TMB-06, CGW-06 | direct |
+| F-ENGINE-16 | pull 멱등/충돌-only: toApply+toRemove+converged 모두 0 이면 적용 없이 conflicts 만 보고하고 b… | mcp-boundary | TMB-05, CGW-02 | direct |
 | F-ENGINE-17 | pull all-or-nothing 롤백: 적용 중 예외 발생 시 backedUp 으로 rollback(백업본 복원, 신규생성 파일 삭제… | mcp-boundary | ELC-07, TMB-08 | direct |
-| F-ENGINE-18 | resolve(dryRun) → planResolve: status 충돌을 keys 로 필터해 resolved 키 목록만 반환, conf… | mcp-boundary | CGW-04, CFL-02 | direct |
-| F-ENGINE-19 | resolve 실제 실행: policy 미지정 시 config.conflictPolicy 사용, manual 정책은 자동처리 없이 빈 r… | mcp-boundary | CFL-04, CFL-06, SCH-06 | direct |
-| F-ENGINE-20 | resolve preserve-both: 로컬 유지 + 원격을 .conflict-<mid>-<gen> 사본(삭제충돌은 .conflict-… | mcp-boundary | CFL-02, CFL-07, CFL-08, CGW-07 | direct |
+| F-ENGINE-18 | resolve(dryRun) → planResolve: status 충돌을 keys 로 필터해 resolved 키 목록만 반환, conf… | mcp-boundary | CGW-02, CFL-02 | direct |
+| F-ENGINE-19 | resolve 실제 실행: policy 미지정 시 config.conflictPolicy 사용, manual 정책은 자동처리 없이 빈 r… | mcp-boundary | CFL-04, CFL-06, SCH-05 | direct |
+| F-ENGINE-20 | resolve preserve-both: 로컬 유지 + 원격을 .conflict-<mid>-<gen> 사본(삭제충돌은 .conflict-… | mcp-boundary | CFL-02, CFL-07, CFL-08, CGW-05 | direct |
 | F-ENGINE-21 | resolve latest-wins: 백업 후 원격 채택(tombstone→로컬삭제+base제거, 아니면 원격 blob 로 덮어쓰기+ba… | mcp-boundary | CFL-03, CFL-05, CFL-06 | direct |
 | F-ENGINE-22 | preserve-both 사본/마커 경로가 isWithinHome 밖이면 경고 후 건너뜀(경로탈출 방어), 원격 유래 machineId/… | mcp-boundary | CFL-02, CFL-07 | partial |
 | F-ENGINE-23 | advanceConverged: 양측동시삭제(localHash null)면 base/state 추적해제, 동일콘텐츠 수렴이면 로컬콘텐츠로… | mcp-boundary | TMB-03, TMB-07 | direct |
 | F-ENGINE-24 | safeAbsPath 게이트: pull/resolve 가 원격 매니페스트 논리키를 isValidLogicalKey + isWithinHo… | mcp-boundary | CFL-07 | partial |
 | F-ENGINE-25 | push/pull/resolve 가 mutex.runExclusive(인프로세스) + withLock(원격 lock.json) 경유로 직… | mcp-boundary | ELC-04, ELC-05, ELC-09 | direct |
 | F-ENGINE-26 | settings.json/.mcp.json 키는 raw 해시가 아닌 정규화 콘텐츠 해시(normalizeSettingsForSync / … | mcp-boundary | SMR-01, SMR-02, SMR-03, SMR-04, SMR-05, SMR-08 | direct |
-| F-ENGINE-27 | ManifestStore.read 가 복호 후 zod ManifestSchema 로 신뢰불가 원격 입력 검증, 파싱/구조 실패 시 thr… | mcp-boundary | ELC-07, CGW-09 | direct |
+| F-ENGINE-27 | ManifestStore.read 가 복호 후 zod ManifestSchema 로 신뢰불가 원격 입력 검증, 파싱/구조 실패 시 thr… | mcp-boundary | ELC-07, CGW-07 | direct |
 | F-ENGINE-28 | blob I/O 평문 콘텐츠 해시 불변: gzip(CSZ1 매직 prepend)→age 암호화 업로드, 다운로드 시 매직 감지하면 gun… | prior-covered-internal | — | none |
 | F-ENGINE-29 | atomicWriteFile: 같은 디렉터리 tmp(머신id/pid/seq 충돌회피) 작성→fsync→rename→부모디렉터리 best-… | prior-covered-internal | — | none |
 | F-ENGINE-30 | scanLocal: fast-glob include/exclude 적용, stateDir(~/.wormhole) home 하위면 무조건 … | prior-covered-internal | — | none |
@@ -169,13 +164,13 @@
 
 | featureId | 동작(요약) | scope | 커버 시나리오 | 강도 |
 |---|---|---|---|---|
-| F-WIRE-01 | putAtomic: tmp 경로(machineId+모듈카운터 토큰)에 PUT 후 최종 경로로 MOVE; MOVE 실패 시 orphan t… | mcp-boundary | CGW-01, CGW-06, TMB-01, SMR-01, ELC-08, ELC-09 | partial |
+| F-WIRE-01 | putAtomic: tmp 경로(machineId+모듈카운터 토큰)에 PUT 후 최종 경로로 MOVE; MOVE 실패 시 orphan t… | mcp-boundary | CGW-01, CGW-04, TMB-01, SMR-01, ELC-08, ELC-09 | partial |
 | F-WIRE-02 | putIfMatch(etag!=null): customRequest PUT + If-Match:<etag>. | mcp-boundary | ELC-04, ELC-05, ELC-08, ELC-11 | direct |
 | F-WIRE-03 | putIfMatch(etag==null): 서버 ETag 미지원 폴백 — 경고 로깅 후 무조건 일반 PUT(overwrite). | mcp-boundary | ELC-06, ELC-11 | direct |
 | F-WIRE-04 | putIfNoneMatch: customRequest PUT + If-None-Match:* (원자적 생성). | mcp-boundary | ELC-04, ELC-11 | direct |
 | F-WIRE-05 | getTextWithETag: details PUT으로 본문+ETag 회수, etag/ETag/Etag 헤더 케이스 정규화, 404→nu… | mcp-boundary | ELC-05, ELC-06, ELC-08, ELC-11 | partial |
 | F-WIRE-06 | ensureDir: exists 확인 후 부재 시 MKCOL(createDirectory recursive); 모든 에러 흡수(warn … | mcp-boundary | ELC-01, TRX-03, TRX-14 | direct |
-| F-WIRE-07 | list(PROPFIND): getDirectoryContents 후 self/빈 basename 필터, type→file/directo… | mcp-boundary | CGW-01, SMR-01, SMR-06, ELC-01 | partial |
+| F-WIRE-07 | list(PROPFIND): getDirectoryContents 후 self/빈 basename 필터, type→file/directo… | mcp-boundary | SMR-01, SMR-06, ELC-01 | partial |
 | F-WIRE-08 | 생성자 자격 누락 경고: username/password 모두 빈 문자열이면 익명 접근 시도 경고 로깅(401 위험 고지). | mcp-boundary | TRX-08 | partial |
 | F-WIRE-09 | RemoteLock.acquire: read→(none/own/stale=takeable) 판정. | mcp-boundary | ELC-04, ELC-05 | direct |
 | F-WIRE-10 | isExpired: acquiredAt+ttlMs<=now → 만료(탈취 가능); acquiredAt이 now+5분(CLOCK_SKEW_… | mcp-boundary | ELC-05 | direct |

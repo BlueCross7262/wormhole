@@ -119,4 +119,4 @@ console.log("");
 console.log("다음 단계:");
 console.log("  1. ~/.wormhole/.env 를 열어 WebDAV 정보와 패스프레이즈를 입력한다.");
 console.log("  2. ~/.wormhole/config.json 을 열어 동기화 범위(targets)를 필요에 맞게 수정한다 (선택).");
-console.log("  3. Claude Code 를 재시작하면 /wormhole_sync, /wormhole_push, /wormhole_pull 을 바로 사용할 수 있다.");
+console.log("  3. Claude Code 를 재시작하면 /wormhole_sync, /wormhole_status, /wormhole_resolve 를 바로 사용할 수 있다.");

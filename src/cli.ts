@@ -10,11 +10,8 @@ const USAGE = `wormhole — Claude Code 전역 설정 동기화 CLI
 
 Usage:
   wormhole status                                  원격/로컬 diff 상태를 JSON 으로 출력
-  wormhole push  [--dry-run]                        로컬 변경을 원격으로 업로드
-  wormhole pull  [--dry-run]                        원격 변경을 로컬로 적용
   wormhole resolve [--policy P] [--keys k1,k2] [--dry-run]
                                                     충돌 해소 (P = preserve-both|latest-wins|manual)
-  wormhole dry-run <push|pull>                      push/pull 계획만 산출 (변경 없음)
   wormhole sync  [--policy preserve-both|latest-wins]
                                                     복합: pull → (충돌 시) resolve → push
   wormhole --help | -h                              이 도움말을 출력
@@ -90,37 +87,11 @@ async function run(): Promise<void> {
       return;
     }
 
-    case "push": {
-      const { engine } = await buildEngine(logger);
-      emit(await engine.push({ dryRun: dryRunFlag }));
-      return;
-    }
-
-    case "pull": {
-      const { engine } = await buildEngine(logger);
-      emit(await engine.pull({ dryRun: dryRunFlag }));
-      return;
-    }
-
     case "resolve": {
       const policy = parsePolicy(flags.policy);
       const keys = parseKeys(flags.keys);
       const { engine } = await buildEngine(logger);
       emit(await engine.resolve(policy, keys, { dryRun: dryRunFlag }));
-      return;
-    }
-
-    case "dry-run": {
-      const target = positionals[1];
-      if (target !== "push" && target !== "pull") {
-        throw new Error(`dry-run 대상은 push 또는 pull 이어야 함 (받음: ${String(target)})`);
-      }
-      const { engine } = await buildEngine(logger);
-      if (target === "push") {
-        emit(await engine.push({ dryRun: true }));
-      } else {
-        emit(await engine.pull({ dryRun: true }));
-      }
       return;
     }
 

@@ -25,4 +25,4 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/setup.mjs
 - `conflictPolicy` — 충돌 시 처리 방식 (`preserve-both` / `latest-wins` / `manual`).
 - `crypto`, `lock` 등 고급 설정은 파일 내 값을 직접 수정한다.
 
-두 파일 설정 완료 후 `/wormhole_sync`, `/wormhole_push`, `/wormhole_pull` 등 슬래시 커맨드를 바로 사용할 수 있다. 서버 재시작 불필요.
+두 파일 설정 완료 후 `/wormhole_status`, `/wormhole_resolve`, `/wormhole_sync` 슬래시 커맨드를 바로 사용할 수 있다. 서버 재시작 불필요.

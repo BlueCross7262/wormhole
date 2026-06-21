@@ -33409,76 +33409,6 @@ function registerStatusTool(server, engine) {
   );
 }
 
-// src/tools/push.ts
-function registerPushTool(server, engine) {
-  server.registerTool(
-    "wormhole_push",
-    {
-      title: "Wormhole Push",
-      description: "\uB85C\uCEEC \uBCC0\uACBD\uC0AC\uD56D\uC744 \uC6D0\uACA9 WebDAV \uB85C \uC5C5\uB85C\uB4DC\uD55C\uB2E4. \uC548\uC804 \uAE30\uBCF8\uAC12: confirm \uC5C6\uC774 \uD638\uCD9C\uD558\uBA74 \uC2E4\uC81C \uBCC0\uACBD \uC5C6\uC774 \uBBF8\uB9AC\uBCF4\uAE30(dry-run)\uB9CC \uBC18\uD658\uD55C\uB2E4. \uC2E4\uC81C \uC801\uC6A9\uC740 confirm:true \uAC00 \uD544\uC694\uD558\uBA70, \uC774\uB294 \uC0AC\uC6A9\uC790\uC758 \uBA85\uC2DC\uC801 \uD655\uC778\uC774 \uC788\uC744 \uB54C\uB9CC \uC804\uB2EC\uD55C\uB2E4 \u2014 \uC808\uB300 \uC790\uC728\uC801\uC73C\uB85C confirm:true \uB97C \uB118\uAE30\uC9C0 \uC54A\uB294\uB2E4.",
-      inputSchema: {
-        confirm: external_exports.boolean().optional().default(false)
-      }
-    },
-    async (args, _extra) => {
-      try {
-        const dryRun = args.confirm !== true;
-        const result = await engine.push({ dryRun });
-        const payload = {
-          ...result
-        };
-        if (dryRun) {
-          payload.note = "\uBBF8\uB9AC\uBCF4\uAE30 \u2014 \uC2E4\uC81C \uC801\uC6A9\uD558\uB824\uBA74 confirm:true (\uC0AC\uC6A9\uC790 \uD655\uC778 \uD6C4)";
-        }
-        return {
-          content: [{ type: "text", text: JSON.stringify(payload) }],
-          structuredContent: payload
-        };
-      } catch (err) {
-        return {
-          content: [{ type: "text", text: String(err.message) }],
-          isError: true
-        };
-      }
-    }
-  );
-}
-
-// src/tools/pull.ts
-function registerPullTool(server, engine) {
-  server.registerTool(
-    "wormhole_pull",
-    {
-      title: "Wormhole Pull",
-      description: "\uC6D0\uACA9 WebDAV \uBCC0\uACBD\uC0AC\uD56D\uC744 \uB85C\uCEEC\uB85C \uB2E4\uC6B4\uB85C\uB4DC\uD55C\uB2E4. \uC548\uC804 \uAE30\uBCF8\uAC12: confirm \uC5C6\uC774 \uD638\uCD9C\uD558\uBA74 \uC2E4\uC81C \uBCC0\uACBD \uC5C6\uC774 \uBBF8\uB9AC\uBCF4\uAE30(dry-run)\uB9CC \uBC18\uD658\uD55C\uB2E4. \uC2E4\uC81C \uC801\uC6A9\uC740 confirm:true \uAC00 \uD544\uC694\uD558\uBA70, \uC774\uB294 \uC0AC\uC6A9\uC790\uC758 \uBA85\uC2DC\uC801 \uD655\uC778\uC774 \uC788\uC744 \uB54C\uB9CC \uC804\uB2EC\uD55C\uB2E4 \u2014 \uC808\uB300 \uC790\uC728\uC801\uC73C\uB85C confirm:true \uB97C \uB118\uAE30\uC9C0 \uC54A\uB294\uB2E4.",
-      inputSchema: {
-        confirm: external_exports.boolean().optional().default(false)
-      }
-    },
-    async (args, _extra) => {
-      try {
-        const dryRun = args.confirm !== true;
-        const result = await engine.pull({ dryRun });
-        const payload = {
-          ...result
-        };
-        if (dryRun) {
-          payload.note = "\uBBF8\uB9AC\uBCF4\uAE30 \u2014 \uC2E4\uC81C \uC801\uC6A9\uD558\uB824\uBA74 confirm:true (\uC0AC\uC6A9\uC790 \uD655\uC778 \uD6C4)";
-        }
-        return {
-          content: [{ type: "text", text: JSON.stringify(payload) }],
-          structuredContent: payload
-        };
-      } catch (err) {
-        return {
-          content: [{ type: "text", text: String(err.message) }],
-          isError: true
-        };
-      }
-    }
-  );
-}
-
 // src/tools/resolve.ts
 function registerResolveTool(server, engine) {
   server.registerTool(
@@ -33511,34 +33441,6 @@ function registerResolveTool(server, engine) {
         return {
           content: [{ type: "text", text: JSON.stringify(payload) }],
           structuredContent: payload
-        };
-      } catch (err) {
-        return {
-          content: [{ type: "text", text: String(err.message) }],
-          isError: true
-        };
-      }
-    }
-  );
-}
-
-// src/tools/dry-run.ts
-function registerDryRunTool(server, engine) {
-  server.registerTool(
-    "wormhole_dry_run",
-    {
-      title: "Wormhole Dry Run",
-      description: "push \uB610\uB294 pull \uC744 \uC2E4\uC81C \uBCC0\uACBD \uC5C6\uC774 \uACC4\uD68D\uB9CC \uACC4\uC0B0\uD574 \uBC18\uD658\uD55C\uB2E4(\uB370\uC774\uD130 \uBCC0\uACBD \uC5C6\uC74C).",
-      inputSchema: {
-        direction: external_exports.enum(["push", "pull"])
-      }
-    },
-    async (args, _extra) => {
-      try {
-        const result = args.direction === "push" ? await engine.push({ dryRun: true }) : await engine.pull({ dryRun: true });
-        return {
-          content: [{ type: "text", text: JSON.stringify(result) }],
-          structuredContent: result
         };
       } catch (err) {
         return {
@@ -33603,10 +33505,7 @@ function registerSyncTool(server, engine) {
 // src/tools/index.ts
 function registerAllTools(server, engine) {
   registerStatusTool(server, engine);
-  registerPushTool(server, engine);
-  registerPullTool(server, engine);
   registerResolveTool(server, engine);
-  registerDryRunTool(server, engine);
   registerSyncTool(server, engine);
 }
 
@@ -50856,7 +50755,7 @@ async function buildEngine(logger2) {
 // src/index.ts
 async function main() {
   const { engine } = await buildEngine(logger);
-  const server = new McpServer({ name: "wormhole", version: "0.1.4" });
+  const server = new McpServer({ name: "wormhole", version: "0.2.0" });
   registerAllTools(server, engine);
   let shuttingDown = false;
   const shutdown = async (signal) => {

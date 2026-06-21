@@ -6,9 +6,6 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 
 import { registerAllTools } from "./index.js";
 import { registerStatusTool } from "./status.js";
-import { registerPushTool } from "./push.js";
-import { registerPullTool } from "./pull.js";
-import { registerDryRunTool } from "./dry-run.js";
 import { registerResolveTool } from "./resolve.js";
 import { registerSyncTool } from "./sync.js";
 import type { SyncEngine } from "../sync/engine.js";
@@ -176,21 +173,18 @@ function parseStructured<T>(res: CallToolResult): T {
 // ============================================================================
 
 describe("registerAllTools", () => {
-  test("registers exactly the 6 wormhole tools with expected names", () => {
+  test("registers exactly the 3 wormhole tools with expected names", () => {
     const server = new FakeServer();
     const { engine } = makeFakeEngine();
     registerAllTools(server as unknown as McpServer, engine);
 
     const names = server.tools.map((t) => t.name).sort();
     assert.deepEqual(names, [
-      "wormhole_dry_run",
-      "wormhole_pull",
-      "wormhole_push",
       "wormhole_resolve",
       "wormhole_status",
       "wormhole_sync",
     ]);
-    assert.equal(server.tools.length, 6);
+    assert.equal(server.tools.length, 3);
   });
 
   test("each registered tool has a title and description", () => {
@@ -210,8 +204,6 @@ describe("registerAllTools", () => {
     const { engine } = makeFakeEngine();
     registerAllTools(server as unknown as McpServer, engine);
     for (const name of [
-      "wormhole_push",
-      "wormhole_pull",
       "wormhole_resolve",
       "wormhole_sync",
     ]) {
@@ -275,218 +267,7 @@ describe("wormhole_status — handler", () => {
   });
 });
 
-// ============================================================================
-// wormhole_push (confirm-gated)
-// ============================================================================
 
-describe("wormhole_push — input schema", () => {
-  test("empty object defaults confirm=false", () => {
-    const server = new FakeServer();
-    const { engine } = makeFakeEngine();
-    registerPushTool(server as unknown as McpServer, engine);
-    assert.deepEqual(server.parse("wormhole_push", {}), { confirm: false });
-  });
-
-  test("accepts explicit confirm boolean", () => {
-    const server = new FakeServer();
-    const { engine } = makeFakeEngine();
-    registerPushTool(server as unknown as McpServer, engine);
-    assert.deepEqual(server.parse("wormhole_push", { confirm: true }), {
-      confirm: true,
-    });
-  });
-
-  test("rejects a non-boolean confirm (zod error)", () => {
-    const server = new FakeServer();
-    const { engine } = makeFakeEngine();
-    registerPushTool(server as unknown as McpServer, engine);
-    assert.throws(
-      () => server.parse("wormhole_push", { confirm: "yes" }),
-      (e: unknown) => e instanceof z.ZodError,
-    );
-  });
-});
-
-describe("wormhole_push — handler confirm-gate", () => {
-  test("no confirm → preview: engine.push({dryRun:true}) + note", async () => {
-    const server = new FakeServer();
-    const { engine, calls } = makeFakeEngine();
-    registerPushTool(server as unknown as McpServer, engine);
-
-    const res = await server.call("wormhole_push", {});
-    assert.deepEqual(calls.push, [{ dryRun: true }]);
-    const out = parseStructured<PushResult & { note?: string }>(res);
-    assert.equal(out.dryRun, true);
-    assert.match(out.note ?? "", /미리보기/);
-    assert.match(out.note ?? "", /confirm:true/);
-  });
-
-  test("confirm:true → real execution: engine.push({dryRun:false}) + no note", async () => {
-    const server = new FakeServer();
-    const { engine, calls } = makeFakeEngine();
-    registerPushTool(server as unknown as McpServer, engine);
-
-    const res = await server.call("wormhole_push", { confirm: true });
-    assert.deepEqual(calls.push, [{ dryRun: false }]);
-    const out = parseStructured<PushResult & { note?: string }>(res);
-    assert.equal(out.dryRun, false);
-    assert.deepEqual(out.pushed, ["a.txt", "b.txt"]);
-    assert.equal(out.note, undefined);
-  });
-
-  test("engine.push throwing surfaces as a tool error", async () => {
-    const server = new FakeServer();
-    const { engine } = makeFakeEngine({
-      push: () => Promise.reject(new Error("push failed")),
-    });
-    registerPushTool(server as unknown as McpServer, engine);
-    const res = await server.call("wormhole_push", { confirm: true });
-    assert.equal(res.isError, true);
-    const block = res.content[0] as { type: string; text: string };
-    assert.equal(block.text, "push failed");
-  });
-});
-
-// ============================================================================
-// wormhole_pull (confirm-gated)
-// ============================================================================
-
-describe("wormhole_pull — input schema", () => {
-  test("empty object defaults confirm=false", () => {
-    const server = new FakeServer();
-    const { engine } = makeFakeEngine();
-    registerPullTool(server as unknown as McpServer, engine);
-    assert.deepEqual(server.parse("wormhole_pull", {}), { confirm: false });
-  });
-
-  test("rejects a non-boolean confirm (zod error)", () => {
-    const server = new FakeServer();
-    const { engine } = makeFakeEngine();
-    registerPullTool(server as unknown as McpServer, engine);
-    assert.throws(
-      () => server.parse("wormhole_pull", { confirm: 1 }),
-      (e: unknown) => e instanceof z.ZodError,
-    );
-  });
-});
-
-describe("wormhole_pull — handler confirm-gate", () => {
-  test("no confirm → preview: engine.pull({dryRun:true}) + note", async () => {
-    const server = new FakeServer();
-    const { engine, calls } = makeFakeEngine();
-    registerPullTool(server as unknown as McpServer, engine);
-
-    const res = await server.call("wormhole_pull", {});
-    assert.deepEqual(calls.pull, [{ dryRun: true }]);
-    const out = parseStructured<PullResult & { note?: string }>(res);
-    assert.equal(out.dryRun, true);
-    assert.match(out.note ?? "", /미리보기/);
-  });
-
-  test("confirm:true → real execution: engine.pull({dryRun:false}) + no note", async () => {
-    const server = new FakeServer();
-    const { engine, calls } = makeFakeEngine();
-    registerPullTool(server as unknown as McpServer, engine);
-
-    const res = await server.call("wormhole_pull", { confirm: true });
-    assert.deepEqual(calls.pull, [{ dryRun: false }]);
-    const out = parseStructured<PullResult & { note?: string }>(res);
-    assert.equal(out.dryRun, false);
-    assert.deepEqual(out.applied, ["x.txt"]);
-    assert.equal(out.backupDir, "/tmp/backup-1");
-    assert.equal(out.note, undefined);
-  });
-
-  test("engine.pull throwing surfaces as a tool error", async () => {
-    const server = new FakeServer();
-    const { engine } = makeFakeEngine({
-      pull: () => Promise.reject(new Error("pull failed")),
-    });
-    registerPullTool(server as unknown as McpServer, engine);
-    const res = await server.call("wormhole_pull", { confirm: true });
-    assert.equal(res.isError, true);
-    const block = res.content[0] as { type: string; text: string };
-    assert.equal(block.text, "pull failed");
-  });
-});
-
-// ============================================================================
-// wormhole_dry_run (read-only)
-// ============================================================================
-
-describe("wormhole_dry_run — input schema", () => {
-  test("accepts direction='push' and direction='pull'", () => {
-    const server = new FakeServer();
-    const { engine } = makeFakeEngine();
-    registerDryRunTool(server as unknown as McpServer, engine);
-    assert.deepEqual(server.parse("wormhole_dry_run", { direction: "push" }), {
-      direction: "push",
-    });
-    assert.deepEqual(server.parse("wormhole_dry_run", { direction: "pull" }), {
-      direction: "pull",
-    });
-  });
-
-  test("rejects a missing direction (required enum)", () => {
-    const server = new FakeServer();
-    const { engine } = makeFakeEngine();
-    registerDryRunTool(server as unknown as McpServer, engine);
-    assert.throws(
-      () => server.parse("wormhole_dry_run", {}),
-      (e: unknown) => e instanceof z.ZodError,
-    );
-  });
-
-  test("rejects an invalid direction value", () => {
-    const server = new FakeServer();
-    const { engine } = makeFakeEngine();
-    registerDryRunTool(server as unknown as McpServer, engine);
-    assert.throws(
-      () => server.parse("wormhole_dry_run", { direction: "sideways" }),
-      (e: unknown) => e instanceof z.ZodError,
-    );
-  });
-});
-
-describe("wormhole_dry_run — handler", () => {
-  test("direction='push' calls engine.push({dryRun:true}) and returns the plan", async () => {
-    const server = new FakeServer();
-    const { engine, calls } = makeFakeEngine();
-    registerDryRunTool(server as unknown as McpServer, engine);
-
-    const res = await server.call("wormhole_dry_run", { direction: "push" });
-    assert.deepEqual(calls.push, [{ dryRun: true }]);
-    assert.deepEqual(calls.pull, []);
-    const out = parseStructured<PushResult>(res);
-    assert.equal(out.dryRun, true);
-    assert.deepEqual(out.pushed, ["a.txt", "b.txt"]);
-  });
-
-  test("direction='pull' calls engine.pull({dryRun:true}) and returns the plan", async () => {
-    const server = new FakeServer();
-    const { engine, calls } = makeFakeEngine();
-    registerDryRunTool(server as unknown as McpServer, engine);
-
-    const res = await server.call("wormhole_dry_run", { direction: "pull" });
-    assert.deepEqual(calls.pull, [{ dryRun: true }]);
-    assert.deepEqual(calls.push, []);
-    const out = parseStructured<PullResult>(res);
-    assert.equal(out.dryRun, true);
-    assert.deepEqual(out.applied, ["x.txt"]);
-  });
-
-  test("engine error during dry-run surfaces as a tool error", async () => {
-    const server = new FakeServer();
-    const { engine } = makeFakeEngine({
-      push: () => Promise.reject(new Error("plan failed")),
-    });
-    registerDryRunTool(server as unknown as McpServer, engine);
-    const res = await server.call("wormhole_dry_run", { direction: "push" });
-    assert.equal(res.isError, true);
-    const block = res.content[0] as { type: string; text: string };
-    assert.equal(block.text, "plan failed");
-  });
-});
 
 // ============================================================================
 // wormhole_resolve (confirm-gated)

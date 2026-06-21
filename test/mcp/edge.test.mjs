@@ -18,7 +18,7 @@ const writeF = (home, rel, c) => {
 };
 
 // ── TRX-12: tools/list description 안전문구 계약 ──
-test("TRX-12: 쓰기4종 confirm 안전문구, 읽기2종 부재", async (t) => {
+test("TRX-12: 쓰기2종 confirm 안전문구, 읽기1종 부재", async (t) => {
   const dav = await startWebdav();
   const home = makeHome({ label: "desc", remoteUrl: dav.url });
   const client = new McpClient(childEnv(home.homeDir, home.configPath, dav.url)).spawn();
@@ -26,13 +26,16 @@ test("TRX-12: 쓰기4종 confirm 안전문구, 읽기2종 부재", async (t) => 
   await client.initialize();
   const by = Object.fromEntries((await client.listTools()).result.tools.map((x) => [x.name, x]));
 
+  // push/pull/dry_run 노출 제거 → 음성 단언.
+  for (const removed of ["wormhole_push", "wormhole_pull", "wormhole_dry_run"]) {
+    assert.equal(by[removed], undefined, `${removed} 미노출`);
+  }
+
   const SAFE = "절대 자율적으로 confirm:true 를 넘기지 않는다";
-  for (const n of ["wormhole_push", "wormhole_pull", "wormhole_resolve", "wormhole_sync"]) {
+  for (const n of ["wormhole_resolve", "wormhole_sync"]) {
     assert.ok(by[n].description.includes(SAFE), `${n} 안전문구 포함`);
   }
-  for (const n of ["wormhole_status", "wormhole_dry_run"]) {
-    assert.ok(!by[n].description.includes("confirm"), `${n} confirm 문구 부재`);
-  }
+  assert.ok(!by.wormhole_status.description.includes("confirm"), "status confirm 문구 부재");
 });
 
 // ── TRX-14: normalizeBaseDir 정규화 → 부팅 MKCOL 위치 ──
@@ -52,21 +55,21 @@ test("TRX-14: remoteBaseDir 정규화 후 MKCOL 위치", async (t) => {
   assert.ok(!keys.some((k) => k.includes("//")), "이중 슬래시 잔재 없음");
 });
 
-// ── ELC-09: AsyncMutex — 동시 push/pull 직렬화, 교차손상 없음 ──
-test("ELC-09: 동시 push/pull tools/call 직렬화", async (t) => {
+// ── ELC-09: AsyncMutex — 동시 sync tools/call 직렬화, 교차손상 없음 ──
+test("ELC-09: 동시 sync tools/call 직렬화", async (t) => {
   const dav = await startWebdav();
   const home = makeHome({ label: "mutex", remoteUrl: dav.url, files: { ".claude/CLAUDE.md": "concurrent\n" } });
   const client = new McpClient(childEnv(home.homeDir, home.configPath, dav.url)).spawn();
   t.after(async () => { await client.close(); await dav.close(); rmrf(home.homeDir); });
   await client.initialize();
 
-  // 응답 대기 없이 동시 발사.
-  const [push, pull] = await Promise.all([
-    client.callTool("wormhole_push", { confirm: true }),
-    client.callTool("wormhole_pull", { confirm: true }),
+  // 응답 대기 없이 동시 발사(sync = pull→push, 같은 원격 lock/manifest CAS 경합).
+  const [s1, s2] = await Promise.all([
+    client.callTool("wormhole_sync", { confirm: true }),
+    client.callTool("wormhole_sync", { confirm: true }),
   ]);
-  assert.equal(parseToolResult(push).isError, false, "push 정상");
-  assert.equal(parseToolResult(pull).isError, false, "pull 정상");
+  assert.equal(parseToolResult(s1).isError, false, "sync#1 정상");
+  assert.equal(parseToolResult(s2).isError, false, "sync#2 정상");
 
   // 프로세스 생존 + 와이어 일관(후속 status 정상).
   const st = parseToolResult(await client.callTool("wormhole_status"));
@@ -84,12 +87,12 @@ test("TMB-08: 손상 blob pull → isError + 로컬 이전상태 보존", async 
   await b.initialize();
   t.after(async () => { await a.close(); await b.close(); await dav.close(); rmrf(homeA.homeDir); rmrf(homeB.homeDir); });
 
-  await a.callTool("wormhole_push", { confirm: true });   // v1
-  await b.callTool("wormhole_pull", { confirm: true });    // B = v1
+  await a.callTool("wormhole_sync", { confirm: true });   // v1
+  await b.callTool("wormhole_sync", { confirm: true });    // B = v1
   assert.equal(readF(homeB, ".claude/CLAUDE.md"), "v1\n", "B 초기 v1");
 
   writeF(homeA, ".claude/CLAUDE.md", "v2\n");
-  await a.callTool("wormhole_push", { confirm: true });    // v2 새 blob
+  await a.callTool("wormhole_sync", { confirm: true });    // v2 새 blob
 
   // 원격 blob 전부 손상(age 복호 불가 바이트로).
   let corrupted = 0;
@@ -98,8 +101,9 @@ test("TMB-08: 손상 blob pull → isError + 로컬 이전상태 보존", async 
   }
   assert.ok(corrupted > 0, "blob 손상 주입됨");
 
-  const pull = parseToolResult(await b.callTool("wormhole_pull", { confirm: true }));
-  assert.equal(pull.isError, true, "손상 blob pull → isError(graceful, no crash)");
+  // sync 내부 pull 단계가 손상 blob 복호 실패 → stop-on-error 로 isError, 로컬 무손상.
+  const pull = parseToolResult(await b.callTool("wormhole_sync", { confirm: true }));
+  assert.equal(pull.isError, true, "손상 blob sync → isError(graceful, no crash)");
   assert.equal(readF(homeB, ".claude/CLAUDE.md"), "v1\n", "B 로컬 v1 보존(부분 손상/덮어쓰기 없음)");
 
   // 프로세스 생존.

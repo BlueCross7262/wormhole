@@ -1,6 +1,7 @@
 // Batch 5 — 단일 머신 추가 계약/부팅 시나리오.
-// SCH-03(keys 검증), SCH-08(dry_run pull 형태), TRX-04(initialize capabilities),
+// SCH-03(keys 검증), TRX-04(initialize capabilities),
 // TRX-13(passphrase 소스 env 관측), CGW-09(sync 미리보기 stop-on-error).
+// dry_run 노출 제거: SCH-08(dry_run pull 형태) 삭제.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -27,18 +28,6 @@ test("SCH-03: resolve keys 타입 검증", async (t) => {
   assert.ok(!rejected(await client.callTool("wormhole_resolve", { keys: [] })), "keys 빈배열 수용");
 });
 
-// ── SCH-08: dry_run direction:pull → PullResult 형태 ──
-test("SCH-08: dry_run pull 은 PullResult(dryRun:true)", async (t) => {
-  const { client } = await boot(t);
-  await client.initialize();
-  const r = parseToolResult(await client.callTool("wormhole_dry_run", { direction: "pull" }));
-  assert.equal(r.isError, false, "pull dry_run 정상");
-  assert.equal(r.structured.dryRun, true, "dryRun:true");
-  for (const f of ["applied", "removed", "conflicts"]) assert.ok(f in r.structured, `PullResult.${f} 존재`);
-  assert.ok("backupDir" in r.structured, "PullResult.backupDir 존재");
-  assert.equal(r.structured.pushed, undefined, "PushResult 키(pushed) 부재 → pull 분기 확인");
-});
-
 // ── TRX-04: initialize capabilities 계약 ──
 test("TRX-04: initialize serverInfo + capabilities", async (t) => {
   const { client } = await boot(t);
@@ -60,7 +49,7 @@ test("TRX-13: passphrase 소스 env 로그", async (t) => {
 test("CGW-09: sync 미리보기 pull 실패 → isError, push 미산출", async (t) => {
   const { dav, client } = await boot(t, { files: { ".claude/CLAUDE.md": "x\n" } });
   await client.initialize();
-  await client.callTool("wormhole_push", { confirm: true }); // manifest 생성
+  await client.callTool("wormhole_sync", { confirm: true }); // manifest 생성
 
   // 원격 manifest 손상 → pull(dryRun) 의 manifestStore.read 복호/파싱 실패.
   const mkey = "/wormhole/manifest.json.age";

@@ -1,6 +1,8 @@
 // Batch 2 — TWO_MACHINE MCP 도구 경계 시나리오.
 // 머신 A/B 가 별도 HOME·stateDir, 동일 원격 webdav-harness + 동일 passphrase.
 // happy 왕복(MCP 경계), CFL-01/02 충돌, SMR-02/06 라우팅, TMB-02 tombstone.
+// push/pull 노출 제거: 상태 조성·왕복은 sync(pull→push)로 이전.
+// sync 페이로드 형태: { pull: PullResult, [resolve], push: PushResult }.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -34,27 +36,27 @@ const writeFile = (home, rel, c) => {
 };
 const exists = (home, rel) => fs.existsSync(path.join(home.homeDir, rel));
 
-// ── 기반: A push → B pull 왕복(MCP 경계, 바이트 충실) ──
-test("RT: A push → B pull 왕복 바이트 충실(MCP 경계)", async (t) => {
+// ── 기반: A sync → B sync 왕복(MCP 경계, 바이트 충실) ──
+test("RT: A sync → B sync 왕복 바이트 충실(MCP 경계)", async (t) => {
   const content = "# CLAUDE.md\n한글 ✓ — éè\n";
   const { homeB, a, b } = await twoMachines(t, { aFiles: { ".claude/CLAUDE.md": content } });
 
-  const push = parseToolResult(await a.callTool("wormhole_push", { confirm: true }));
-  assert.ok(push.structured.pushed.includes(".claude/CLAUDE.md"), "A push 포함");
+  const aSync = parseToolResult(await a.callTool("wormhole_sync", { confirm: true }));
+  assert.ok(aSync.structured.push.pushed.includes(".claude/CLAUDE.md"), "A push 포함");
 
-  assert.equal(exists(homeB, ".claude/CLAUDE.md"), false, "pull 전 B 없음");
-  const pull = parseToolResult(await b.callTool("wormhole_pull", { confirm: true }));
-  assert.ok(pull.structured.applied.includes(".claude/CLAUDE.md"), "B pull applied");
+  assert.equal(exists(homeB, ".claude/CLAUDE.md"), false, "B sync 전 없음");
+  const bSync = parseToolResult(await b.callTool("wormhole_sync", { confirm: true }));
+  assert.ok(bSync.structured.pull.applied.includes(".claude/CLAUDE.md"), "B pull applied");
   assert.equal(readFile(homeB, ".claude/CLAUDE.md"), content, "바이트 충실");
 });
 
 // ── CFL-01: 양측 발산 → B status 가 conflict + conflicts[] 노출 ──
 test("CFL-01: 양측 발산 → status conflict 구조", async (t) => {
   const { homeA, homeB, a, b } = await twoMachines(t, { aFiles: { ".claude/CLAUDE.md": "v1\n" } });
-  await a.callTool("wormhole_push", { confirm: true });          // gen1: v1
-  await b.callTool("wormhole_pull", { confirm: true });           // B baseline=v1
+  await a.callTool("wormhole_sync", { confirm: true });          // gen1: v1
+  await b.callTool("wormhole_sync", { confirm: true });           // B baseline=v1
   writeFile(homeA, ".claude/CLAUDE.md", "v2-from-A\n");
-  await a.callTool("wormhole_push", { confirm: true });           // gen2: v2 (remote)
+  await a.callTool("wormhole_sync", { confirm: true });           // gen2: v2 (remote)
   writeFile(homeB, ".claude/CLAUDE.md", "v3-from-B\n");           // B local divergent
 
   const st = parseToolResult(await b.callTool("wormhole_status")).structured;
@@ -69,10 +71,10 @@ test("CFL-01: 양측 발산 → status conflict 구조", async (t) => {
 // ── CFL-02: resolve preserve-both → conflictCopies 기록 ──
 test("CFL-02: resolve preserve-both conflictCopies", async (t) => {
   const { homeA, homeB, a, b } = await twoMachines(t, { aFiles: { ".claude/CLAUDE.md": "v1\n" } });
-  await a.callTool("wormhole_push", { confirm: true });
-  await b.callTool("wormhole_pull", { confirm: true });
+  await a.callTool("wormhole_sync", { confirm: true });
+  await b.callTool("wormhole_sync", { confirm: true });
   writeFile(homeA, ".claude/CLAUDE.md", "v2-from-A\n");
-  await a.callTool("wormhole_push", { confirm: true });
+  await a.callTool("wormhole_sync", { confirm: true });
   writeFile(homeB, ".claude/CLAUDE.md", "v3-from-B\n");
 
   const res = parseToolResult(await b.callTool("wormhole_resolve", { policy: "preserve-both", confirm: true }));
@@ -89,8 +91,8 @@ test("SMR-02: settings.json ${HOME} 토큰화 왕복", async (t) => {
   const aPath = path.join(homeA.homeDir, "sub", "x");
   writeFile(homeA, ".claude/settings.json", JSON.stringify({ theme: "dark", p: aPath }, null, 2));
 
-  await a.callTool("wormhole_push", { confirm: true });
-  await b.callTool("wormhole_pull", { confirm: true });
+  await a.callTool("wormhole_sync", { confirm: true });
+  await b.callTool("wormhole_sync", { confirm: true });
 
   const bSettings = JSON.parse(readFile(homeB, ".claude/settings.json"));
   const bExpected = path.join(homeB.homeDir, "sub", "x");
@@ -109,8 +111,8 @@ test("SMR-06: 비밀 파일 동기화 제외", async (t) => {
       ".claude/foo.key": "PRIVATE-KEY\n",
     },
   });
-  const push = parseToolResult(await a.callTool("wormhole_push", { confirm: true }));
-  const pushed = push.structured.pushed;
+  const push = parseToolResult(await a.callTool("wormhole_sync", { confirm: true }));
+  const pushed = push.structured.push.pushed;
   assert.ok(pushed.includes(".claude/CLAUDE.md"), "정상 파일 push");
   for (const secret of [".claude/.credentials.json", ".claude/settings.local.json", ".claude/foo.key"]) {
     assert.ok(!pushed.includes(secret), `비밀 제외: ${secret}`);
@@ -120,15 +122,15 @@ test("SMR-06: 비밀 파일 동기화 제외", async (t) => {
 // ── TMB-02: A tombstone push → B pull 로 로컬 삭제 ──
 test("TMB-02: tombstone 전파 — A 삭제 push → B pull removed", async (t) => {
   const { homeA, homeB, a, b } = await twoMachines(t, { aFiles: { ".claude/CLAUDE.md": "x\n" } });
-  await a.callTool("wormhole_push", { confirm: true });
-  await b.callTool("wormhole_pull", { confirm: true });
+  await a.callTool("wormhole_sync", { confirm: true });
+  await b.callTool("wormhole_sync", { confirm: true });
   assert.equal(exists(homeB, ".claude/CLAUDE.md"), true, "B 가 먼저 받음");
 
   fs.rmSync(path.join(homeA.homeDir, ".claude/CLAUDE.md"));
-  const push = parseToolResult(await a.callTool("wormhole_push", { confirm: true }));
-  assert.ok(push.structured.deleted.includes(".claude/CLAUDE.md"), "A push deleted tombstone");
+  const push = parseToolResult(await a.callTool("wormhole_sync", { confirm: true }));
+  assert.ok(push.structured.push.deleted.includes(".claude/CLAUDE.md"), "A push deleted tombstone");
 
-  const pull = parseToolResult(await b.callTool("wormhole_pull", { confirm: true }));
-  assert.ok(pull.structured.removed.includes(".claude/CLAUDE.md"), "B pull removed");
+  const pull = parseToolResult(await b.callTool("wormhole_sync", { confirm: true }));
+  assert.ok(pull.structured.pull.removed.includes(".claude/CLAUDE.md"), "B pull removed");
   assert.equal(exists(homeB, ".claude/CLAUDE.md"), false, "B 로컬 삭제됨");
 });
