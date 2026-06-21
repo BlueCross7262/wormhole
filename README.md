@@ -218,7 +218,7 @@ Claude Code 플러그인 마켓플레이스를 통해 빌드 없이 설치한다
 **2. 플러그인 설치**
 
 ```
-/plugin install wormhole@wormhole-marketplace
+/plugin install wormhole@wormhole
 ```
 
 **3. 초기 설정 스캐폴드**
