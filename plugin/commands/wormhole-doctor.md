@@ -1,5 +1,5 @@
 ---
-description: wormhole — 설정·연결·암호화·vault 상태 진단
+description: wormhole 상태 진단
 ---
 
 ```bash

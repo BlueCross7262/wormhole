@@ -1,5 +1,5 @@
 ---
-description: wormhole — 충돌 항목을 지정한 정책으로 해소
+description: wormhole 충돌 해소
 ---
 
 ```bash

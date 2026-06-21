@@ -1,5 +1,5 @@
 ---
-description: wormhole 초기 설정 — ~/.wormhole/.env 및 config.json 템플릿 생성
+description: wormhole 초기 설정 (env·config 생성)
 ---
 
 `~/.wormhole/.env` 와 `~/.wormhole/config.json` 이 없으면 각각 템플릿을 생성한다. 이미 존재하면 덮어쓰지 않는다 (idempotent).

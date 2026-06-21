@@ -1,5 +1,5 @@
 ---
-description: wormhole — pull → resolve → push 일괄 동기화 (force-up/force-down 지원)
+description: wormhole 동기화 실행 (pull→push)
 ---
 
 ```bash

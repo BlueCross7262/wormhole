@@ -1,5 +1,5 @@
 ---
-description: wormhole — 원격 WebDAV 와 로컬 설정 동기화 상태 확인
+description: wormhole 동기화 상태 확인
 ---
 
 ```bash
