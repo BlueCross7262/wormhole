@@ -32,13 +32,13 @@ function rejected(res) {
 }
 
 // ── TRX-01: tools/list 입력스키마 계약 ───────────────────────
-test("TRX-01: tools/list 3개 도구 inputSchema 계약", async (t) => {
+test("TRX-01: tools/list 4개 도구 inputSchema 계약", async (t) => {
   const { client } = await bootClient(t);
   await client.initialize();
   const tools = (await client.listTools()).result.tools;
   const by = Object.fromEntries(tools.map((x) => [x.name, x]));
 
-  assert.equal(tools.length, 3, "정확히 3개");
+  assert.equal(tools.length, 4, "정확히 4개");
 
   // 음성 단언: push/pull/dry_run 은 더 이상 노출되지 않음.
   for (const removed of ["wormhole_push", "wormhole_pull", "wormhole_dry_run"]) {
@@ -48,6 +48,11 @@ test("TRX-01: tools/list 3개 도구 inputSchema 계약", async (t) => {
   // status: 파라미터 없음
   const statusProps = by.wormhole_status.inputSchema?.properties ?? {};
   assert.equal(Object.keys(statusProps).length, 0, "status 파라미터 없음");
+
+  // doctor: 읽기전용 진단 — 파라미터 없음(빈/단순 스키마)
+  assert.ok(by.wormhole_doctor, "doctor 노출");
+  const doctorProps = by.wormhole_doctor.inputSchema?.properties ?? {};
+  assert.equal(Object.keys(doctorProps).length, 0, "doctor 파라미터 없음");
 
   // resolve: policy 3-enum, keys array, confirm
   const rp = by.wormhole_resolve.inputSchema.properties;
@@ -59,6 +64,32 @@ test("TRX-01: tools/list 3개 도구 inputSchema 계약", async (t) => {
   assert.deepEqual(sp.policy.enum, ["preserve-both", "latest-wins"], "sync.policy 2종(manual 없음)");
   assert.equal(sp.confirm.type, "boolean", "sync.confirm boolean");
   assert.ok(!(by.wormhole_sync.inputSchema.required ?? []).includes("confirm"), "sync.confirm optional");
+});
+
+// ── DOC-01: doctor 해피패스 — 정상 부팅 + vault 부트스트랩 후 진단 ok ──
+// 읽기전용 진단. 정상 환경(config/webdav/passphrase 정상, 127. transport 예외)에서
+// vault 를 1회 부트스트랩(sync confirm)한 뒤 doctor 호출 → checks 배열 구조 + ok=true.
+test("DOC-01: doctor 정상환경 checks 구조 + ok", async (t) => {
+  const { client } = await bootClient(t, { files: { ".claude/CLAUDE.md": CLAUDE_MD } });
+  await client.initialize();
+  // 원격 keyparams/manifest 부트스트랩 → vault 정합/상태 체크가 fail 이 아닌 ok 로.
+  await client.callTool("wormhole_sync", { confirm: true });
+
+  const r = parseToolResult(await client.callTool("wormhole_doctor"));
+  assert.equal(r.isError, false, "doctor 호출 자체 비에러");
+  const d = r.structured;
+  assert.equal(typeof d.ok, "boolean", "ok 필드 boolean");
+  assert.ok(Array.isArray(d.checks) && d.checks.length > 0, "checks 비어있지 않은 배열");
+  for (const c of d.checks) {
+    assert.equal(typeof c.name, "string", "check.name string");
+    assert.ok(["ok", "fail", "warn"].includes(c.status), `check.status enum (${c.status})`);
+    assert.equal(typeof c.detail, "string", "check.detail string");
+  }
+  // ok 집계 계약: fail 이 하나도 없으면 ok=true.
+  const hasFail = d.checks.some((c) => c.status === "fail");
+  assert.equal(d.ok, !hasFail, "ok === (fail 없음)");
+  // 정상환경 + vault 부트스트랩이면 어떤 체크도 fail 아니어야 함.
+  assert.ok(!hasFail, `정상환경 doctor 무-fail (statuses: ${d.checks.map((c) => `${c.name}:${c.status}`).join(", ")})`);
 });
 
 // ── CGW-03: sync 미리보기 → {pull,push} 합본, resolve 키 부재 ──

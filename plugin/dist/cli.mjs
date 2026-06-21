@@ -33599,6 +33599,194 @@ async function buildEngine(logger2) {
   return { engine, config, machineId, crypto: crypto5, remote };
 }
 
+// src/doctor.ts
+function statusOf(err) {
+  const e2 = err;
+  return e2?.status ?? e2?.response?.status;
+}
+function isPlaintextHttp(url) {
+  return /^http:\/\//i.test(url) && !/^http:\/\/(localhost|127\.|\[::1\])/i.test(url);
+}
+async function runDoctor(logger2) {
+  const checks = [];
+  let config = null;
+  let remote = null;
+  let keyparamsRaw = null;
+  let keyparamsFetched = false;
+  let passphrase = null;
+  let crypto5 = null;
+  try {
+    config = await loadConfig();
+    const pwWarn = config.remote.password === "";
+    checks.push({
+      name: "config \uD30C\uC77C",
+      status: pwWarn ? "warn" : "ok",
+      detail: pwWarn ? `config.json/.env \uB85C\uB4DC \uD1B5\uACFC, \uADF8\uB7EC\uB098 WEBDAV_PASS \uAC00 \uBE44\uC5B4 \uC788\uC74C(\uC775\uBA85 \uC811\uADFC \uB610\uB294 401 \uC704\uD5D8). remote.url=${config.remote.url}` : `config.json+.env \uB85C\uB4DC, \uC2A4\uD0A4\uB9C8 \uAC80\uC99D \uD1B5\uACFC. remote.url=${config.remote.url}`
+    });
+  } catch (err) {
+    checks.push({
+      name: "config \uD30C\uC77C",
+      status: "fail",
+      detail: err.message
+    });
+  }
+  if (config === null) {
+    checks.push({
+      name: "WebDAV \uC5F0\uACB0\xB7\uC778\uC99D",
+      status: "fail",
+      detail: "\uC120\uD589 \uCCB4\uD06C(config) \uC2E4\uD328\uB85C \uC2A4\uD0B5"
+    });
+  } else {
+    try {
+      remote = new RemoteStore(config.remote, logger2);
+      keyparamsRaw = await remote.getTextIfExists(KEYPARAMS_REMOTE);
+      keyparamsFetched = true;
+      checks.push({
+        name: "WebDAV \uC5F0\uACB0\xB7\uC778\uC99D",
+        status: "ok",
+        detail: "PROPFIND/GET \uC131\uACF5 \u2014 \uC5F0\uACB0\xB7\uC778\uC99D \uC815\uC0C1"
+      });
+    } catch (err) {
+      const code = statusOf(err);
+      const detail = code === 401 ? "\uC778\uC99D \uC2E4\uD328(401) \u2014 WEBDAV_USER/WEBDAV_PASS \uB97C \uD655\uC778\uD558\uB77C" : `\uC5F0\uACB0 \uC2E4\uD328: ${err.message}`;
+      checks.push({ name: "WebDAV \uC5F0\uACB0\xB7\uC778\uC99D", status: "fail", detail });
+    }
+  }
+  if (config === null) {
+    checks.push({
+      name: "passphrase \uC18C\uC2A4",
+      status: "fail",
+      detail: "\uC120\uD589 \uCCB4\uD06C(config) \uC2E4\uD328\uB85C \uC2A4\uD0B5"
+    });
+  } else {
+    try {
+      const res = await resolvePassphrase(
+        {
+          env: config.crypto.passphraseEnv,
+          file: config.crypto.passphraseFile,
+          keychainService: config.crypto.keychainService
+        },
+        logger2
+      );
+      passphrase = res.passphrase;
+      checks.push({
+        name: "passphrase \uC18C\uC2A4",
+        status: "ok",
+        detail: `passphrase \uC18C\uC2A4: ${res.source}`
+      });
+    } catch (err) {
+      checks.push({
+        name: "passphrase \uC18C\uC2A4",
+        status: "fail",
+        detail: err.message
+      });
+    }
+  }
+  if (config === null || !keyparamsFetched || passphrase === null) {
+    checks.push({
+      name: "passphrase\u2194vault \uC815\uD569",
+      status: "fail",
+      detail: "\uC120\uD589 \uCCB4\uD06C(config/\uC5F0\uACB0/passphrase) \uC2E4\uD328\uB85C \uC2A4\uD0B5"
+    });
+  } else if (keyparamsRaw === null) {
+    checks.push({
+      name: "passphrase\u2194vault \uC815\uD569",
+      status: "warn",
+      detail: "\uC6D0\uACA9 vault \uBBF8\uCD08\uAE30\uD654(keyparams \uC5C6\uC74C) \u2014 \uCCAB push \uC2DC \uC774 passphrase \uAC00 vault \uD45C\uC900\uC774 \uB428"
+    });
+  } else {
+    try {
+      const parsed = KeyParamsSchema.parse(JSON.parse(keyparamsRaw));
+      const identity = deriveAgeIdentity(passphrase, parsed.saltB64, {
+        N: parsed.N,
+        r: parsed.r,
+        p: parsed.p
+      });
+      const c = new AgeCrypto(logger2);
+      await c.initWithIdentity(identity, config.crypto.derivedKeyPath);
+      const decoded = await c.decryptToString(parsed.sentinel);
+      if (decoded !== SENTINEL_PLAINTEXT) {
+        throw new Error("sentinel \uD3C9\uBB38 \uBD88\uC77C\uCE58");
+      }
+      crypto5 = c;
+      checks.push({
+        name: "passphrase\u2194vault \uC815\uD569",
+        status: "ok",
+        detail: "sentinel \uBCF5\uD638 \uC131\uACF5 \u2014 passphrase \uAC00 vault \uC640 \uC77C\uCE58"
+      });
+    } catch (err) {
+      checks.push({
+        name: "passphrase\u2194vault \uC815\uD569",
+        status: "fail",
+        detail: `passphrase \uBD88\uC77C\uCE58 \u2014 \uB2E4\uB978 \uAE30\uAE30\uC640 \uB3D9\uC77C passphrase \uC778\uC9C0 \uD655\uC778\uD558\uB77C (${err.message})`
+      });
+    }
+  }
+  if (config === null || remote === null || !keyparamsFetched) {
+    checks.push({
+      name: "vault \uC0C1\uD0DC",
+      status: "fail",
+      detail: "\uC120\uD589 \uCCB4\uD06C(config/\uC5F0\uACB0) \uC2E4\uD328\uB85C \uC2A4\uD0B5"
+    });
+  } else if (keyparamsRaw === null) {
+    checks.push({
+      name: "vault \uC0C1\uD0DC",
+      status: "warn",
+      detail: "vault \uBBF8\uCD08\uAE30\uD654 \u2014 keyparams/manifest \uC5C6\uC74C(\uC544\uC9C1 push \uC548 \uB428)"
+    });
+  } else if (crypto5 === null) {
+    checks.push({
+      name: "vault \uC0C1\uD0DC",
+      status: "warn",
+      detail: "keyparams \uC874\uC7AC\uD558\uB098 \uBCF5\uD638 \uD0A4 \uBBF8\uC900\uBE44(passphrase \uBD88\uC77C\uCE58) \u2014 manifestGeneration \uBBF8\uD655\uC778"
+    });
+  } else {
+    try {
+      const manifest = await new ManifestStore(remote, crypto5, config).read();
+      if (manifest === null) {
+        checks.push({
+          name: "vault \uC0C1\uD0DC",
+          status: "warn",
+          detail: "keyparams \uC874\uC7AC, manifest \uC5C6\uC74C(\uC544\uC9C1 push \uC548 \uB428)"
+        });
+      } else {
+        checks.push({
+          name: "vault \uC0C1\uD0DC",
+          status: "ok",
+          detail: `manifestGeneration=${manifest.manifestGeneration}, entries=${Object.keys(manifest.entries).length}`
+        });
+      }
+    } catch (err) {
+      checks.push({
+        name: "vault \uC0C1\uD0DC",
+        status: "fail",
+        detail: `manifest \uC77D\uAE30 \uC2E4\uD328: ${err.message}`
+      });
+    }
+  }
+  if (config === null) {
+    checks.push({
+      name: "transport \uBCF4\uC548",
+      status: "fail",
+      detail: "\uC120\uD589 \uCCB4\uD06C(config) \uC2E4\uD328\uB85C \uC2A4\uD0B5"
+    });
+  } else if (isPlaintextHttp(config.remote.url)) {
+    checks.push({
+      name: "transport \uBCF4\uC548",
+      status: "warn",
+      detail: "\uD3C9\uBB38 http \u2014 Tailscale \uB4F1 \uC554\uD638\uD654 \uC804\uC1A1\uC774 \uC544\uB2C8\uBA74 \uC790\uACA9\uC99D\uBA85\xB7\uBA54\uD0C0\uB370\uC774\uD130 \uB178\uCD9C \uC704\uD5D8. https \uAD8C\uC7A5"
+    });
+  } else {
+    checks.push({
+      name: "transport \uBCF4\uC548",
+      status: "ok",
+      detail: "https \uB610\uB294 localhost \u2014 \uC804\uC1A1 \uBCF4\uC548 \uC591\uD638"
+    });
+  }
+  const ok = checks.every((c) => c.status !== "fail");
+  return { ok, checks };
+}
+
 // src/cli.ts
 var USAGE = `wormhole \u2014 Claude Code \uC804\uC5ED \uC124\uC815 \uB3D9\uAE30\uD654 CLI
 
@@ -33608,6 +33796,7 @@ Usage:
                                                     \uCDA9\uB3CC \uD574\uC18C (P = preserve-both|latest-wins|manual)
   wormhole sync  [--policy preserve-both|latest-wins]
                                                     \uBCF5\uD569: pull \u2192 (\uCDA9\uB3CC \uC2DC) resolve \u2192 push
+  wormhole doctor                                  \uD658\uACBD \uC9C4\uB2E8(\uC77D\uAE30 \uC804\uC6A9): config\xB7\uC5F0\uACB0\xB7passphrase\xB7vault\xB7transport
   wormhole --help | -h                              \uC774 \uB3C4\uC6C0\uB9D0\uC744 \uCD9C\uB825
 
 Exit code 0 on success, nonzero on error.`;
@@ -33675,7 +33864,7 @@ async function run() {
     case "sync": {
       const policy = parsePolicy(flags.policy) ?? "preserve-both";
       if (policy === "manual") {
-        throw new Error("manual not allowed for sync; run /wormhole_resolve");
+        throw new Error("manual not allowed for sync; run /wormhole-resolve");
       }
       const { engine } = await buildEngine(logger);
       const pull = await engine.pull();
@@ -33685,6 +33874,12 @@ async function run() {
       }
       combined.push = await engine.push();
       emit(combined);
+      return;
+    }
+    case "doctor": {
+      const result = await runDoctor(logger);
+      emit(result);
+      if (!result.ok) process.exit(1);
       return;
     }
     default:

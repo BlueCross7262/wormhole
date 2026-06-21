@@ -4,6 +4,7 @@
 
 import { logger } from "./logger.js";
 import { buildEngine } from "./bootstrap.js";
+import { runDoctor } from "./doctor.js";
 import type { ResolvePolicy } from "./types.js";
 
 const USAGE = `wormhole — Claude Code 전역 설정 동기화 CLI
@@ -14,6 +15,7 @@ Usage:
                                                     충돌 해소 (P = preserve-both|latest-wins|manual)
   wormhole sync  [--policy preserve-both|latest-wins]
                                                     복합: pull → (충돌 시) resolve → push
+  wormhole doctor                                  환경 진단(읽기 전용): config·연결·passphrase·vault·transport
   wormhole --help | -h                              이 도움말을 출력
 
 Exit code 0 on success, nonzero on error.`;
@@ -98,7 +100,7 @@ async function run(): Promise<void> {
     case "sync": {
       const policy = parsePolicy(flags.policy) ?? "preserve-both";
       if (policy === "manual") {
-        throw new Error("manual not allowed for sync; run /wormhole_resolve");
+        throw new Error("manual not allowed for sync; run /wormhole-resolve");
       }
       const { engine } = await buildEngine(logger);
 
@@ -110,6 +112,14 @@ async function run(): Promise<void> {
       }
       combined.push = await engine.push();
       emit(combined);
+      return;
+    }
+
+    case "doctor": {
+      // doctor 는 buildEngine 불요 — 자체적으로 loadConfig 등을 tolerant 하게 재실행한다.
+      const result = await runDoctor(logger);
+      emit(result);
+      if (!result.ok) process.exit(1);
       return;
     }
 

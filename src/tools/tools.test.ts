@@ -8,6 +8,7 @@ import { registerAllTools } from "./index.js";
 import { registerStatusTool } from "./status.js";
 import { registerResolveTool } from "./resolve.js";
 import { registerSyncTool } from "./sync.js";
+import { registerDoctorTool } from "./doctor.js";
 import type { SyncEngine } from "../sync/engine.js";
 import type {
   PushResult,
@@ -173,18 +174,19 @@ function parseStructured<T>(res: CallToolResult): T {
 // ============================================================================
 
 describe("registerAllTools", () => {
-  test("registers exactly the 3 wormhole tools with expected names", () => {
+  test("registers exactly the 4 wormhole tools with expected names", () => {
     const server = new FakeServer();
     const { engine } = makeFakeEngine();
     registerAllTools(server as unknown as McpServer, engine);
 
     const names = server.tools.map((t) => t.name).sort();
     assert.deepEqual(names, [
+      "wormhole_doctor",
       "wormhole_resolve",
       "wormhole_status",
       "wormhole_sync",
     ]);
-    assert.equal(server.tools.length, 3);
+    assert.equal(server.tools.length, 4);
   });
 
   test("each registered tool has a title and description", () => {
@@ -211,6 +213,32 @@ describe("registerAllTools", () => {
       assert.match(desc, /confirm:true/);
       assert.match(desc, /미리보기/);
     }
+  });
+});
+
+// ============================================================================
+// wormhole_doctor (read-only, engine-free)
+// ============================================================================
+
+describe("wormhole_doctor — registration", () => {
+  test("registerDoctorTool registers wormhole_doctor with empty inputSchema", () => {
+    const server = new FakeServer();
+    registerDoctorTool(server as unknown as McpServer);
+    const t = server.get("wormhole_doctor");
+    assert.deepEqual(server.parse("wormhole_doctor", {}), {});
+    assert.deepEqual(server.parse("wormhole_doctor", { junk: 1 }), {});
+    assert.ok(typeof t.config.title === "string" && t.config.title.length > 0);
+    assert.ok(
+      typeof t.config.description === "string" && t.config.description.length > 0,
+    );
+  });
+
+  test("registerDoctorTool does not require a SyncEngine argument", () => {
+    const server = new FakeServer();
+    // engine 불요 — server 만으로 등록되어야 한다.
+    registerDoctorTool(server as unknown as McpServer);
+    assert.equal(server.tools.length, 1);
+    assert.equal(server.tools[0].name, "wormhole_doctor");
   });
 });
 

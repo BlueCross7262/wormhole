@@ -9,7 +9,7 @@
 
 ## 1. 목적과 범위
 
-- **목적**: wormhole MCP stdio 서버가 노출하는 3개 도구(`wormhole_status`, `wormhole_resolve`, `wormhole_sync`)를 실제 MCP 프로토콜 경계에서 블랙박스로 검증한다.
+- **목적**: wormhole MCP stdio 서버가 노출하는 4개 도구(`wormhole_status`, `wormhole_resolve`, `wormhole_sync`, `wormhole_doctor`)를 실제 MCP 프로토콜 경계에서 블랙박스로 검증한다.
 - **증명 기준**: 본 계획서가 말하는 'proven'(proven=true)은 **무사각 기준** = "모든 mcp-boundary 기능에 그 동작을 행사하는 시나리오가 ≥1개 존재(none=0)" 를 뜻한다. 상세 결과는 §7.8 참조.
 - **범위 IN**:
   - `tools/list` · `tools/call` 직렬화
@@ -38,17 +38,18 @@
 
 ## 3. 검증 대상 표면
 
-### 3.1 3개 도구
+### 3.1 4개 도구
 
 | 도구명 | 종류 | inputSchema 요약 | 반환타입 | confirm 동작 |
 |---|---|---|---|---|
 | `wormhole_status` | 읽기전용 | 파라미터 없음 (빈 object) | `SyncStatus` | 해당 없음 (자율호출) |
 | `wormhole_resolve` | 쓰기 | `policy: enum 3종 optional`, `keys: array<string> optional`, `confirm: boolean optional` | `ResolveResult` | false=미리보기 / true=실행 |
 | `wormhole_sync` | 쓰기 | `policy: enum 2종("preserve-both","latest-wins") optional`, `confirm: boolean optional` | pull+push (+resolve) 합본 | false=미리보기 / true=실행 |
+| `wormhole_doctor` | 읽기전용 | 파라미터 없음 (빈 object) | `{ ok: boolean, checks: Array<{name, status, detail}> }` | 해당 없음 (자율호출) |
 
 ### 3.2 confirm 게이트 안전 모델
 
-- **읽기전용 (`wormhole_status`)**: confirm 불필요, Claude 자율호출 허용.
+- **읽기전용 (`wormhole_status`, `wormhole_doctor`)**: confirm 불필요, Claude 자율호출 허용.
 - **쓰기 2종 (`resolve` / `sync`)**: confirm 기본값 `false` = 미리보기(dryRun), `true` = 실행.
 - **Claude 자율 `confirm:true` 금지**: 쓰기 도구의 실제 실행은 사용자 확인을 거친다.
 
@@ -88,7 +89,7 @@
 
 | 차원 | ID | 우선순위 | 제목 |
 |---|---|---|---|
-| **Transport & Registration** | TRX-01 | P0 | tools/list — 정확히 3개 도구 이름·inputSchema 계약 검증 |
+| **Transport & Registration** | TRX-01 | P0 | tools/list — 정확히 4개 도구 이름·inputSchema 계약 검증 |
 | | TRX-02 | P0 | stdout 순수성 — 로그가 stderr 로만 나오고 MCP 프레임 외 stdout 오염 없음 |
 | | TRX-03 | P1 | 부팅 시 MKCOL 부수효과 — 도구 호출 전 원격 디렉터리 생성 PROPFIND 관측 |
 | | TRX-04 | P1 | initialize capabilities — 서버 반환 capabilities 구조 계약 검증 |

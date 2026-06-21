@@ -16,11 +16,11 @@ export interface KeyParamsFile {
   sentinel: string; // armored age 암호문
 }
 
-const KEYPARAMS_REMOTE = "keyparams.json";
-const SENTINEL_PLAINTEXT = "wormhole passphrase verification v1";
+export const KEYPARAMS_REMOTE = "keyparams.json";
+export const SENTINEL_PLAINTEXT = "wormhole passphrase verification v1";
 
 // 원격 keyparams.json 은 신뢰 불가 입력 — 구조를 zod 로 검증한다.
-const KeyParamsSchema = z.object({
+export const KeyParamsSchema = z.object({
   version: z.number().int(),
   kdf: z.literal("scrypt"),
   saltB64: z.string().min(1),

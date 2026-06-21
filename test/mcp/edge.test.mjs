@@ -35,7 +35,11 @@ test("TRX-12: 쓰기2종 confirm 안전문구, 읽기1종 부재", async (t) => 
   for (const n of ["wormhole_resolve", "wormhole_sync"]) {
     assert.ok(by[n].description.includes(SAFE), `${n} 안전문구 포함`);
   }
-  assert.ok(!by.wormhole_status.description.includes("confirm"), "status confirm 문구 부재");
+  // 읽기전용 2종(status/doctor): confirm 안전문구 부재.
+  for (const n of ["wormhole_status", "wormhole_doctor"]) {
+    assert.ok(by[n], `${n} 노출`);
+    assert.ok(!by[n].description.includes("confirm"), `${n} confirm 문구 부재`);
+  }
 });
 
 // ── TRX-14: normalizeBaseDir 정규화 → 부팅 MKCOL 위치 ──

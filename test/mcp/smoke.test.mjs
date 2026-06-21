@@ -1,4 +1,4 @@
-// 하네스 스모크: server.mjs 부팅 + initialize + tools/list = 3 도구.
+// 하네스 스모크: server.mjs 부팅 + initialize + tools/list = 4 도구.
 // 블랙박스 채널(stdio JSON-RPC ↔ webdav-harness)이 실제로 도는지 1차 검증.
 
 import { test } from "node:test";
@@ -13,13 +13,13 @@ const PKG_VERSION = JSON.parse(
 ).version;
 
 const EXPECTED_TOOLS = [
-  "wormhole_status", "wormhole_resolve", "wormhole_sync",
+  "wormhole_status", "wormhole_resolve", "wormhole_sync", "wormhole_doctor",
 ];
 
 // push/pull/dry_run 은 노출 표면에서 제거됨(sync 내부 프리미티브로만 잔존).
 const REMOVED_TOOLS = ["wormhole_push", "wormhole_pull", "wormhole_dry_run"];
 
-test("smoke: 부팅 + initialize + tools/list = 3 도구", async (t) => {
+test("smoke: 부팅 + initialize + tools/list = 4 도구", async (t) => {
   const dav = await startWebdav();
   const home = makeHome({ label: "smoke", remoteUrl: dav.url });
   const client = new McpClient(childEnv(home.homeDir, home.configPath, dav.url)).spawn();
@@ -36,7 +36,7 @@ test("smoke: 부팅 + initialize + tools/list = 3 도구", async (t) => {
 
   const list = await client.listTools();
   const names = (list.result?.tools ?? []).map((tool) => tool.name).sort();
-  assert.deepEqual(names, [...EXPECTED_TOOLS].sort(), "정확히 3개 도구");
+  assert.deepEqual(names, [...EXPECTED_TOOLS].sort(), "정확히 4개 도구");
 
   // 음성 단언: push/pull/dry_run 은 더 이상 노출되지 않음.
   for (const removed of REMOVED_TOOLS) {

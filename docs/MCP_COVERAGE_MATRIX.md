@@ -2,7 +2,7 @@
 
 - **작성일**: 2026-06-21
 - **대상**: `MCP_VERIFICATION_PLAN.md` (67 시나리오)
-- **방법**: 코드 기능우주(98 mcp-boundary 기능) 전수 재매핑 + 3차 적대적 재증명
+- **방법**: 코드 기능우주(99 mcp-boundary 기능) 전수 재매핑 + 3차 적대적 재증명
 - **진화 이력**: v1(54 시나리오) → v2(67 시나리오) → v3(71 시나리오) → v4(67 시나리오, push/pull/dry_run 제거)
 
 ---
@@ -13,19 +13,19 @@
 
 > **무사각 기준** = 모든 mcp-boundary 기능에 대해 그 동작을 실제로 행사하는 시나리오가 1개 이상 존재한다(none = 0). 사각지대(아무 시나리오도 건드리지 않는 기능)가 0이면 증명 성립으로 본다.
 
-이 기준으로 **proven = TRUE**. mcp-boundary 98개 기능 전부가 최소 1개 시나리오에 의해 행사되며, 무커버(none) 기능이 0이다.
+이 기준으로 **proven = TRUE**. mcp-boundary 99개 기능 전부가 최소 1개 시나리오에 의해 행사되며, 무커버(none) 기능이 0이다.
 
 ### 1.2 정량 표 (mcp-boundary 기준)
 
 | 구분 | 수 | 비고 |
 |---|---|---|
-| mcp-boundary 기능 | 98 | MCP 표면에서 도달 가능한 기능 전수 |
+| mcp-boundary 기능 | 99 | MCP 표면에서 도달 가능한 기능 전수 |
 | └ direct | 74 | 전용 직접 단언으로 행사 (F-CONFIG-10 완전화 + F-CONFIG-14/16 정정 반영) |
-| └ partial | 24 | 기존 시나리오가 간접 행사하나 전용 직접 단언만 부재 |
+| └ partial | 25 | 기존 시나리오가 간접 행사하나 전용 직접 단언만 부재 (F-TOOLS-16 doctor 신규 포함) |
 | └ none | 0 | 무커버(사각지대) 없음 → 무사각 충족 |
 | prior-covered-internal | 16 | MCP 표면 아래 내부 로직, 이전 단계서 커버 |
 | out-of-band | 2 | CLI 전용 경로 등 MCP 비노출 |
-| **기능행 합계** | **116** | 5영역 전체 재매핑 |
+| **기능행 합계** | **117** | 5영역 전체 재매핑 |
 
 - **F-CONFIG-10 완전화 반영**: 계획서 TRX-13 보강으로 passphrase 소스 메타 override 경로가 완전화되어 partial → direct 로 승격. 이로써 간접커버 등록부(엄격기준 partial)는 25 → 24로 감소.
 - **F-CONFIG-14/16 정정**: 재매핑 원본 JSON 은 두 항목을 TRX-14/15 추가 전 stale 라벨(none/still-gap)로 표기했으나, 실제로는 TRX-14(normalizeBaseDir 정규화 black-box)·TRX-15(passphraseFile 경로해석 3케이스)가 닫았으므로 direct 로 정정.
@@ -34,10 +34,10 @@
 
 > **엄격 직접기준** = direct(전용 직접 단언)만 커버로 인정하고 partial 을 gap 으로 산정한다.
 
-이 기준을 적용하면 **partial 24개가 잔존하므로 proven = FALSE** (mcp-boundary direct 74 / 미달 24). 재증명 원본 `audit.verdict.proven = false` 는 바로 이 엄격기준 산정값이다.
+이 기준을 적용하면 **partial 25개가 잔존하므로 proven = FALSE** (mcp-boundary direct 74 / 미달 25). 재증명 원본 `audit.verdict.proven = false` 는 바로 이 엄격기준 산정값이다.
 
 - 본 문서가 채택한 기준은 **무사각 기준**이며, 그 한정에서만 proven = TRUE 를 주장한다.
-- partial 24개는 은폐하지 않고 §4 간접커버 등록부에 전량 공개한다. 엄격 직접 100% 는 partial 24개를 직접 승격해야 달성 가능하다(별도 작업).
+- partial 25개는 은폐하지 않고 §4 간접커버 등록부에 전량 공개한다. 엄격 직접 100% 는 partial 25개를 직접 승격해야 달성 가능하다(별도 작업).
 
 ### 1.4 무결성 지표
 
@@ -85,14 +85,15 @@
 |---|---|---|---|---|
 | F-TOOLS-01 | wormhole_status 도구는 빈 inputSchema({})로 등록되어 인자 없이 호출 가능하며, engine.status() 결… | mcp-boundary | TRX-01, CGW-01, CGW-03, SCH-04 | direct |
 | F-TOOLS-02 | wormhole_status 성공 시 content[0]=text(JSON.stringify(result))와 structuredCont… | mcp-boundary | CGW-01, CFL-01, SCH-04, ELC-01 | direct |
-| F-TOOLS-03 | 모든 3개 도구 핸들러는 try/catch로 감싸 예외 발생 시 content=err.message text + isError:true인… | mcp-boundary | ELC-07, ELC-08, ELC-02, ELC-04, SCH-01, SCH-02, SCH-03, TMB-08, CGW-07, ELC-11 | direct |
+| F-TOOLS-03 | 모든 4개 도구 핸들러는 try/catch로 감싸 예외 발생 시 content=err.message text + isError:true인… | mcp-boundary | ELC-07, ELC-08, ELC-02, ELC-04, SCH-01, SCH-02, SCH-03, TMB-08, CGW-07, ELC-11 | direct |
 | F-TOOLS-04 | wormhole_resolve 입력스키마는 policy:z.enum(['preserve-both','latest-wins','manual… | mcp-boundary | TRX-01, SCH-01, SCH-02, SCH-03, SCH-05 | direct |
 | F-TOOLS-05 | wormhole_resolve는 engine.resolve(policy, keys, {dryRun})으로 위임하며, keys 생략 시 전… | mcp-boundary | CGW-02, CFL-02, CFL-03, CFL-04, CFL-05, CFL-06, SCH-05 | direct |
 | F-TOOLS-06 | wormhole_sync 입력스키마는 policy:z.enum(['preserve-both','latest-wins']).optional… | mcp-boundary | TRX-01, SCH-01, SCH-03 | direct |
 | F-TOOLS-07 | wormhole_sync 미리보기 분기(confirm!==true): engine.pull({dryRun:true})와 engine.pu… | mcp-boundary | CGW-01, CGW-05, CGW-07 | direct |
 | F-TOOLS-08 | wormhole_sync 실제 실행 분기(confirm:true): policy 기본값 'preserve-both' 적용 후 engine… | mcp-boundary | CGW-05, CGW-06 | direct |
 | F-TOOLS-09 | wormhole_sync의 stop-on-error: pull/resolve/push를 순차 await하므로 앞 단계가 throw하면 뒤… | mcp-boundary | ELC-07, CGW-07 | direct |
-| F-TOOLS-10 | registerAllTools는 status→resolve→sync 순으로 3개 도구를 단일 McpSer… | mcp-boundary | TRX-01, TRX-12 | direct |
+| F-TOOLS-10 | registerAllTools는 status→resolve→sync→doctor 순으로 4개 도구를 단일 McpSer… | mcp-boundary | TRX-01, TRX-12 | direct |
+| F-TOOLS-16 | wormhole_doctor 도구는 빈 inputSchema({})로 등록되어 인자 없이 호출 가능하며, runDoctor(logger) 를 호출해 6단계 진단(config/WebDAV/passphrase/vault 정합/vault 상태/transport 보안) 결과 { ok, checks } 를 JSON 반환. 읽기전용, confirm 불필요. | mcp-boundary | TRX-01 | partial |
 | F-TOOLS-11 | 서버 부팅: buildEngine(logger)으로 config·자격·원격·crypto·엔진 조립 후 McpServer({name:'wo… | mcp-boundary | TRX-04, TRX-03, TRX-06, TRX-08, ELC-02, ELC-03, TRX-09, TRX-10, TRX-11, ELC-10, TRX-13, TRX-14, TRX-15, ELC-12 | direct |
 | F-TOOLS-12 | 전송 계층: StdioServerTransport로 server.connect하여 stdio JSON-RPC 표면을 노출하고 연결 후 s… | mcp-boundary | TRX-02, TRX-11 | direct |
 | F-TOOLS-13 | 수명주기/graceful shutdown: SIGINT/SIGTERM 수신 시 shuttingDown 가드로 중복 방지 후 server.… | mcp-boundary | TRX-05, TRX-06, TRX-08, ELC-02, ELC-03, ELC-10 | direct |
@@ -267,7 +268,7 @@
 
 ### 5.2 최종 결론
 
-- **무사각 기준 proven = TRUE**: mcp-boundary 98개 전수가 최소 1개 시나리오에 의해 행사되어 none = 0. 사각지대 없음.
-- **엄격 직접기준 proven = FALSE(병기)**: partial 24개가 잔존하므로 엄격 직접 100% 는 미달. 무사각과 엄격의 차이는 정확히 이 24개 partial 이다.
-- **엄격 직접 100% 달성 경로**: §4 간접커버 등록부 24개를 직접 승격(전용 직접 단언 추가)하면 달성 가능하다. 이는 본 증명과 분리된 별도 작업이다.
+- **무사각 기준 proven = TRUE**: mcp-boundary 99개 전수가 최소 1개 시나리오에 의해 행사되어 none = 0. 사각지대 없음.
+- **엄격 직접기준 proven = FALSE(병기)**: partial 25개가 잔존하므로 엄격 직접 100% 는 미달. 무사각과 엄격의 차이는 정확히 이 25개 partial 이다.
+- **엄격 직접 100% 달성 경로**: §4 간접커버 등록부 25개를 직접 승격(전용 직접 단언 추가)하면 달성 가능하다. 이는 본 증명과 분리된 별도 작업이다.
 - 신규 거짓커버 0, 회귀 0 — 재증명 무결성 확인.
