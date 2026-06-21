@@ -31,7 +31,7 @@ import type {
 } from "../types.js";
 import type { AgeCrypto } from "../crypto/age.js";
 import type { RemoteStore } from "../webdav/client.js";
-import { ManifestStore, ManifestConflictError } from "./manifest.js";
+import { ManifestStore, ManifestConflictError, MANIFEST_FILE } from "./manifest.js";
 import { computeStatus } from "./diff.js";
 import { scanLocal } from "./scanner.js";
 import { hashFile, sha256, blobName } from "./hash.js";
@@ -189,6 +189,26 @@ export class SyncEngine {
         return this.planPull();
       }
       return withLock(this.lock, () => this.runPull());
+    });
+  }
+
+  async forceUpload(options?: SyncRunOptions): Promise<PushResult> {
+    const dryRun = options?.dryRun ?? false;
+    return this.mutex.runExclusive(async () => {
+      if (dryRun) return this.planPush();
+      return withLock(this.lock, async () => {
+        await this.wipeRemoteData();
+        await this.resetLocalState();
+        return this.runPush();
+      });
+    });
+  }
+
+  async forceDownload(options?: SyncRunOptions): Promise<PullResult> {
+    const dryRun = options?.dryRun ?? false;
+    return this.mutex.runExclusive(async () => {
+      if (dryRun) return this.planPull();
+      return withLock(this.lock, () => this.runForceDownload());
     });
   }
 
@@ -659,6 +679,90 @@ export class SyncEngine {
       applied,
       removed,
       conflicts: status.conflicts,
+      backupDir: hadBackup ? backupRoot : null,
+    };
+  }
+
+  private async wipeRemoteData(): Promise<void> {
+    const manifestFullPath = `${this.config.remote.remoteBaseDir.replace(/\/+$/, "")}/${MANIFEST_FILE}`;
+    await this.remote.deleteFile(manifestFullPath);
+    const blobs = await this.remote.list("blobs");
+    await mapLimit(
+      blobs.filter((e) => e.type === "file"),
+      IO_CONCURRENCY,
+      (e) => this.remote.deleteFile(`blobs/${e.basename}`),
+    );
+    // keyparams.json 은 의도적으로 보존 — 삭제 시 vault 복호 불능.
+  }
+
+  private async resetLocalState(): Promise<void> {
+    await this.writeState({});
+    await fs.rm(this.baseDir, { recursive: true, force: true });
+  }
+
+  private async runForceDownload(): Promise<PullResult> {
+    const remoteManifest = await this.manifestStore.read();
+    const local = await this.scanWithHashes();
+    const runTs = this.makeRunTs();
+    const backupRoot = path.join(this.backupsDir, runTs);
+    const applied: LogicalKey[] = [];
+    const removed: LogicalKey[] = [];
+    const nextState: SyncState = {};
+    const backedUp: Array<{ key: LogicalKey; absPath: string; backupPath: string | null }> = [];
+    const remoteKeys = new Set<LogicalKey>();
+
+    try {
+      if (remoteManifest) {
+        const entries = Object.entries(remoteManifest.entries).filter(([, e]) => !e.deleted);
+        await mapLimit(entries, IO_CONCURRENCY, async ([key, entry]) => {
+          remoteKeys.add(key as LogicalKey);
+          const absPath = this.safeAbsPath(key as LogicalKey);
+          if (absPath === null) return;
+          const plain = await this.downloadBlob(key as LogicalKey);
+          if (plain === null) {
+            this.logger?.warn(`[engine] force-down: blob 부재 ${key}`);
+            return;
+          }
+          const backupPath = await this.backupFile(absPath, key as LogicalKey, backupRoot);
+          backedUp.push({ key: key as LogicalKey, absPath, backupPath });
+          // 서버 무조건 적용: settings/.mcp.json 도 머지 없이 원격 raw 로 덮어쓴다.
+          await this.atomicWriteFile(absPath, plain);
+          await this.writeBaseSnapshot(key as LogicalKey, plain);
+          nextState[key as LogicalKey] = {
+            syncedHash: entry.contentHash,
+            syncedGeneration: entry.generation,
+          };
+          applied.push(key as LogicalKey);
+        });
+      }
+
+      // 미러 삭제: 원격에 없는 로컬 관리 파일 제거.
+      const toDelete = local.filter((f) => !remoteKeys.has(f.logicalKey));
+      await mapLimit(toDelete, IO_CONCURRENCY, async (f) => {
+        const absPath = this.safeAbsPath(f.logicalKey);
+        if (absPath === null) return;
+        const backupPath = await this.backupFile(absPath, f.logicalKey, backupRoot);
+        backedUp.push({ key: f.logicalKey, absPath, backupPath });
+        await this.deleteLocalFile(absPath);
+        await this.removeBaseSnapshot(f.logicalKey);
+        removed.push(f.logicalKey);
+      });
+
+      await this.writeState(nextState);
+    } catch (err) {
+      this.logger?.error(
+        `[engine] force-down 중 오류 — 롤백: ${String((err as Error).message)}`,
+      );
+      await this.rollback(backedUp);
+      throw err;
+    }
+
+    const hadBackup = backedUp.some((b) => b.backupPath !== null);
+    return {
+      dryRun: false,
+      applied,
+      removed,
+      conflicts: [],
       backupDir: hadBackup ? backupRoot : null,
     };
   }

@@ -15,6 +15,8 @@ Usage:
                                                     충돌 해소 (P = preserve-both|latest-wins|manual)
   wormhole sync  [--policy preserve-both|latest-wins]
                                                     복합: pull → (충돌 시) resolve → push
+  wormhole sync  --force-up  [--dry-run]            원격 초기화 후 로컬 전체 업로드 (파괴적)
+  wormhole sync  --force-down  [--dry-run]          로컬을 원격으로 무조건 덮어쓰기 + 미러삭제 (파괴적)
   wormhole doctor                                  환경 진단(읽기 전용): config·연결·passphrase·vault·transport
   wormhole --help | -h                              이 도움말을 출력
 
@@ -98,11 +100,19 @@ async function run(): Promise<void> {
     }
 
     case "sync": {
+      const forceUp = flags["force-up"] === true;
+      const forceDown = flags["force-down"] === true;
+      if (forceUp && forceDown) throw new Error("--force-up 와 --force-down 동시 사용 불가");
+      if ((forceUp || forceDown) && flags.policy !== undefined)
+        throw new Error("force 모드는 --policy 와 함께 쓸 수 없음");
+      const { engine } = await buildEngine(logger);
+      if (forceUp) { emit({ forceUpload: await engine.forceUpload({ dryRun: dryRunFlag }) }); return; }
+      if (forceDown) { emit({ forceDownload: await engine.forceDownload({ dryRun: dryRunFlag }) }); return; }
+
       const policy = parsePolicy(flags.policy) ?? "preserve-both";
       if (policy === "manual") {
         throw new Error("manual not allowed for sync; run /wormhole-resolve");
       }
-      const { engine } = await buildEngine(logger);
 
       // 복합: pull → (충돌 있으면) resolve(policy) → push. stop-on-error.
       const pull = await engine.pull();

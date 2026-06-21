@@ -32712,6 +32712,24 @@ var SyncEngine = class {
       return withLock(this.lock, () => this.runPull());
     });
   }
+  async forceUpload(options) {
+    const dryRun = options?.dryRun ?? false;
+    return this.mutex.runExclusive(async () => {
+      if (dryRun) return this.planPush();
+      return withLock(this.lock, async () => {
+        await this.wipeRemoteData();
+        await this.resetLocalState();
+        return this.runPush();
+      });
+    });
+  }
+  async forceDownload(options) {
+    const dryRun = options?.dryRun ?? false;
+    return this.mutex.runExclusive(async () => {
+      if (dryRun) return this.planPull();
+      return withLock(this.lock, () => this.runForceDownload());
+    });
+  }
   /** 충돌 해소. policy 생략 시 config.conflictPolicy. keys 생략 시 전체 충돌. */
   async resolve(policy, keys, options) {
     const dryRun = options?.dryRun ?? false;
@@ -33089,6 +33107,80 @@ var SyncEngine = class {
       applied,
       removed,
       conflicts: status.conflicts,
+      backupDir: hadBackup ? backupRoot : null
+    };
+  }
+  async wipeRemoteData() {
+    const manifestFullPath = `${this.config.remote.remoteBaseDir.replace(/\/+$/, "")}/${MANIFEST_FILE}`;
+    await this.remote.deleteFile(manifestFullPath);
+    const blobs = await this.remote.list("blobs");
+    await mapLimit(
+      blobs.filter((e2) => e2.type === "file"),
+      IO_CONCURRENCY,
+      (e2) => this.remote.deleteFile(`blobs/${e2.basename}`)
+    );
+  }
+  async resetLocalState() {
+    await this.writeState({});
+    await fs7.rm(this.baseDir, { recursive: true, force: true });
+  }
+  async runForceDownload() {
+    const remoteManifest = await this.manifestStore.read();
+    const local = await this.scanWithHashes();
+    const runTs = this.makeRunTs();
+    const backupRoot = path10.join(this.backupsDir, runTs);
+    const applied = [];
+    const removed = [];
+    const nextState = {};
+    const backedUp = [];
+    const remoteKeys = /* @__PURE__ */ new Set();
+    try {
+      if (remoteManifest) {
+        const entries = Object.entries(remoteManifest.entries).filter(([, e2]) => !e2.deleted);
+        await mapLimit(entries, IO_CONCURRENCY, async ([key, entry]) => {
+          remoteKeys.add(key);
+          const absPath = this.safeAbsPath(key);
+          if (absPath === null) return;
+          const plain = await this.downloadBlob(key);
+          if (plain === null) {
+            this.logger?.warn(`[engine] force-down: blob \uBD80\uC7AC ${key}`);
+            return;
+          }
+          const backupPath = await this.backupFile(absPath, key, backupRoot);
+          backedUp.push({ key, absPath, backupPath });
+          await this.atomicWriteFile(absPath, plain);
+          await this.writeBaseSnapshot(key, plain);
+          nextState[key] = {
+            syncedHash: entry.contentHash,
+            syncedGeneration: entry.generation
+          };
+          applied.push(key);
+        });
+      }
+      const toDelete = local.filter((f3) => !remoteKeys.has(f3.logicalKey));
+      await mapLimit(toDelete, IO_CONCURRENCY, async (f3) => {
+        const absPath = this.safeAbsPath(f3.logicalKey);
+        if (absPath === null) return;
+        const backupPath = await this.backupFile(absPath, f3.logicalKey, backupRoot);
+        backedUp.push({ key: f3.logicalKey, absPath, backupPath });
+        await this.deleteLocalFile(absPath);
+        await this.removeBaseSnapshot(f3.logicalKey);
+        removed.push(f3.logicalKey);
+      });
+      await this.writeState(nextState);
+    } catch (err) {
+      this.logger?.error(
+        `[engine] force-down \uC911 \uC624\uB958 \u2014 \uB864\uBC31: ${String(err.message)}`
+      );
+      await this.rollback(backedUp);
+      throw err;
+    }
+    const hadBackup = backedUp.some((b) => b.backupPath !== null);
+    return {
+      dryRun: false,
+      applied,
+      removed,
+      conflicts: [],
       backupDir: hadBackup ? backupRoot : null
     };
   }
@@ -33796,6 +33888,8 @@ Usage:
                                                     \uCDA9\uB3CC \uD574\uC18C (P = preserve-both|latest-wins|manual)
   wormhole sync  [--policy preserve-both|latest-wins]
                                                     \uBCF5\uD569: pull \u2192 (\uCDA9\uB3CC \uC2DC) resolve \u2192 push
+  wormhole sync  --force-up  [--dry-run]            \uC6D0\uACA9 \uCD08\uAE30\uD654 \uD6C4 \uB85C\uCEEC \uC804\uCCB4 \uC5C5\uB85C\uB4DC (\uD30C\uAD34\uC801)
+  wormhole sync  --force-down  [--dry-run]          \uB85C\uCEEC\uC744 \uC6D0\uACA9\uC73C\uB85C \uBB34\uC870\uAC74 \uB36E\uC5B4\uC4F0\uAE30 + \uBBF8\uB7EC\uC0AD\uC81C (\uD30C\uAD34\uC801)
   wormhole doctor                                  \uD658\uACBD \uC9C4\uB2E8(\uC77D\uAE30 \uC804\uC6A9): config\xB7\uC5F0\uACB0\xB7passphrase\xB7vault\xB7transport
   wormhole --help | -h                              \uC774 \uB3C4\uC6C0\uB9D0\uC744 \uCD9C\uB825
 
@@ -33862,11 +33956,24 @@ async function run() {
       return;
     }
     case "sync": {
+      const forceUp = flags["force-up"] === true;
+      const forceDown = flags["force-down"] === true;
+      if (forceUp && forceDown) throw new Error("--force-up \uC640 --force-down \uB3D9\uC2DC \uC0AC\uC6A9 \uBD88\uAC00");
+      if ((forceUp || forceDown) && flags.policy !== void 0)
+        throw new Error("force \uBAA8\uB4DC\uB294 --policy \uC640 \uD568\uAED8 \uC4F8 \uC218 \uC5C6\uC74C");
+      const { engine } = await buildEngine(logger);
+      if (forceUp) {
+        emit({ forceUpload: await engine.forceUpload({ dryRun: dryRunFlag }) });
+        return;
+      }
+      if (forceDown) {
+        emit({ forceDownload: await engine.forceDownload({ dryRun: dryRunFlag }) });
+        return;
+      }
       const policy = parsePolicy(flags.policy) ?? "preserve-both";
       if (policy === "manual") {
         throw new Error("manual not allowed for sync; run /wormhole-resolve");
       }
-      const { engine } = await buildEngine(logger);
       const pull = await engine.pull();
       const combined = { pull };
       if (pull.conflicts.length > 0) {

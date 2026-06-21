@@ -50233,6 +50233,24 @@ var SyncEngine = class {
       return withLock(this.lock, () => this.runPull());
     });
   }
+  async forceUpload(options) {
+    const dryRun = options?.dryRun ?? false;
+    return this.mutex.runExclusive(async () => {
+      if (dryRun) return this.planPush();
+      return withLock(this.lock, async () => {
+        await this.wipeRemoteData();
+        await this.resetLocalState();
+        return this.runPush();
+      });
+    });
+  }
+  async forceDownload(options) {
+    const dryRun = options?.dryRun ?? false;
+    return this.mutex.runExclusive(async () => {
+      if (dryRun) return this.planPull();
+      return withLock(this.lock, () => this.runForceDownload());
+    });
+  }
   /** 충돌 해소. policy 생략 시 config.conflictPolicy. keys 생략 시 전체 충돌. */
   async resolve(policy, keys, options) {
     const dryRun = options?.dryRun ?? false;
@@ -50613,6 +50631,80 @@ var SyncEngine = class {
       backupDir: hadBackup ? backupRoot : null
     };
   }
+  async wipeRemoteData() {
+    const manifestFullPath = `${this.config.remote.remoteBaseDir.replace(/\/+$/, "")}/${MANIFEST_FILE}`;
+    await this.remote.deleteFile(manifestFullPath);
+    const blobs = await this.remote.list("blobs");
+    await mapLimit(
+      blobs.filter((e2) => e2.type === "file"),
+      IO_CONCURRENCY,
+      (e2) => this.remote.deleteFile(`blobs/${e2.basename}`)
+    );
+  }
+  async resetLocalState() {
+    await this.writeState({});
+    await fs8.rm(this.baseDir, { recursive: true, force: true });
+  }
+  async runForceDownload() {
+    const remoteManifest = await this.manifestStore.read();
+    const local = await this.scanWithHashes();
+    const runTs = this.makeRunTs();
+    const backupRoot = path10.join(this.backupsDir, runTs);
+    const applied = [];
+    const removed = [];
+    const nextState = {};
+    const backedUp = [];
+    const remoteKeys = /* @__PURE__ */ new Set();
+    try {
+      if (remoteManifest) {
+        const entries = Object.entries(remoteManifest.entries).filter(([, e2]) => !e2.deleted);
+        await mapLimit(entries, IO_CONCURRENCY, async ([key, entry]) => {
+          remoteKeys.add(key);
+          const absPath = this.safeAbsPath(key);
+          if (absPath === null) return;
+          const plain = await this.downloadBlob(key);
+          if (plain === null) {
+            this.logger?.warn(`[engine] force-down: blob \uBD80\uC7AC ${key}`);
+            return;
+          }
+          const backupPath = await this.backupFile(absPath, key, backupRoot);
+          backedUp.push({ key, absPath, backupPath });
+          await this.atomicWriteFile(absPath, plain);
+          await this.writeBaseSnapshot(key, plain);
+          nextState[key] = {
+            syncedHash: entry.contentHash,
+            syncedGeneration: entry.generation
+          };
+          applied.push(key);
+        });
+      }
+      const toDelete = local.filter((f3) => !remoteKeys.has(f3.logicalKey));
+      await mapLimit(toDelete, IO_CONCURRENCY, async (f3) => {
+        const absPath = this.safeAbsPath(f3.logicalKey);
+        if (absPath === null) return;
+        const backupPath = await this.backupFile(absPath, f3.logicalKey, backupRoot);
+        backedUp.push({ key: f3.logicalKey, absPath, backupPath });
+        await this.deleteLocalFile(absPath);
+        await this.removeBaseSnapshot(f3.logicalKey);
+        removed.push(f3.logicalKey);
+      });
+      await this.writeState(nextState);
+    } catch (err) {
+      this.logger?.error(
+        `[engine] force-down \uC911 \uC624\uB958 \u2014 \uB864\uBC31: ${String(err.message)}`
+      );
+      await this.rollback(backedUp);
+      throw err;
+    }
+    const hadBackup = backedUp.some((b) => b.backupPath !== null);
+    return {
+      dryRun: false,
+      applied,
+      removed,
+      conflicts: [],
+      backupDir: hadBackup ? backupRoot : null
+    };
+  }
   /** settings.json pull: 원격 shared subset 을 로컬에 3-way 머지(로컬고유키 보존). */
   async applyPullSettings(key, absPath, remotePlain, entry, nextState) {
     const home = this.config.home;
@@ -50970,7 +51062,7 @@ async function buildEngine(logger2) {
 // src/index.ts
 async function main() {
   const { engine } = await buildEngine(logger);
-  const server = new McpServer({ name: "wormhole", version: "0.3.0" });
+  const server = new McpServer({ name: "wormhole", version: "0.4.0" });
   registerAllTools(server, engine);
   let shuttingDown = false;
   const shutdown = async (signal) => {

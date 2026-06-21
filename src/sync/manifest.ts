@@ -32,7 +32,7 @@ const ManifestSchema = z.object({
 });
 
 /** 원격 매니페스트 파일명. */
-const MANIFEST_FILE = "manifest.json.age";
+export const MANIFEST_FILE = "manifest.json.age";
 
 /** baseDir 와 파일명 결합 (posix). 중복 슬래시 제거. */
 function joinRemote(baseDir: string, name: string): string {
