@@ -1,3 +1,4 @@
+import * as path from "node:path";
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
@@ -41,14 +42,23 @@ export function registerSyncTool(server: McpServer, engine: SyncEngine): void {
           } as CallToolResult;
         }
 
-        // 복합 실행: pull → (충돌 있으면) resolve(policy) → push. stop-on-error.
+        // 복합 실행: 단일 락 파이프라인 (fetch → install-check → pull → resolve → push).
         const policy: ResolvePolicy = args.policy ?? "preserve-both";
-        const pull = await engine.pull();
-        const payload: Record<string, unknown> = { pull };
-        if (pull.conflicts.length > 0) {
-          payload.resolve = await engine.resolve(policy);
+        const engineCfg = (engine as unknown as { config: { home: string } }).config;
+        const pluginsDir = path.join(engineCfg.home, ".claude", "plugins");
+        const result = await engine.syncAtomic({ pluginsDir, policy });
+        if (result.aborted) {
+          const payload: Record<string, unknown> = {
+            aborted: true,
+            missing: result.missing,
+            note: "미설치 플러그인이 있어 동기화 중단됨. 플러그인 설치 후 재시도하세요.",
+          };
+          return {
+            content: [{ type: "text", text: JSON.stringify(payload) }],
+            structuredContent: payload,
+          } as CallToolResult;
         }
-        payload.push = await engine.push();
+        const payload: Record<string, unknown> = { pull: result.pull, push: result.push };
         return {
           content: [{ type: "text", text: JSON.stringify(payload) }],
           structuredContent: payload,

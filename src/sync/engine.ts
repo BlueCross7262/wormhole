@@ -4,7 +4,7 @@
 // 동시성: 인프로세스 AsyncMutex + 원격 lock.json(withLock).
 // settings.json 은 3-way 머지로 라우팅. CAS(ManifestConflictError) 재시도 내장.
 
-import { promises as fs } from "node:fs";
+import { promises as fs, readFileSync, existsSync } from "node:fs";
 import * as path from "node:path";
 import { gzip, gunzip } from "node:zlib";
 import { promisify } from "node:util";
@@ -58,6 +58,80 @@ export interface EngineDeps {
   casRetryBackoffMs?: readonly number[];
 }
 
+
+/** 설치 미충족 플러그인 목록을 담아 throw 되는 배리어 에러. */
+export class InstallBarrierError extends Error {
+  readonly missing: string[];
+  constructor(missing: string[]) {
+    super(`미설치 플러그인: ${missing.join(", ")}`);
+    this.name = "InstallBarrierError";
+    this.missing = missing;
+  }
+}
+
+/** installed_plugins.json + known_marketplaces.json 기반 설치 선결조건 검사.
+ *  pulledSettings.enabledPlugins 의 truthy 키만 추출해 plugin-level 로 판정.
+ *  레지스트리 파일 부재/파싱 실패는 보수적으로 미설치 처리.
+ */
+export function checkInstallPrereqs(
+  pulledSettings: unknown,
+  pluginsDir: string,
+): { ok: boolean; missing: string[] } {
+  const settings = pulledSettings as Record<string, unknown> | null | undefined;
+  const enabledPlugins = (settings?.enabledPlugins ?? {}) as Record<string, unknown>;
+
+  const required = Object.entries(enabledPlugins)
+    .filter(([, v]) => !!v)
+    .map(([k]) => k);
+
+  if (required.length === 0) return { ok: true, missing: [] };
+
+  // installed_plugins.json: plugin-level 설치 여부 (plugins[key] 배열 비어있지 않으면 설치됨).
+  let installedPlugins: Record<string, unknown[]> = {};
+  try {
+    const raw = readFileSync(path.join(pluginsDir, "installed_plugins.json"), "utf-8");
+    const parsed = JSON.parse(raw) as { plugins?: Record<string, unknown[]> };
+    installedPlugins = parsed.plugins ?? {};
+  } catch {
+    return { ok: false, missing: required };
+  }
+
+  // known_marketplaces.json: marketplace 등록 여부 + installLocation 디렉터리 존재.
+  let knownMarketplaces: Record<string, { installLocation?: string }> = {};
+  try {
+    const raw = readFileSync(path.join(pluginsDir, "known_marketplaces.json"), "utf-8");
+    knownMarketplaces = JSON.parse(raw) as Record<string, { installLocation?: string }>;
+  } catch {
+    // 파일 부재/파싱 실패 시 marketplace 체크 생략(보수적으로는 plugin-level 체크만 사용).
+  }
+
+  const missing: string[] = [];
+  for (const key of required) {
+    // plugin-level: installed_plugins.json.plugins[key] 배열 비어있지 않아야 함.
+    const entries = installedPlugins[key];
+    if (!Array.isArray(entries) || entries.length === 0) {
+      missing.push(key);
+      continue;
+    }
+
+    // marketplace-level: "plugin@marketplace" 에서 marketplace 파싱,
+    // known_marketplaces.json 에 키 존재 AND installLocation 디렉터리 존재.
+    const atIdx = key.lastIndexOf("@");
+    if (atIdx > 0) {
+      const marketplace = key.slice(atIdx + 1);
+      const marketEntry = knownMarketplaces[marketplace];
+      if (
+        !marketEntry ||
+        !marketEntry.installLocation ||
+        !existsSync(marketEntry.installLocation)
+      ) {
+        missing.push(key);
+      }
+    }
+  }
+
+  return { ok: missing.length === 0, missing };
+}
 /** CAS 재시도 상한. */
 const MAX_CAS_RETRIES = 3;
 
@@ -1204,5 +1278,74 @@ export class SyncEngine {
         this.logger?.error(`[engine] 롤백 실패 ${b.key}: ${String((err as Error).message)}`);
       }
     }
+  }
+
+  /** manifest-only read + pulledSettings 추출. 블롭 다운로드·로컬 파일 미변경.
+   *  락 획득 前 read-only 단계 전용.
+   */
+  private async fetchRemote(): Promise<{
+    remoteManifest: Manifest | null;
+    pulledSettings: unknown;
+    status: SyncStatus;
+  }> {
+    const remoteManifest = await this.manifestStore.read();
+    const local = await this.scanWithHashes();
+    const state = await this.readState();
+    const status = computeStatus({ local, manifest: remoteManifest, state, machineId: this.machineId });
+
+    let pulledSettings: unknown = null;
+    if (remoteManifest !== null) {
+      const settingsKey = Object.keys(remoteManifest.entries).find((k) => isSettingsKey(k));
+      if (settingsKey) {
+        try {
+          const plain = await this.downloadBlob(settingsKey);
+          if (plain !== null) {
+            pulledSettings = JSON.parse(plain.toString("utf-8"));
+          }
+        } catch {
+          pulledSettings = null;
+        }
+      }
+    }
+
+    return { remoteManifest, pulledSettings, status };
+  }
+
+  /** 단일 락 파이프라인: fetch(manifest-only) → install-check → withLock(재검증→pull→push).
+   *  미설치 플러그인 참조 시 `{aborted: true, missing}` 반환.
+   */
+  async syncAtomic(opts: {
+    pluginsDir: string;
+    policy?: ResolvePolicy;
+  }): Promise<
+    | { aborted: true; missing: string[] }
+    | { aborted: false; pull: PullResult; push: PushResult }
+  > {
+    const { pluginsDir, policy } = opts;
+
+    const { pulledSettings } = await this.fetchRemote();
+
+    const prereq = checkInstallPrereqs(pulledSettings, pluginsDir);
+    if (!prereq.ok) {
+      return { aborted: true, missing: prereq.missing };
+    }
+
+    return this.mutex.runExclusive(async () =>
+      withLock(this.lock, async () => {
+        const { pulledSettings: freshSettings } = await this.fetchRemote();
+        const recheck = checkInstallPrereqs(freshSettings, pluginsDir);
+        if (!recheck.ok) {
+          return { aborted: true as const, missing: recheck.missing };
+        }
+
+        const pull = await this.runPull();
+        if (pull.conflicts.length > 0) {
+          const effective = policy ?? this.config.conflictPolicy;
+          await this.runResolve(effective);
+        }
+        const push = await this.runPushWithRetry();
+        return { aborted: false as const, pull, push };
+      }),
+    );
   }
 }

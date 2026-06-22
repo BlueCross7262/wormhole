@@ -82,6 +82,10 @@ interface FakeEngineOpts {
     k?: string[],
     o?: SyncRunOptions,
   ) => Promise<ResolveResult>;
+  syncAtomic?: (opts: { pluginsDir: string; policy?: ResolvePolicy }) => Promise<
+    | { aborted: true; missing: string[] }
+    | { aborted: false; pull: PullResult; push: PushResult }
+  >;
 }
 
 function fixtureStatus(): SyncStatus {
@@ -138,6 +142,7 @@ function makeFakeEngine(opts: FakeEngineOpts = {}): {
 } {
   const calls: EngineCalls = { status: 0, push: [], pull: [], resolve: [] };
   const engine = {
+    config: { home: "/fake-home" },
     async status(): Promise<SyncStatus> {
       calls.status++;
       return opts.status ? opts.status() : fixtureStatus();
@@ -157,6 +162,15 @@ function makeFakeEngine(opts: FakeEngineOpts = {}): {
     ): Promise<ResolveResult> {
       calls.resolve.push({ policy: p, keys: k, options: o });
       return opts.resolve ? opts.resolve(p, k, o) : fixtureResolve(p ?? "latest-wins");
+    },
+    async syncAtomic(o: { pluginsDir: string; policy?: ResolvePolicy }) {
+      if (opts.syncAtomic) return opts.syncAtomic(o);
+      const pull = await engine.pull();
+      if (pull.conflicts.length > 0) {
+        await engine.resolve(o.policy ?? "preserve-both");
+      }
+      const push = await engine.push();
+      return { aborted: false as const, pull, push };
     },
   } as unknown as SyncEngine;
   return { engine, calls };
@@ -501,13 +515,9 @@ describe("wormhole_sync — handler confirm-gate", () => {
     assert.equal(calls.resolve.length, 1);
     assert.equal(calls.resolve[0].policy, "preserve-both");
     assert.deepEqual(calls.push, [{}]);
-    const out = parseStructured<{
-      pull: PullResult;
-      resolve: ResolveResult;
-      push: PushResult;
-    }>(res);
-    assert.ok(out.resolve);
-    assert.equal(out.resolve.policy, "preserve-both");
+    const out = parseStructured<{ pull: PullResult; push: PushResult }>(res);
+    assert.equal(out.pull.dryRun, false);
+    assert.equal(out.push.dryRun, false);
   });
 
   test("confirm:true with conflicts and explicit policy=latest-wins", async () => {
