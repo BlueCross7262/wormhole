@@ -314,7 +314,7 @@ export async function loadConfig(configPath?: string, dotEnvPath?: string): Prom
   } catch (err: unknown) {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") {
       throw new Error(
-        `config.json 없음 (${cfgPath}). /wormhole-setup 를 실행해 생성하거나 config.example.json 을 ~/.wormhole/config.json 으로 복사하라.`,
+        `config.json 없음 (${cfgPath}). /wormhole-setup 를 실행하면 config.json 과 .env 템플릿을 자동 생성한다(기존 파일은 보존). 생성 뒤 ~/.wormhole/.env 에 WEBDAV_URL/USER/PASS 와 패스프레이즈를 채워라.`,
       );
     }
     throw new Error(`config 파일 읽기 실패 (${cfgPath}): ${(err as Error).message}`);
