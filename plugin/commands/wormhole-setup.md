@@ -15,7 +15,7 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/setup.mjs
 - `WEBDAV_URL` — WebDAV 서버 URL
 - `WEBDAV_USER` — WebDAV 계정 이름
 - `WEBDAV_PASS` — WebDAV 비밀번호 (앱 비밀번호 권장)
-- `WEBDAV_BASEDIR` — 원격 저장 경로 (기본 `/wormhole`)
+- 원격 기본 디렉터리는 `WEBDAV_USER` 값에서 자동 파생된다 (URL 아래 `/<WEBDAV_USER>`). override 가 필요하면 `config.json` 의 `remote.remoteBaseDir` 를 직접 편집한다.
 - 패스프레이즈: `WORMHOLE_PASSPHRASE` (직접 입력) 또는 `WORMHOLE_PASSPHRASE_FILE` (파일 경로) 중 하나 선택
 
 **`~/.wormhole/config.json`** — 동기화 범위 및 동작 설정 (선택적으로 편집)

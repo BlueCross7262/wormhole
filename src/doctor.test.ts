@@ -533,3 +533,232 @@ describe("runDoctor — machine-id 체크 통합", () => {
     assert.equal(findCheck(result, "machine-id").status, "warn");
   });
 });
+
+// ── 이주완전성 체크 4종 (config 기반, 네트워크 불필요) ─────────────
+
+// config 기반 체크는 WebDAV 연결 없이 config 로드 후 즉시 판단한다.
+// 죽은 URL(http://127.0.0.1:1) 을 사용하면 config 체크는 통과, WebDAV 연결은 fail(스킵),
+// 이후 config 기반 체크들은 정상 실행된다.
+const DEAD_URL = "http://127.0.0.1:1";
+
+function writeConfigFull(
+  stateDir: string,
+  remoteUrl: string,
+  extra: Record<string, unknown>,
+): string {
+  const cfg: Record<string, unknown> = {
+    stateDir,
+    remote: {
+      url: remoteUrl,
+      username: USERNAME,
+      password: "pass",
+    },
+    crypto: {
+      passphraseEnv: "WORMHOLE_PASSPHRASE",
+      kdfN: FAST_KDF.N,
+      kdfR: FAST_KDF.r,
+      kdfP: FAST_KDF.p,
+    },
+    ...extra,
+  };
+  const p = path.join(stateDir, "config.json");
+  fs.writeFileSync(p, JSON.stringify(cfg), "utf-8");
+  return p;
+}
+
+describe("runDoctor — 이주완전성 체크 (1) settingsLocalKeys 환경의존키 누락", () => {
+  before(() => { snapshotEnv(); });
+  after(() => { restoreEnv(); });
+
+  beforeEach(() => {
+    clearManagedEnv();
+    tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "cs-doctor-slk-"));
+    process.env["WEBDAV_USER"] = USERNAME;
+    process.env["WORMHOLE_PASSPHRASE"] = PASSPHRASE;
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpRoot, { recursive: true, force: true });
+  });
+
+  test("settingsLocalKeys 비어 있음(환경의존키 0개) → warn", async () => {
+    const stateDir = path.join(tmpRoot, "state");
+    fs.mkdirSync(stateDir, { recursive: true });
+    process.env["WORMHOLE_CONFIG"] = writeConfigFull(stateDir, DEAD_URL, {
+      settingsLocalKeys: [],
+    });
+    const result = await runDoctor(logger);
+    const c = findCheck(result, "settingsLocalKeys");
+    assert.equal(c.status, "warn", `settingsLocalKeys 비어 있으면 warn. detail: ${c.detail}`);
+  });
+
+  test("settingsLocalKeys 에 환경의존키 포함(기본값) → ok", async () => {
+    const stateDir = path.join(tmpRoot, "state");
+    fs.mkdirSync(stateDir, { recursive: true });
+    process.env["WORMHOLE_CONFIG"] = writeConfigFull(stateDir, DEAD_URL, {
+      settingsLocalKeys: [
+        "mcpServers.*.command",
+        "mcpServers.*.args",
+        "mcpServers.*.env",
+        "hooks",
+      ],
+    });
+    const result = await runDoctor(logger);
+    const c = findCheck(result, "settingsLocalKeys");
+    assert.equal(c.status, "ok", `환경의존키 포함 시 ok. detail: ${c.detail}`);
+  });
+});
+
+describe("runDoctor — 이주완전성 체크 (2) include 글로브 절대경로 리터럴", () => {
+  before(() => { snapshotEnv(); });
+  after(() => { restoreEnv(); });
+
+  beforeEach(() => {
+    clearManagedEnv();
+    tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "cs-doctor-abspath-"));
+    process.env["WEBDAV_USER"] = USERNAME;
+    process.env["WORMHOLE_PASSPHRASE"] = PASSPHRASE;
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpRoot, { recursive: true, force: true });
+  });
+
+  test("include 에 home-prefix 절대경로(C:/Users/x) → warn", async () => {
+    const stateDir = path.join(tmpRoot, "state");
+    fs.mkdirSync(stateDir, { recursive: true });
+    process.env["WORMHOLE_CONFIG"] = writeConfigFull(stateDir, DEAD_URL, {
+      targets: { include: ["C:/Users/testuser/.claude/CLAUDE.md", ".claude/settings.json"] },
+    });
+    const result = await runDoctor(logger);
+    const c = findCheck(result, "절대경로");
+    assert.equal(c.status, "warn", `home-prefix 절대경로면 warn. detail: ${c.detail}`);
+  });
+
+  test("include 에 비-home 절대경로(C:/Program Files/nodejs/node.exe) → warn", async () => {
+    const stateDir = path.join(tmpRoot, "state");
+    fs.mkdirSync(stateDir, { recursive: true });
+    process.env["WORMHOLE_CONFIG"] = writeConfigFull(stateDir, DEAD_URL, {
+      targets: { include: [".claude/CLAUDE.md", "C:/Program Files/nodejs/node.exe"] },
+    });
+    const result = await runDoctor(logger);
+    const c = findCheck(result, "절대경로");
+    assert.equal(c.status, "warn", `비-home 절대경로면 warn. detail: ${c.detail}`);
+  });
+
+  test("include 에 상대경로만 → ok", async () => {
+    const stateDir = path.join(tmpRoot, "state");
+    fs.mkdirSync(stateDir, { recursive: true });
+    process.env["WORMHOLE_CONFIG"] = writeConfigFull(stateDir, DEAD_URL, {
+      targets: { include: [".claude/CLAUDE.md", ".claude/settings.json"] },
+    });
+    const result = await runDoctor(logger);
+    const c = findCheck(result, "절대경로");
+    assert.equal(c.status, "ok", `상대경로만 있으면 ok. detail: ${c.detail}`);
+  });
+});
+
+describe("runDoctor — 이주완전성 체크 (3) stateDir 동기화 범위 유출", () => {
+  before(() => { snapshotEnv(); });
+  after(() => { restoreEnv(); });
+
+  beforeEach(() => {
+    clearManagedEnv();
+    tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "cs-doctor-stdir-"));
+    process.env["WEBDAV_USER"] = USERNAME;
+    process.env["WORMHOLE_PASSPHRASE"] = PASSPHRASE;
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpRoot, { recursive: true, force: true });
+  });
+
+  test("stateDir 하위가 include 글로브에 매칭 → warn", async () => {
+    const stateDir = path.join(tmpRoot, "state");
+    fs.mkdirSync(stateDir, { recursive: true });
+    const stateDirName = path.basename(stateDir);
+    process.env["WORMHOLE_CONFIG"] = writeConfigFull(stateDir, DEAD_URL, {
+      home: tmpRoot,
+      stateDir,
+      targets: {
+        include: [".claude/CLAUDE.md", `${stateDirName}/**`],
+      },
+    });
+    const result = await runDoctor(logger);
+    const c = findCheck(result, "stateDir");
+    assert.equal(c.status, "warn", `stateDir 유출 시 warn. detail: ${c.detail}`);
+  });
+
+  test("stateDir 가 include 범위 밖 → ok", async () => {
+    const stateDir = path.join(tmpRoot, "state");
+    fs.mkdirSync(stateDir, { recursive: true });
+    process.env["WORMHOLE_CONFIG"] = writeConfigFull(stateDir, DEAD_URL, {
+      home: tmpRoot,
+      stateDir,
+      targets: { include: [".claude/CLAUDE.md", ".claude/settings.json"] },
+    });
+    const result = await runDoctor(logger);
+    const c = findCheck(result, "stateDir");
+    assert.equal(c.status, "ok", `stateDir 범위 밖이면 ok. detail: ${c.detail}`);
+  });
+});
+
+describe("runDoctor — 이주완전성 체크 (4) shared subset PAT/TOKEN/SECRET 패턴", () => {
+  before(() => { snapshotEnv(); });
+  after(() => { restoreEnv(); });
+
+  beforeEach(() => {
+    clearManagedEnv();
+    tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "cs-doctor-secret-"));
+    process.env["WEBDAV_USER"] = USERNAME;
+    process.env["WORMHOLE_PASSPHRASE"] = PASSPHRASE;
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpRoot, { recursive: true, force: true });
+  });
+
+  test("include 에 *_TOKEN 패턴 글로브 → warn", async () => {
+    const stateDir = path.join(tmpRoot, "state");
+    fs.mkdirSync(stateDir, { recursive: true });
+    process.env["WORMHOLE_CONFIG"] = writeConfigFull(stateDir, DEAD_URL, {
+      targets: { include: [".claude/CLAUDE.md", "**/*_TOKEN"] },
+    });
+    const result = await runDoctor(logger);
+    const c = findCheck(result, "시크릿");
+    assert.equal(c.status, "warn", `*_TOKEN 패턴 시 warn. detail: ${c.detail}`);
+  });
+
+  test("include 에 *_PAT 패턴 글로브 → warn", async () => {
+    const stateDir = path.join(tmpRoot, "state");
+    fs.mkdirSync(stateDir, { recursive: true });
+    process.env["WORMHOLE_CONFIG"] = writeConfigFull(stateDir, DEAD_URL, {
+      targets: { include: [".claude/settings.json", "secrets/*_PAT"] },
+    });
+    const result = await runDoctor(logger);
+    const c = findCheck(result, "시크릿");
+    assert.equal(c.status, "warn", `*_PAT 패턴 시 warn. detail: ${c.detail}`);
+  });
+
+  test("include 에 *_SECRET 패턴 글로브 → warn", async () => {
+    const stateDir = path.join(tmpRoot, "state");
+    fs.mkdirSync(stateDir, { recursive: true });
+    process.env["WORMHOLE_CONFIG"] = writeConfigFull(stateDir, DEAD_URL, {
+      targets: { include: [".claude/CLAUDE.md", "env/*_SECRET"] },
+    });
+    const result = await runDoctor(logger);
+    const c = findCheck(result, "시크릿");
+    assert.equal(c.status, "warn", `*_SECRET 패턴 시 warn. detail: ${c.detail}`);
+  });
+
+  test("include 에 시크릿 패턴 없음 → ok", async () => {
+    const stateDir = path.join(tmpRoot, "state");
+    fs.mkdirSync(stateDir, { recursive: true });
+    process.env["WORMHOLE_CONFIG"] = writeConfigFull(stateDir, DEAD_URL, {
+      targets: { include: [".claude/CLAUDE.md", ".claude/settings.json"] },
+    });
+    const result = await runDoctor(logger);
+    const c = findCheck(result, "시크릿");
+    assert.equal(c.status, "ok", `시크릿 패턴 없으면 ok. detail: ${c.detail}`);
+  });
+});
