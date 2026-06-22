@@ -47,6 +47,10 @@
   ],
   "selfMcpServerNames": ["wormhole"],
   "conflictPolicy": "preserve-both",
+  "templateSettingsKeys": ["hooks", "statusLine"],
+  "homeRootTargets": {
+    ".claude.json": { "subkeys": ["mcpServers"], "preserveMode": "denylist" }
+  },
   "lock": {
     "ttlMs": 30000,
     "acquireRetries": 3,

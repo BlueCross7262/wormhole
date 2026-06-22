@@ -797,3 +797,102 @@ describe("settingsLocalKeys hooks/statusLine.command — pull merge preserves lo
     assert.equal(res.hasConflict, false);
   });
 });
+
+// -----------------------------------------------------------------------
+// S1.2: templateSettingsKeys — push-side 토큰화 포함 + pull-side 복원
+// templateKeys 로 지정된 키는 drop 대신 tokenizeHome 후 shared 에 포함한다.
+// pull 시 detokenizeHome 으로 복원 → 로컬 머신 경로로 재구성된다.
+// -----------------------------------------------------------------------
+
+describe("extractSharedSubset — templateKeys 지정 키는 tokenizeHome 후 shared 포함", () => {
+  const TEMPLATE_HOME = "/home/alice";
+  const TEMPLATE_TOKEN = "${HOME}";
+
+  test("templateKey 의 home 경로가 ${HOME} 로 토큰화되어 shared 에 포함된다", () => {
+    const obj = {
+      theme: "dark",
+      hooks: {
+        PreToolUse: [{ matcher: "Bash", command: `${TEMPLATE_HOME}/.claude/hooks/pre.js` }],
+      },
+      statusLine: { type: "custom", command: `${TEMPLATE_HOME}/.claude/statusline.js` },
+    };
+    const out = extractSharedSubset(obj, [], ["hooks", "statusLine"], TEMPLATE_HOME);
+
+    assert.ok(
+      Object.prototype.hasOwnProperty.call(out, "hooks"),
+      "hooks 는 templateKey → shared 에 포함",
+    );
+    assert.ok(
+      Object.prototype.hasOwnProperty.call(out, "statusLine"),
+      "statusLine 은 templateKey → shared 에 포함",
+    );
+    const hookCmd = (out.hooks as { PreToolUse: { command: string }[] }).PreToolUse[0].command;
+    assert.ok(hookCmd.startsWith(TEMPLATE_TOKEN), `hooks command 가 \${HOME} 로 시작해야 함: ${hookCmd}`);
+    const statusCmd = (out.statusLine as { command: string }).command;
+    assert.ok(statusCmd.startsWith(TEMPLATE_TOKEN), `statusLine.command 가 \${HOME} 로 시작해야 함: ${statusCmd}`);
+  });
+
+  test("templateKey + localKey 혼합: localKey 는 drop, templateKey 는 tokenize+포함", () => {
+    const obj = {
+      theme: "dark",
+      hooks: { PreToolUse: [{ matcher: "Bash", command: `${TEMPLATE_HOME}/hook.js` }] },
+      permissions: { allow: ["Bash"] },
+    };
+    const out = extractSharedSubset(obj, ["permissions"], ["hooks"], TEMPLATE_HOME);
+    assert.ok(!Object.prototype.hasOwnProperty.call(out, "permissions"), "permissions 는 localKey → drop");
+    assert.ok(Object.prototype.hasOwnProperty.call(out, "hooks"), "hooks 는 templateKey → 포함");
+    assert.equal(out.theme, "dark");
+  });
+
+  test("normalizeSettingsForSync — templateKeys 의 home 경로가 토큰화되어 shared 에 포함", () => {
+    const raw = JSON.stringify({
+      theme: "dark",
+      hooks: {
+        PreToolUse: [{ matcher: "Bash", command: `${TEMPLATE_HOME}/.claude/hooks/pre.js` }],
+      },
+      statusLine: { type: "custom", command: `${TEMPLATE_HOME}/.claude/statusline.js` },
+      permissions: { allow: ["Bash"] },
+    });
+    const out = normalizeSettingsForSync(raw, ["permissions"], TEMPLATE_HOME, ["hooks", "statusLine"]);
+    const parsed = JSON.parse(out.text) as Record<string, unknown>;
+
+    assert.ok(Object.prototype.hasOwnProperty.call(parsed, "hooks"), "hooks 포함");
+    const hookCmd = (parsed.hooks as { PreToolUse: { command: string }[] }).PreToolUse[0].command;
+    assert.ok(hookCmd.startsWith(TEMPLATE_TOKEN), `hooks command 토큰화: ${hookCmd}`);
+
+    assert.ok(Object.prototype.hasOwnProperty.call(parsed, "statusLine"), "statusLine 포함");
+    const statusCmd = (parsed.statusLine as { command: string }).command;
+    assert.ok(statusCmd.startsWith(TEMPLATE_TOKEN), `statusLine.command 토큰화: ${statusCmd}`);
+
+    assert.ok(!Object.prototype.hasOwnProperty.call(parsed, "permissions"), "permissions drop");
+  });
+
+  test("pull-side: detokenizeHome 후 복원 — deepEqual 원본과 일치", () => {
+    // detokenizeHome 은 로컬 path.sep 으로 suffix 를 재구성한다.
+    // 따라서 expected 도 path.join 으로 구성해야 플랫폼 무관하게 일치한다.
+    const hookPath = path.join(TEMPLATE_HOME, ".claude", "hooks", "pre.js");
+    const statusPath = path.join(TEMPLATE_HOME, ".claude", "statusline.js");
+    const original = {
+      hooks: {
+        PreToolUse: [{ matcher: "Bash", command: hookPath }],
+      },
+      statusLine: { type: "custom", command: statusPath },
+    };
+    const tokenized = tokenizeHome(original, TEMPLATE_HOME);
+    const restored = detokenizeHome(tokenized, TEMPLATE_HOME);
+    assert.deepEqual(restored, original, "detokenize 후 원본과 deepEqual");
+  });
+
+  test("statusLine command 복원 — type-only 잔존 회귀 방지", () => {
+    const original = {
+      statusLine: { type: "custom", command: `${TEMPLATE_HOME}/.claude/statusline.js` },
+    };
+    const raw = JSON.stringify(original);
+    const norm = normalizeSettingsForSync(raw, [], TEMPLATE_HOME, ["statusLine"]);
+    const parsed = JSON.parse(norm.text) as Record<string, unknown>;
+    const sl = parsed.statusLine as Record<string, unknown>;
+    assert.ok(Object.prototype.hasOwnProperty.call(sl, "type"), "statusLine.type 포함");
+    assert.ok(Object.prototype.hasOwnProperty.call(sl, "command"), "statusLine.command 포함 (type-only 회귀 금지)");
+    assert.ok((sl.command as string).startsWith(TEMPLATE_TOKEN), "command 는 \${HOME} 토큰화됨");
+  });
+});

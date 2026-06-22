@@ -9,6 +9,7 @@
 // keyparams 가 업로드된다(부작용). 따라서 정합 검증은 keyparams 존재 시에만 sentinel
 // 복호 로직을 직접 재현한다(deriveAgeIdentity → initWithIdentity → decryptToString).
 
+import * as nodePath from "node:path";
 import { loadConfig } from "./config.js";
 import { RemoteStore, classifyEtag } from "./webdav/client.js";
 import { AgeCrypto } from "./crypto/age.js";
@@ -79,6 +80,98 @@ export async function runDoctor(logger: Logger): Promise<DoctorResult> {
       status: "fail",
       detail: (err as Error).message,
     });
+  }
+
+  // ── Check 10: settingsLocalKeys 환경의존키 누락 ─────────────────────
+  // settings.json 이 동기화 대상인데 settingsLocalKeys 가 비어 있으면
+  // mcpServers.*.command/args/env, hooks 등 환경의존 키가 shared 로 새어나갈 위험.
+  if (config !== null) {
+    const ENV_DEP_PATTERNS = ["command", "args", "cwd", "env", "hooks", "permissions"];
+    const hasEnvDep = config.settingsLocalKeys.some((k) =>
+      ENV_DEP_PATTERNS.some((p) => k.includes(p)),
+    );
+    const includesSettings = config.targets.include.some((g) =>
+      g.includes("settings.json") || g.includes("settings"),
+    );
+    if (includesSettings && !hasEnvDep) {
+      checks.push({
+        name: "settingsLocalKeys 환경의존키",
+        status: "warn",
+        detail:
+          "settings.json 이 동기화 대상이나 settingsLocalKeys 에 환경의존키(command/args/env/hooks/permissions)가 없음 — 머신고유 설정이 shared 로 유출될 위험",
+      });
+    } else {
+      checks.push({
+        name: "settingsLocalKeys 환경의존키",
+        status: "ok",
+        detail: `settingsLocalKeys 에 환경의존키 포함 (${config.settingsLocalKeys.length}개)`,
+      });
+    }
+  }
+
+  // ── Check 11: include 글로브 절대경로 리터럴 ────────────────────────
+  // home-prefix(C:/Users/x, /home/x, /Users/x) 및 비-home 절대경로(/usr, C:/Program Files)
+  // 포함 시 타 머신 이주 불가 위험.
+  if (config !== null) {
+    const ABS_RE = /^([A-Za-z]:[/\\]|\/)/;
+    const foundAbs = config.targets.include.filter((g) => ABS_RE.test(g));
+    if (foundAbs.length > 0) {
+      checks.push({
+        name: "include 절대경로 리터럴",
+        status: "warn",
+        detail: `include 글로브에 절대경로 리터럴 발견 — 이주 불가/타 머신 호환 불가 위험: ${foundAbs.join(", ")}`,
+      });
+    } else {
+      checks.push({
+        name: "include 절대경로 리터럴",
+        status: "ok",
+        detail: "include 글로브에 절대경로 없음",
+      });
+    }
+  }
+
+  // ── Check 12: stateDir 동기화 범위 유출 ─────────────────────────────
+  // stateDir 하위 파일(암호키·락·state.json 등)이 include 글로브에 매칭되면
+  // 암호 자재가 원격으로 유출될 위험.
+  if (config !== null) {
+    const stateDirRel = nodePath.relative(config.home, config.stateDir).replace(/\\/g, "/");
+    const stateDirLeaks = config.targets.include.filter((g) => {
+      const gg = g.replace(/\\/g, "/");
+      return gg.startsWith(stateDirRel + "/") || gg === stateDirRel || gg.startsWith(stateDirRel + "/**");
+    });
+    if (stateDirLeaks.length > 0) {
+      checks.push({
+        name: "stateDir 동기화 유출",
+        status: "warn",
+        detail: `stateDir(${stateDirRel}) 하위가 include 글로브에 포함 — 암호키·상태파일 유출 위험: ${stateDirLeaks.join(", ")}`,
+      });
+    } else {
+      checks.push({
+        name: "stateDir 동기화 유출",
+        status: "ok",
+        detail: `stateDir(${stateDirRel}) 이 include 범위 밖 — 암호 자재 유출 없음`,
+      });
+    }
+  }
+
+  // ── Check 13: include 시크릿 패턴(*_PAT/*_TOKEN/*_SECRET) ───────────
+  // shared 동기화 대상에 토큰/시크릿 패턴 글로브가 포함되면 유출 위험.
+  if (config !== null) {
+    const SECRET_RE = /(_PAT|_TOKEN|_SECRET)(\b|$|\*)/i;
+    const secretGlobs = config.targets.include.filter((g) => SECRET_RE.test(g));
+    if (secretGlobs.length > 0) {
+      checks.push({
+        name: "include 시크릿 패턴",
+        status: "warn",
+        detail: `include 에 *_PAT/*_TOKEN/*_SECRET 패턴 발견 — 토큰·시크릿 파일 유출 위험: ${secretGlobs.join(", ")}`,
+      });
+    } else {
+      checks.push({
+        name: "include 시크릿 패턴",
+        status: "ok",
+        detail: "include 에 시크릿 패턴(*_PAT/*_TOKEN/*_SECRET) 없음",
+      });
+    }
   }
 
   // ── Check 2: WebDAV 연결·인증(PROPFIND, 401/200) ────────────────────

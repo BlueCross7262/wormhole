@@ -92,18 +92,26 @@ function isLocalKey(path: string, localKeys: string[]): boolean {
 }
 
 // 객체를 깊이 순회하며 localKeys 에 매칭되지 않는 키만 복제한다.
+// templateKeys 에 매칭되는 키는 drop 대신 tokenizeHome 후 포함한다.
 function pruneLocal(
   obj: Record<string, unknown>,
   localKeys: string[],
   prefix: string,
+  templateKeys: string[],
+  home: string,
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(obj)) {
     if (isForbiddenKey(k)) continue;
-    const path = prefix ? `${prefix}.${k}` : k;
-    if (isLocalKey(path, localKeys)) continue;
+    const dotPath = prefix ? `${prefix}.${k}` : k;
+    if (isLocalKey(dotPath, templateKeys)) {
+      // templateKey: drop 대신 tokenizeHome 후 shared 에 포함한다.
+      out[k] = home ? tokenizeHome(v, home) : v;
+      continue;
+    }
+    if (isLocalKey(dotPath, localKeys)) continue;
     if (isPlainObject(v)) {
-      const pruned = pruneLocal(v, localKeys, path);
+      const pruned = pruneLocal(v, localKeys, dotPath, templateKeys, home);
       // 자식이 "로컬키 제거로 인해" 비었으면(원래는 내용이 있었음) 부모도 생략한다.
       // 머신 고유 중첩키(예: mcpServers.x.command)만 있던 컨테이너가 빈 껍데기로 원격에 새는 것을 막는다.
       // 원래부터 빈 객체({})는 보존한다.
@@ -117,11 +125,14 @@ function pruneLocal(
 }
 
 // 로컬고유키(localKeys)를 제거한 shared subset 을 반환한다(깊은 복제).
+// templateKeys 에 매칭되는 키는 drop 대신 tokenizeHome 후 shared 에 포함한다.
 export function extractSharedSubset(
   obj: Record<string, unknown>,
   localKeys: string[],
+  templateKeys: string[] = [],
+  home = "",
 ): Record<string, unknown> {
-  return pruneLocal(obj, localKeys, "");
+  return pruneLocal(obj, localKeys, "", templateKeys, home);
 }
 
 // 동등성 비교(구조적). 동시 변경 충돌 판정용.
@@ -313,6 +324,7 @@ export function normalizeSettingsForSync(
   rawText: string,
   localKeys: string[],
   home = "",
+  templateKeys: string[] = [],
 ): { text: string; hash: string; size: number } {
   let parsed: unknown;
   try {
@@ -322,8 +334,11 @@ export function normalizeSettingsForSync(
     return { text: rawText, hash: sha256(buf), size: buf.byteLength };
   }
   const obj = isPlainObject(parsed) ? parsed : {};
-  const shared = extractSharedSubset(obj, localKeys);
-  // home 절대경로를 ${HOME} 토큰으로 치환(이식성). scan/push 가 동일 home 으로 호출 → 해시 일관.
+  // templateKeys 키는 extractSharedSubset 내부에서 tokenizeHome 후 포함된다.
+  // 나머지 shared 키는 이후 tokenizeHome 으로 다시 처리 — templateKeys 는 이미 토큰화됐으므로 이중 토큰화되지 않는다.
+  // (tokenizeHome 은 이미 토큰화된 문자열을 건드리지 않음: "${HOME}/..." 는 home prefix 아님)
+  const shared = extractSharedSubset(obj, localKeys, templateKeys, home);
+  // templateKeys 외 shared 키의 home 절대경로를 ${HOME} 토큰으로 치환(이식성).
   const tokenized = home ? tokenizeHome(shared, home) : shared;
   const text = stableStringify(tokenized);
   const buf = Buffer.from(text, "utf-8");
@@ -390,6 +405,129 @@ export function mergeMcpJsonForPull(
         mergedServers[name] = localServers[name];
       }
     }
+  }
+
+  return stableStringify(merged);
+}
+
+// *_PAT / *_TOKEN / *_SECRET 형태 env 키 패턴 — pull 시 시크릿 strip 기준.
+const SECRET_ENV_PATTERN = /_(PAT|TOKEN|SECRET)$/;
+
+/**
+ * push/scan 공용 정규화: 로컬 .claude.json raw → mcpServers 서브트리만 추출 + home 토큰화.
+ * stripSelfMcpServers 시그니처를 미러링한다.
+ * JSON 파싱 실패 시 원본 텍스트/해시 반환(throw 금지).
+ */
+export function normalizeClaudeJsonForSync(
+  jsonText: string,
+  home = "",
+): { text: string; hash: string; size: number } {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(jsonText);
+  } catch {
+    const buf = Buffer.from(jsonText, "utf-8");
+    return { text: jsonText, hash: sha256(buf), size: buf.byteLength };
+  }
+
+  const root = isPlainObject(parsed) ? (parsed as Record<string, unknown>) : {};
+  const out: Record<string, unknown> = {};
+  if (Object.prototype.hasOwnProperty.call(root, "mcpServers")) {
+    const servers = root.mcpServers;
+    if (isPlainObject(servers)) {
+      const strippedServers: Record<string, unknown> = {};
+      for (const [name, serverVal] of Object.entries(servers)) {
+        if (!isPlainObject(serverVal)) {
+          strippedServers[name] = serverVal;
+          continue;
+        }
+        const srv = structuredCloneSafe(serverVal) as Record<string, unknown>;
+        const env = srv.env;
+        if (isPlainObject(env)) {
+          for (const envKey of Object.keys(env)) {
+            if (SECRET_ENV_PATTERN.test(envKey)) {
+              delete (env as Record<string, unknown>)[envKey];
+            }
+          }
+        }
+        strippedServers[name] = srv;
+      }
+      out.mcpServers = strippedServers;
+    } else {
+      out.mcpServers = servers;
+    }
+  }
+
+  const tokenized = home ? tokenizeHome(out, home) : out;
+  const text = stableStringify(tokenized);
+  const buf = Buffer.from(text, "utf-8");
+  return { text, hash: sha256(buf), size: buf.byteLength };
+}
+
+/**
+ * pull 시 원격 mcpServers 를 로컬 .claude.json 에 머지한다.
+ * - mcpServers 만 원격 기준으로 교체(원격 우선). env 의 시크릿(*_PAT/*_TOKEN/*_SECRET) strip.
+ * - mcpServers 외 나머지 키(oauthAccount/userID/projects/numStartups/machineID/임의키)는
+ *   byte-identical 보존(deep merge 로 중첩 projects 손실 금지).
+ * - 로컬 파싱 실패/부재(null) 시 원격 mcpServers 기반으로 반환.
+ * - 원격 content 는 ${HOME} 토큰 공간 → home 인자로 detokenize.
+ */
+export function mergeClaudeJsonForPull(
+  localRaw: string | null,
+  remoteContent: string,
+  home = "",
+): string {
+  let remote: Record<string, unknown> = {};
+  try {
+    const parsed = JSON.parse(remoteContent);
+    if (isPlainObject(parsed)) remote = structuredCloneSafe(parsed);
+  } catch {
+    remote = {};
+  }
+
+  // 원격은 ${HOME} 토큰 공간 → 이 머신 home 절대경로로 복원.
+  if (home) remote = detokenizeHome(remote, home) as Record<string, unknown>;
+
+  // 원격 mcpServers env 의 시크릿 strip.
+  const remoteServers = remote.mcpServers;
+  if (isPlainObject(remoteServers)) {
+    for (const [, serverVal] of Object.entries(remoteServers)) {
+      if (!isPlainObject(serverVal)) continue;
+      const env = serverVal.env;
+      if (!isPlainObject(env)) continue;
+      for (const envKey of Object.keys(env)) {
+        if (SECRET_ENV_PATTERN.test(envKey)) {
+          delete (env as Record<string, unknown>)[envKey];
+        }
+      }
+    }
+  }
+
+  let local: Record<string, unknown> | null = null;
+  if (localRaw !== null) {
+    try {
+      const parsed = JSON.parse(localRaw);
+      if (isPlainObject(parsed)) local = structuredCloneSafe(parsed);
+    } catch {
+      local = null;
+    }
+  }
+
+  // 로컬 파싱 실패/부재: 원격 mcpServers 기반으로 반환.
+  if (local === null) {
+    const out: Record<string, unknown> = {};
+    if (Object.prototype.hasOwnProperty.call(remote, "mcpServers")) {
+      out.mcpServers = remote.mcpServers;
+    }
+    return stableStringify(out);
+  }
+
+  // 로컬의 mcpServers 만 원격 기준으로 교체, 나머지는 로컬 그대로.
+  const merged: Record<string, unknown> = structuredCloneSafe(local);
+  if (Object.prototype.hasOwnProperty.call(remote, "mcpServers")) {
+    merged.mcpServers = remote.mcpServers;
+  } else {
+    delete merged.mcpServers;
   }
 
   return stableStringify(merged);
