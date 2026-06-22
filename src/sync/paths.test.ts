@@ -7,9 +7,7 @@ import {
   toOS,
   isValidLogicalKey,
   isWithinHome,
-  isMcpJsonKey,
   isSettingsKey,
-  MCP_JSON_LOGICAL_KEY,
 } from "./paths.js";
 
 const FAKE_HOME_POSIX = "/fake/home";
@@ -142,36 +140,11 @@ describe("isWithinHome", () => {
   });
 });
 
-describe("isMcpJsonKey", () => {
-  test("true for MCP_JSON_LOGICAL_KEY constant itself", () => {
-    assert.equal(isMcpJsonKey(MCP_JSON_LOGICAL_KEY), true);
-  });
-
-  test("true for literal '.claude/.mcp.json'", () => {
-    assert.equal(isMcpJsonKey(".claude/.mcp.json"), true);
-  });
-
-  test("false for settings key", () => {
-    assert.equal(isMcpJsonKey(".claude/settings.json"), false);
-  });
-
-  test("false for arbitrary key", () => {
-    assert.equal(isMcpJsonKey(".claude/CLAUDE.md"), false);
-  });
-
-  test("false for partial match", () => {
-    assert.equal(isMcpJsonKey(".claude/.mcp.json.bak"), false);
-  });
-});
-
 describe("isSettingsKey", () => {
   test("true for literal '.claude/settings.json'", () => {
     assert.equal(isSettingsKey(".claude/settings.json"), true);
   });
 
-  test("false for mcp.json key", () => {
-    assert.equal(isSettingsKey(MCP_JSON_LOGICAL_KEY), false);
-  });
 
   test("false for arbitrary key", () => {
     assert.equal(isSettingsKey(".claude/CLAUDE.md"), false);
@@ -179,15 +152,5 @@ describe("isSettingsKey", () => {
 
   test("false for partial match", () => {
     assert.equal(isSettingsKey(".claude/settings.json.bak"), false);
-  });
-});
-
-describe("cross-classification checks", () => {
-  test("MCP_JSON_LOGICAL_KEY is not a settings key", () => {
-    assert.equal(isSettingsKey(MCP_JSON_LOGICAL_KEY), false);
-  });
-
-  test("settings logical key is not an mcp.json key", () => {
-    assert.equal(isMcpJsonKey(".claude/settings.json"), false);
   });
 });

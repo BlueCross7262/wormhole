@@ -33,15 +33,14 @@ import type { AgeCrypto } from "../crypto/age.js";
 import type { RemoteStore } from "../webdav/client.js";
 import { ManifestStore, ManifestConflictError, MANIFEST_FILE } from "./manifest.js";
 import { computeStatus } from "./diff.js";
-import { scanLocal } from "./scanner.js";
+import { scanLocal, isKeyInScope } from "./scanner.js";
 import { hashFile, sha256, blobName } from "./hash.js";
-import { toOS, isSettingsKey, isMcpJsonKey, isClaudeJsonKey, isValidLogicalKey, isWithinHome } from "./paths.js";
+import { toOS, isSettingsKey, isClaudeJsonKey, isValidLogicalKey, isWithinHome } from "./paths.js";
 import { AsyncMutex, RemoteLock, withLock } from "./lock.js";
 import {
   threeWayMerge,
   normalizeSettingsForSync,
   stripSelfMcpServers,
-  mergeMcpJsonForPull,
   normalizeClaudeJsonForSync,
   mergeClaudeJsonForPull,
   tokenizeHome,
@@ -239,7 +238,7 @@ export class SyncEngine {
     for (const f of scanned) {
       let contentHash: string | null;
       let size = f.size;
-      if (isSettingsKey(f.logicalKey) || isMcpJsonKey(f.logicalKey) || isClaudeJsonKey(f.logicalKey)) {
+      if (isSettingsKey(f.logicalKey) || isClaudeJsonKey(f.logicalKey)) {
         // settings/.mcp.json/.claude.json 은 동기화 대상이 "정규화된 shared 부분" 이다.
         // 전체 파일 raw 해시가 아니라 push 가 저장하는 것과 동일한 정규화 콘텐츠 해시로 비교해야
         // 사용자 변경이 없을 때 unchanged 로 판정된다(영구 modified 루프 방지).
@@ -251,9 +250,7 @@ export class SyncEngine {
         }
         const norm = isSettingsKey(f.logicalKey)
           ? normalizeSettingsForSync(raw, this.config.settingsLocalKeys, this.config.home, this.config.templateSettingsKeys ?? [])
-          : isClaudeJsonKey(f.logicalKey)
-            ? normalizeClaudeJsonForSync(raw, this.config.home)
-            : stripSelfMcpServers(raw, this.config.selfMcpServerNames, this.config.home);
+          : normalizeClaudeJsonForSync(raw, this.config.selfMcpServerNames, this.config.home);
         contentHash = norm.hash;
         size = norm.size;
       } else {
@@ -302,9 +299,16 @@ export class SyncEngine {
 
   // ── push ────────────────────────────────────────────────────
 
-  /** dryRun push 계획 — 실제 변경 없이 상태만 분류. */
+  /** dryRun push 계획 — purge 후 상태 분류(실제 원격 쓰기 없음). */
   private async planPush(): Promise<PushResult> {
-    const status = await this.status();
+    const remoteManifest = await this.manifestStore.read();
+    const manifest: Manifest = remoteManifest ?? ManifestStore.empty(this.machineId);
+    const local = await this.scanWithHashes();
+    const state = await this.readState();
+
+    await this.purgeDescopedKeys(local, state, manifest);
+
+    const status = computeStatus({ local, manifest: remoteManifest, state, machineId: this.machineId });
     const pushed: LogicalKey[] = [
       ...status.summary.added,
       ...status.summary.modified,
@@ -355,6 +359,8 @@ export class SyncEngine {
     const local = await this.scanWithHashes();
     const state = await this.readState();
 
+    await this.purgeDescopedKeys(local, state, manifest);
+
     const status = computeStatus({
       local,
       manifest: remoteManifest,
@@ -396,7 +402,7 @@ export class SyncEngine {
       let contentHash: Sha256Hex;
       let size: number;
       let mtimeMs: number;
-      if (isSettingsKey(key) || isMcpJsonKey(key) || isClaudeJsonKey(key)) {
+      if (isSettingsKey(key) || isClaudeJsonKey(key)) {
         const ov = settingsOverride.get(key);
         if (!ov) {
           skipped++;
@@ -508,11 +514,7 @@ export class SyncEngine {
       { content: Buffer; contentHash: Sha256Hex; size: number }
     >();
     for (const [key, f] of localMap) {
-      if (!isSettingsKey(key) && !isMcpJsonKey(key) && !isClaudeJsonKey(key)) continue;
-      // scan 과 동일한 정규화 파이프라인을 사용해 contentHash 가 일치하도록 한다.
-      //  - settings.json: 머신 고유키 제거 후 stableStringify (normalizeSettingsForSync)
-      //  - .mcp.json: 자기 등록 항목 제거 후 stableStringify (stripSelfMcpServers)
-      //  - .claude.json: mcpServers 서브트리만 추출 후 stableStringify (normalizeClaudeJsonForSync)
+      if (!isSettingsKey(key) && !isClaudeJsonKey(key)) continue;
       let rawText: string;
       try {
         rawText = await fs.readFile(f.absPath, "utf-8");
@@ -521,9 +523,7 @@ export class SyncEngine {
       }
       const norm = isSettingsKey(key)
         ? normalizeSettingsForSync(rawText, this.config.settingsLocalKeys, this.config.home, this.config.templateSettingsKeys ?? [])
-        : isClaudeJsonKey(key)
-          ? normalizeClaudeJsonForSync(rawText, this.config.home)
-          : stripSelfMcpServers(rawText, this.config.selfMcpServerNames, this.config.home);
+        : normalizeClaudeJsonForSync(rawText, this.config.selfMcpServerNames, this.config.home);
       const content = Buffer.from(norm.text, "utf-8");
       out.set(key, { content, contentHash: norm.hash, size: norm.size });
     }
@@ -591,8 +591,12 @@ export class SyncEngine {
       machineId: this.machineId,
     });
 
+    const homeRootKeys = new Set(Object.keys(this.config.homeRootTargets ?? {}));
     const toApply = status.items.filter(
-      (i) => i.kind === "remoteAdded" || i.kind === "remoteModified",
+      (i) =>
+        (i.kind === "remoteAdded" || i.kind === "remoteModified") &&
+        !(remoteManifest?.entries[i.logicalKey]?.scopeExcluded) &&
+        (homeRootKeys.has(i.logicalKey) || isKeyInScope(i.logicalKey, this.config.targets)),
     );
     const toRemove = status.items.filter((i) => i.kind === "remoteDeleted");
     const convergedItems = status.items.filter((i) => i.kind === "converged");
@@ -638,8 +642,6 @@ export class SyncEngine {
 
         if (isSettingsKey(key)) {
           await this.applyPullSettings(key, absPath, plain, entry, nextState);
-        } else if (isMcpJsonKey(key)) {
-          await this.applyPullMcpJson(key, absPath, plain, entry, nextState);
         } else if (isClaudeJsonKey(key)) {
           await this.applyPullClaudeJson(key, absPath, plain, entry, nextState);
         } else {
@@ -722,7 +724,10 @@ export class SyncEngine {
 
     try {
       if (remoteManifest) {
-        const entries = Object.entries(remoteManifest.entries).filter(([, e]) => !e.deleted);
+        const homeRootKeysForce = new Set(Object.keys(this.config.homeRootTargets ?? {}));
+        const entries = Object.entries(remoteManifest.entries).filter(
+          ([k, e]) => !e.deleted && !e.scopeExcluded && (homeRootKeysForce.has(k) || isKeyInScope(k, this.config.targets)),
+        );
         await mapLimit(entries, IO_CONCURRENCY, async ([key, entry]) => {
           remoteKeys.add(key as LogicalKey);
           const absPath = this.safeAbsPath(key as LogicalKey);
@@ -816,35 +821,6 @@ export class SyncEngine {
     };
   }
 
-  // .mcp.json pull 적용: 원격(self 제거된 shared)을 로컬에 머지하되 로컬의 자기(wormhole) 항목은 보존.
-  private async applyPullMcpJson(
-    key: LogicalKey,
-    absPath: string,
-    remotePlain: Buffer,
-    entry: FileEntry,
-    nextState: SyncState,
-  ): Promise<void> {
-    const remoteSharedText = remotePlain.toString("utf-8");
-    let localText: string | null;
-    try {
-      localText = await fs.readFile(absPath, "utf-8");
-    } catch {
-      localText = null;
-    }
-    const mergedText = mergeMcpJsonForPull(
-      remoteSharedText,
-      localText,
-      this.config.selfMcpServerNames,
-      this.config.home,
-    );
-    await this.atomicWriteFile(absPath, mergedText);
-    // base 스냅샷은 원격 반영분(self 제거 shared)을 보관해 다음 3-way 의 base 로 사용.
-    await this.writeBaseSnapshot(key, remoteSharedText);
-    nextState[key] = {
-      syncedHash: entry.contentHash,
-      syncedGeneration: entry.generation,
-    };
-  }
 
   // .claude.json pull 적용: 원격 mcpServers 만 로컬에 머지하되 mcpServers 외 나머지 키는 로컬 보존.
   private async applyPullClaudeJson(
@@ -861,7 +837,7 @@ export class SyncEngine {
     } catch {
       localRaw = null;
     }
-    const mergedText = mergeClaudeJsonForPull(localRaw, remoteContent, this.config.home);
+    const mergedText = mergeClaudeJsonForPull(localRaw, remoteContent, this.config.selfMcpServerNames, this.config.home);
     await this.atomicWriteFile(absPath, mergedText);
     // base 스냅샷은 원격 반영분(mcpServers-only 정규화)을 보관해 다음 scan 의 base 로 사용.
     await this.writeBaseSnapshot(key, remoteContent);
@@ -869,6 +845,41 @@ export class SyncEngine {
       syncedHash: entry.contentHash,
       syncedGeneration: entry.generation,
     };
+  }
+
+  // ── de-scope purge ─────────────────────────────────────────
+
+  /**
+   * de-scope 키 처리: base 스냅샷·state 엔트리 제거 + manifest 엔트리에 scopeExcluded:true 마킹.
+   * 이렇게 해야 classifyKey 가 localHash=null, baseHash=null 로 평가해 "deleted" 분류 안 함.
+   * local 스캔에 없고 base/state 에 잔존하는 키 = de-scope 대상.
+   */
+  private async purgeDescopedKeys(
+    local: LocalFileState[],
+    state: SyncState,
+    manifest: Manifest,
+  ): Promise<void> {
+    const localKeys = new Set(local.map((f) => f.logicalKey));
+    const homeRootKeys = new Set(Object.keys(this.config.homeRootTargets ?? {}));
+    let purged = false;
+
+    for (const key of Object.keys(state) as LogicalKey[]) {
+      if (localKeys.has(key)) continue;
+      if (homeRootKeys.has(key)) continue;
+      if (isKeyInScope(key, this.config.targets)) continue;
+
+      await this.removeBaseSnapshot(key);
+      delete state[key];
+      purged = true;
+
+      if (manifest.entries[key] && !manifest.entries[key].deleted) {
+        manifest.entries[key] = { ...manifest.entries[key], scopeExcluded: true };
+      }
+    }
+
+    if (purged) {
+      await this.writeState(state);
+    }
   }
 
   // ── resolve ─────────────────────────────────────────────────

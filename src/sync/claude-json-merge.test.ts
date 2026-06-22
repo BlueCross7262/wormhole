@@ -44,7 +44,7 @@ const FIXTURE_RAW = {
 describe("normalizeClaudeJsonForSync", () => {
   test("mcpServers만 추출하고 home 토큰화하여 안정 직렬화 반환", () => {
     const raw = JSON.stringify(FIXTURE_RAW);
-    const result = normalizeClaudeJsonForSync(raw, HOME);
+    const result = normalizeClaudeJsonForSync(raw, [], HOME);
     const parsed = JSON.parse(result.text) as Record<string, unknown>;
 
     assert.ok(Object.prototype.hasOwnProperty.call(parsed, "mcpServers"), "mcpServers 키 존재");
@@ -57,7 +57,7 @@ describe("normalizeClaudeJsonForSync", () => {
 
   test("hash와 size가 text 기준으로 일치", () => {
     const raw = JSON.stringify(FIXTURE_RAW);
-    const result = normalizeClaudeJsonForSync(raw, HOME);
+    const result = normalizeClaudeJsonForSync(raw, [], HOME);
     const buf = Buffer.from(result.text, "utf-8");
     assert.equal(result.hash, sha256(buf));
     assert.equal(result.size, buf.byteLength);
@@ -65,29 +65,29 @@ describe("normalizeClaudeJsonForSync", () => {
 
   test("동일 입력 두 번 호출 시 동일 hash — 멱등성", () => {
     const raw = JSON.stringify(FIXTURE_RAW);
-    const r1 = normalizeClaudeJsonForSync(raw, HOME);
-    const r2 = normalizeClaudeJsonForSync(raw, HOME);
+    const r1 = normalizeClaudeJsonForSync(raw, [], HOME);
+    const r2 = normalizeClaudeJsonForSync(raw, [], HOME);
     assert.equal(r1.hash, r2.hash);
     assert.equal(r1.text, r2.text);
   });
 
   test("mcpServers 부재 시 빈 객체 정규화", () => {
     const raw = JSON.stringify({ oauthAccount: "x", userID: "y" });
-    const result = normalizeClaudeJsonForSync(raw, HOME);
+    const result = normalizeClaudeJsonForSync(raw, [], HOME);
     const parsed = JSON.parse(result.text) as Record<string, unknown>;
     assert.deepEqual(parsed, {});
   });
 
   test("빈 mcpServers 객체 정규화", () => {
     const raw = JSON.stringify({ mcpServers: {} });
-    const result = normalizeClaudeJsonForSync(raw, HOME);
+    const result = normalizeClaudeJsonForSync(raw, [], HOME);
     const parsed = JSON.parse(result.text) as Record<string, unknown>;
     assert.deepEqual(parsed, { mcpServers: {} });
   });
 
   test("JSON 파싱 실패 시 원본 반환(throw 금지)", () => {
     const bad = "not-valid-json{{{";
-    const result = normalizeClaudeJsonForSync(bad, HOME);
+    const result = normalizeClaudeJsonForSync(bad, [], HOME);
     assert.equal(result.text, bad);
     const buf = Buffer.from(bad, "utf-8");
     assert.equal(result.hash, sha256(buf));
@@ -102,7 +102,7 @@ describe("normalizeClaudeJsonForSync", () => {
         },
       },
     });
-    const result = normalizeClaudeJsonForSync(raw, HOME);
+    const result = normalizeClaudeJsonForSync(raw, [], HOME);
     assert.ok(result.text.includes("${HOME}"), "HOME 토큰 존재");
     assert.ok(!result.text.includes(HOME), "절대 home 경로 미포함");
   });
@@ -131,7 +131,7 @@ describe("mergeClaudeJsonForPull", () => {
     };
     const remoteContent = JSON.stringify({ mcpServers: remoteMcpServers });
 
-    const merged = mergeClaudeJsonForPull(localRaw, remoteContent, HOME);
+    const merged = mergeClaudeJsonForPull(localRaw, remoteContent, [], HOME);
     const result = JSON.parse(merged) as Record<string, unknown>;
 
     // mcpServers 는 원격 기준으로 머지됨
@@ -172,7 +172,7 @@ describe("mergeClaudeJsonForPull", () => {
     const localRaw = JSON.stringify(FIXTURE_RAW);
     const remoteContent = JSON.stringify({ mcpServers: { server_a: { command: "cmd" } } });
 
-    const merged = mergeClaudeJsonForPull(localRaw, remoteContent, HOME);
+    const merged = mergeClaudeJsonForPull(localRaw, remoteContent, [], HOME);
     const result = JSON.parse(merged) as Record<string, unknown>;
 
     const projects = result.projects as Record<string, unknown>;
@@ -214,7 +214,7 @@ describe("mergeClaudeJsonForPull", () => {
       },
     });
 
-    const merged = mergeClaudeJsonForPull(localRaw, remoteContent, HOME);
+    const merged = mergeClaudeJsonForPull(localRaw, remoteContent, [], HOME);
     const result = JSON.parse(merged) as Record<string, unknown>;
     const env = (
       (result.mcpServers as Record<string, unknown>).tool_with_secrets as Record<string, unknown>
@@ -242,7 +242,7 @@ describe("mergeClaudeJsonForPull", () => {
       },
     });
 
-    const merged = mergeClaudeJsonForPull(localRaw, remoteContent, HOME);
+    const merged = mergeClaudeJsonForPull(localRaw, remoteContent, [], HOME);
     const result = JSON.parse(merged) as Record<string, unknown>;
     const jiraEnv = (
       (result.mcpServers as Record<string, unknown>).ky_jira as Record<string, unknown>
@@ -256,7 +256,7 @@ describe("mergeClaudeJsonForPull", () => {
       mcpServers: { tool_a: { command: "cmd" } },
     });
 
-    const merged = mergeClaudeJsonForPull(null, remoteContent, HOME);
+    const merged = mergeClaudeJsonForPull(null, remoteContent, [], HOME);
     const result = JSON.parse(merged) as Record<string, unknown>;
     const servers = result.mcpServers as Record<string, unknown>;
     assert.ok(Object.prototype.hasOwnProperty.call(servers, "tool_a"), "tool_a 존재");
@@ -266,7 +266,7 @@ describe("mergeClaudeJsonForPull", () => {
     const localRaw = JSON.stringify(FIXTURE_RAW);
     const remoteContent = JSON.stringify({ mcpServers: {} });
 
-    const merged = mergeClaudeJsonForPull(localRaw, remoteContent, HOME);
+    const merged = mergeClaudeJsonForPull(localRaw, remoteContent, [], HOME);
     const result = JSON.parse(merged) as Record<string, unknown>;
 
     assert.deepEqual(result.mcpServers, {}, "원격 빈 mcpServers 적용");
@@ -283,7 +283,7 @@ describe("mergeClaudeJsonForPull", () => {
       },
     });
 
-    const merged = mergeClaudeJsonForPull(localRaw, remoteContent, HOME);
+    const merged = mergeClaudeJsonForPull(localRaw, remoteContent, [], HOME);
     const result = JSON.parse(merged) as Record<string, unknown>;
     const tool = (result.mcpServers as Record<string, unknown>).local_tool as Record<
       string,
@@ -311,7 +311,7 @@ describe("mergeClaudeJsonForPull", () => {
       },
     });
 
-    const merged = mergeClaudeJsonForPull(null, remoteContent, HOME);
+    const merged = mergeClaudeJsonForPull(null, remoteContent, [], HOME);
     const result = JSON.parse(merged) as Record<string, unknown>;
     const env = (
       (result.mcpServers as Record<string, { env: Record<string, unknown> }>).srv
@@ -332,7 +332,7 @@ describe("mergeClaudeJsonForPull", () => {
     });
     const remoteContent = JSON.stringify({ userID: "remoteIgnored" });
 
-    const merged = mergeClaudeJsonForPull(localRaw, remoteContent, HOME);
+    const merged = mergeClaudeJsonForPull(localRaw, remoteContent, [], HOME);
     const result = JSON.parse(merged) as Record<string, unknown>;
 
     assert.equal(
@@ -360,7 +360,7 @@ describe("mergeClaudeJsonForPull", () => {
       userID: "u",
     });
 
-    const result = normalizeClaudeJsonForSync(raw, HOME);
+    const result = normalizeClaudeJsonForSync(raw, [], HOME);
     const parsed = JSON.parse(result.text) as Record<string, unknown>;
 
     assert.equal(Object.keys(parsed).length, 1, "mcpServers 외 키 제외");
@@ -371,5 +371,80 @@ describe("mergeClaudeJsonForPull", () => {
     ).env;
     assert.equal(srvEnv.Z_SECRET, undefined, "Z_SECRET strip 됨");
     assert.equal(srvEnv.OK, "v", "OK 보존됨");
+  });
+});
+
+describe("normalizeClaudeJsonForSync — selfNames egress strip (Phase 1.1)", () => {
+  test("push egress: selfNames 서버를 mcpServers 에서 제거, non-self 보존", () => {
+    const raw = JSON.stringify({
+      mcpServers: {
+        wormhole: { command: "wormhole-cmd" },
+        other: { command: "x" },
+      },
+    });
+    const result = normalizeClaudeJsonForSync(raw, ["wormhole"], HOME);
+    const parsed = JSON.parse(result.text) as Record<string, unknown>;
+    const servers = parsed.mcpServers as Record<string, unknown>;
+    assert.equal(Object.prototype.hasOwnProperty.call(servers, "wormhole"), false, "wormhole 제거됨");
+    assert.ok(Object.prototype.hasOwnProperty.call(servers, "other"), "other 보존됨");
+    assert.deepEqual((servers.other as Record<string, unknown>).command, "x");
+  });
+
+  test("scan hash === push hash (selfNames 동일 적용 시 멱등)", () => {
+    const raw = JSON.stringify({
+      mcpServers: {
+        wormhole: { command: "wormhole-cmd" },
+        other: { command: "x" },
+      },
+    });
+    const scan = normalizeClaudeJsonForSync(raw, ["wormhole"], HOME);
+    const push = normalizeClaudeJsonForSync(raw, ["wormhole"], HOME);
+    assert.equal(scan.hash, push.hash, "scan hash === push hash");
+  });
+
+  test("selfNames 미전달(빈 배열) 시 self 제거 안 됨", () => {
+    const raw = JSON.stringify({
+      mcpServers: { wormhole: { command: "wormhole-cmd" } },
+    });
+    const result = normalizeClaudeJsonForSync(raw, [], HOME);
+    const parsed = JSON.parse(result.text) as Record<string, unknown>;
+    const servers = parsed.mcpServers as Record<string, unknown>;
+    assert.ok(Object.prototype.hasOwnProperty.call(servers, "wormhole"), "selfNames 없으면 보존");
+  });
+});
+
+describe("mergeClaudeJsonForPull — selfNames guard (Phase 1.1)", () => {
+  test("pull: 원격에 wormhole 포함돼도 로컬 wormhole 보존, 원격 값 미주입", () => {
+    const localWormhole = { command: "local-wormhole" };
+    const localRaw = JSON.stringify({
+      mcpServers: {
+        wormhole: localWormhole,
+        other: { command: "stale-local" },
+      },
+    });
+    const remoteContent = JSON.stringify({
+      mcpServers: {
+        wormhole: { command: "remote-leaked-wormhole" },
+        other: { command: "remote-other" },
+      },
+    });
+    const merged = JSON.parse(mergeClaudeJsonForPull(localRaw, remoteContent, ["wormhole"], HOME)) as Record<string, unknown>;
+    const servers = merged.mcpServers as Record<string, unknown>;
+    assert.deepEqual(servers.wormhole, localWormhole, "로컬 wormhole deep-equal 보존");
+    assert.notDeepEqual(servers.wormhole, { command: "remote-leaked-wormhole" }, "원격 wormhole 미주입");
+    assert.deepEqual((servers.other as Record<string, unknown>).command, "remote-other", "non-self 원격 값 적용");
+  });
+
+  test("pull null local: 원격 wormhole 미주입, 원격 other 적용", () => {
+    const remoteContent = JSON.stringify({
+      mcpServers: {
+        wormhole: { command: "remote-leaked" },
+        other: { command: "R" },
+      },
+    });
+    const merged = JSON.parse(mergeClaudeJsonForPull(null, remoteContent, ["wormhole"], HOME)) as Record<string, unknown>;
+    const servers = merged.mcpServers as Record<string, unknown>;
+    assert.equal(Object.prototype.hasOwnProperty.call(servers, "wormhole"), false, "원격 wormhole 미주입");
+    assert.deepEqual((servers.other as Record<string, unknown>).command, "R");
   });
 });

@@ -1,10 +1,27 @@
 import fg from "fast-glob";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { createRequire } from "node:module";
 import type { Config, ScannedFile } from "../types.js";
 import { toLogical, CLAUDE_JSON_LOGICAL_KEY, toOS } from "./paths.js";
 
 // fast-glob 로 include/exclude 적용해 로컬 파일 열거 후 ScannedFile 배열 반환 (logicalKey 오름차순)
+type Targets = Config["targets"];
+
+const _require = createRequire(import.meta.url);
+const _mm = _require("micromatch") as { isMatch: (s: string, patterns: string[], opts?: object) => boolean };
+
+/**
+ * logicalKey 가 targets.include 에 매칭되고 targets.exclude 에 미매칭이면 true.
+ * scanLocal 과 동일한 dot:true 옵션 사용.
+ */
+export function isKeyInScope(logicalKey: string, targets: Targets): boolean {
+  const inInclude = _mm.isMatch(logicalKey, targets.include, { dot: true });
+  if (!inInclude) return false;
+  if (targets.exclude.length === 0) return true;
+  return !_mm.isMatch(logicalKey, targets.exclude, { dot: true });
+}
+
 export async function scanLocal(config: Config): Promise<ScannedFile[]> {
   const { home, targets, stateDir } = config;
 

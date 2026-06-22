@@ -125,6 +125,8 @@ export interface FileEntry {
   deleted: boolean;
   /** 삭제 시각(ms). deleted=false 면 null. */
   deletedAt: EpochMs | null;
+  /** de-scope 마킹. true 면 이 머신의 동기화 범위에서 제외된 키 — pull/force-download 적용 건너뜀. */
+  scopeExcluded?: boolean;
 }
 
 /** 매니페스트 전체. 암호화 후 armored 로 <base>/manifest.json.age 에 저장. */

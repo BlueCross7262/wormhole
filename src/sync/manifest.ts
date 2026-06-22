@@ -22,6 +22,7 @@ const FileEntrySchema = z.object({
   lastModifiedBy: z.string().max(256),
   deleted: z.boolean(),
   deletedAt: z.number().nullable(),
+  scopeExcluded: z.boolean().optional(),
 });
 const ManifestSchema = z.object({
   schemaVersion: z.literal(1),

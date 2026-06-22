@@ -352,63 +352,6 @@ export function normalizeSettingsForSync(
  * - 로컬 파싱 실패/부재면 원격을 기반으로 self 만 비우고 반환한다.
  * - 안정 직렬화된 텍스트를 반환한다.
  */
-export function mergeMcpJsonForPull(
-  remoteSharedText: string,
-  localText: string | null,
-  selfNames: string[],
-  home = "",
-): string {
-  let remote: Record<string, unknown> = {};
-  try {
-    const parsed = JSON.parse(remoteSharedText);
-    if (isPlainObject(parsed)) remote = structuredCloneSafe(parsed);
-  } catch {
-    remote = {};
-  }
-
-  // 원격은 ${HOME} 토큰 상태 → 이 머신 home 절대경로로 복원해 로컬 파일에 쓴다.
-  if (home) remote = detokenizeHome(remote, home) as Record<string, unknown>;
-
-  // 원격은 이미 self 제거 상태여야 하나 방어적으로 한 번 더 비운다.
-  if (isPlainObject(remote.mcpServers)) {
-    for (const name of selfNames) {
-      delete (remote.mcpServers as Record<string, unknown>)[name];
-    }
-  }
-
-  let local: Record<string, unknown> | null = null;
-  if (localText !== null) {
-    try {
-      const parsed = JSON.parse(localText);
-      if (isPlainObject(parsed)) local = parsed;
-    } catch {
-      local = null;
-    }
-  }
-
-  // 로컬 파싱 실패/부재: 원격 기반 + self 비움 상태를 그대로 반환.
-  if (local === null) {
-    return stableStringify(remote);
-  }
-
-  // 머지 베이스 = 원격(비-self 서버 + 원격 최상위 키). 원격 우선.
-  const merged: Record<string, unknown> = structuredCloneSafe(remote);
-
-  // 로컬의 self mcpServers 엔트리는 항상 보존한다(로컬 실제 경로 그대로).
-  const localServers = local.mcpServers;
-  if (isPlainObject(localServers)) {
-    const mergedServers = isPlainObject(merged.mcpServers)
-      ? (merged.mcpServers as Record<string, unknown>)
-      : ((merged.mcpServers = {}), merged.mcpServers as Record<string, unknown>);
-    for (const name of selfNames) {
-      if (Object.prototype.hasOwnProperty.call(localServers, name)) {
-        mergedServers[name] = localServers[name];
-      }
-    }
-  }
-
-  return stableStringify(merged);
-}
 
 // *_PAT / *_TOKEN / *_SECRET 형태 env 키 패턴 — pull 시 시크릿 strip 기준.
 const SECRET_ENV_PATTERN = /_(PAT|TOKEN|SECRET)$/;
@@ -420,6 +363,7 @@ const SECRET_ENV_PATTERN = /_(PAT|TOKEN|SECRET)$/;
  */
 export function normalizeClaudeJsonForSync(
   jsonText: string,
+  selfNames: string[],
   home = "",
 ): { text: string; hash: string; size: number } {
   let parsed: unknown;
@@ -437,6 +381,7 @@ export function normalizeClaudeJsonForSync(
     if (isPlainObject(servers)) {
       const strippedServers: Record<string, unknown> = {};
       for (const [name, serverVal] of Object.entries(servers)) {
+        if (selfNames.includes(name)) continue;
         if (!isPlainObject(serverVal)) {
           strippedServers[name] = serverVal;
           continue;
@@ -475,6 +420,7 @@ export function normalizeClaudeJsonForSync(
 export function mergeClaudeJsonForPull(
   localRaw: string | null,
   remoteContent: string,
+  selfNames: string[],
   home = "",
 ): string {
   let remote: Record<string, unknown> = {};
@@ -487,6 +433,13 @@ export function mergeClaudeJsonForPull(
 
   // 원격은 ${HOME} 토큰 공간 → 이 머신 home 절대경로로 복원.
   if (home) remote = detokenizeHome(remote, home) as Record<string, unknown>;
+
+  // 원격 mcpServers 에서 self 엔트리 방어적 strip(원격 오염 차단).
+  if (isPlainObject(remote.mcpServers)) {
+    for (const name of selfNames) {
+      delete (remote.mcpServers as Record<string, unknown>)[name];
+    }
+  }
 
   // 원격 mcpServers env 의 시크릿 strip.
   const remoteServers = remote.mcpServers;
@@ -528,6 +481,25 @@ export function mergeClaudeJsonForPull(
     merged.mcpServers = remote.mcpServers;
   } else {
     delete merged.mcpServers;
+  }
+
+  // 로컬 self 엔트리 보존(로컬 실제 경로·설정 그대로).
+  // selfNames 중 실제 로컬에 존재하는 항목만 보존 — 빈 mcpServers 객체 생성 금지.
+  if (selfNames.length > 0) {
+    const localServers = local.mcpServers;
+    if (isPlainObject(localServers)) {
+      const selfEntries = selfNames.filter(name =>
+        Object.prototype.hasOwnProperty.call(localServers, name),
+      );
+      if (selfEntries.length > 0) {
+        const mergedServers = isPlainObject(merged.mcpServers)
+          ? (merged.mcpServers as Record<string, unknown>)
+          : ((merged.mcpServers = {}), merged.mcpServers as Record<string, unknown>);
+        for (const name of selfEntries) {
+          mergedServers[name] = (localServers as Record<string, unknown>)[name];
+        }
+      }
+    }
   }
 
   return stableStringify(merged);

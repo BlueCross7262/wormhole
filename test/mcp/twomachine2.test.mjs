@@ -130,39 +130,23 @@ test("SMR-03: push 후 settings 재-modified 없음", async (t) => {
   assert.ok(!st.summary.added.includes(".claude/settings.json"), "settings 재-added 아님");
 });
 
-// ── SMR-05: .mcp.json self strip + 비-self 전파(clean, 충돌 없음) ──
-test("SMR-05: .mcp.json self strip + 비-self 전파", async (t) => {
-  const { homeB, a, b } = await twoMachines(t, {
-    aFiles: { ".claude/.mcp.json": JSON.stringify({ mcpServers: { wormhole: { command: "A-wh" }, other: { command: "shared" } } }) },
-  }); // B 는 .mcp.json 미보유 → 충돌 없이 remoteAdded 적용
-  await a.callTool("wormhole_sync", { confirm: true });
-  await b.callTool("wormhole_sync", { confirm: true });
-  const bm = JSON.parse(readF(homeB, ".claude/.mcp.json"));
-  assert.equal(bm.mcpServers.other?.command, "shared", "비-self 서버 전파됨");
-  assert.ok(!bm.mcpServers.wormhole, "A 의 self(wormhole) 미전파(push 시 strip)");
-});
-
-// ── SMR-08: 발산 settings/.mcp.json(no-base) → conflict 분류·local 보존·미적용 ──
-// (진단으로 확인된 일관 동작: settings·.mcp.json 모두 base 부재 양측 발산 시 충돌 게이팅.)
+// ── SMR-08: 발산 settings(no-base) → conflict 분류·local 보존·미적용 ──
+// (Phase 1.2: .mcp.json de-scope. settings.json 충돌 게이팅만 검증.)
 test("SMR-08: 발산(no-base) → conflict, 로컬 보존, 미적용", async (t) => {
   const { homeB, a, b } = await twoMachines(t, {
     aFiles: {
       ".claude/settings.json": JSON.stringify({ theme: "dark" }),
-      ".claude/.mcp.json": JSON.stringify({ mcpServers: { other: { command: "shared" } } }),
     },
     bFiles: {
       ".claude/settings.json": JSON.stringify({ theme: "light" }),
-      ".claude/.mcp.json": JSON.stringify({ mcpServers: { localonly: { command: "B" } } }),
     },
   });
   await a.callTool("wormhole_sync", { confirm: true });
   const pull = sc(await b.callTool("wormhole_sync", { confirm: true })).pull;
   const ck = pull.conflicts.map((c) => c.logicalKey);
   assert.ok(ck.includes(".claude/settings.json"), "settings 충돌 분류");
-  assert.ok(ck.includes(".claude/.mcp.json"), ".mcp.json 충돌 분류");
   assert.ok(!pull.applied.includes(".claude/settings.json"), "충돌 settings 미적용");
   assert.equal(JSON.parse(readF(homeB, ".claude/settings.json")).theme, "light", "B settings 로컬 보존");
-  assert.ok(JSON.parse(readF(homeB, ".claude/.mcp.json")).mcpServers.localonly, "B .mcp.json 로컬 보존");
 });
 
 // ── TMB-03: 양측 동일콘텐츠 도달 → converged ──

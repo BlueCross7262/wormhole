@@ -6,9 +6,6 @@ import type { LogicalKey } from "../types.js";
 // settings.json 의 논리키 (home 기준 posix).
 const SETTINGS_LOGICAL_KEY: LogicalKey = ".claude/settings.json";
 
-// .mcp.json 논리키. WebDAV 원격 동기화 시 자기참조(wormhole) mcpServers 엔트리를 제외하는 분기 기준.
-export const MCP_JSON_LOGICAL_KEY: LogicalKey = ".claude/.mcp.json";
-
 // ~/.claude.json 논리키. home-root(home 직하) 파일이므로 ".claude/" 하위가 아님.
 export const CLAUDE_JSON_LOGICAL_KEY: LogicalKey = ".claude.json";
 
@@ -59,10 +56,6 @@ export function isSettingsKey(logicalKey: LogicalKey): boolean {
   return logicalKey === SETTINGS_LOGICAL_KEY;
 }
 
-
-export function isMcpJsonKey(logicalKey: LogicalKey): boolean {
-  return logicalKey === MCP_JSON_LOGICAL_KEY;
-}
 
 // 해당 logicalKey 가 ~/.claude.json(home-root) 인지. engine 라우팅용.
 export function isClaudeJsonKey(logicalKey: LogicalKey): boolean {

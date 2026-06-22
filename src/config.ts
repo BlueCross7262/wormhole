@@ -12,7 +12,6 @@ export const DEFAULT_INCLUDE: string[] = [
   ".claude/skills/**",
   ".claude/agents/**",
   ".claude/commands/**",
-  ".claude/.mcp.json",
   ".claude/hooks/**",
   ".claude/statusline/**",
   ".claude/hud/**",

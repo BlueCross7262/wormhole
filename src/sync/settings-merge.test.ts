@@ -8,7 +8,6 @@ import {
   threeWayMerge,
   stripSelfMcpServers,
   normalizeSettingsForSync,
-  mergeMcpJsonForPull,
 } from "./settings-merge.js";
 import { sha256 } from "./hash.js";
 
@@ -489,130 +488,6 @@ describe("threeWayMerge — 양측이 동일하게 삭제한 키 (lines 92-93 bo
       false,
     );
     assert.equal(res.hasConflict, false);
-  });
-});
-
-describe("mergeMcpJsonForPull", () => {
-  test("preserves local self server, applies remote non-self servers", () => {
-    const remote = JSON.stringify({ mcpServers: { other: { command: "R" } } });
-    const local = JSON.stringify({
-      mcpServers: {
-        "wormhole": { command: "local-self" },
-        other: { command: "stale-local" },
-      },
-    });
-    const out = mergeMcpJsonForPull(remote, local, ["wormhole"]);
-    const parsed = JSON.parse(out);
-    // remote wins for non-self
-    assert.deepEqual(parsed.mcpServers.other, { command: "R" });
-    // local self preserved
-    assert.deepEqual(parsed.mcpServers["wormhole"], {
-      command: "local-self",
-    });
-  });
-
-  test("remote self entries are defensively stripped", () => {
-    const remote = JSON.stringify({
-      mcpServers: {
-        "wormhole": { command: "remote-self-leaked" },
-        other: { command: "R" },
-      },
-    });
-    const local = JSON.stringify({
-      mcpServers: { "wormhole": { command: "local-self" } },
-    });
-    const out = mergeMcpJsonForPull(remote, local, ["wormhole"]);
-    const parsed = JSON.parse(out);
-    // local self wins over any leaked remote self
-    assert.deepEqual(parsed.mcpServers["wormhole"], {
-      command: "local-self",
-    });
-  });
-
-  test("detokenizes remote ${HOME} back to local home for non-self paths", () => {
-    const remote = JSON.stringify({
-      mcpServers: { other: { command: `${HOME_TOKEN}/bin/other` } },
-    });
-    const out = mergeMcpJsonForPull(remote, null, ["wormhole"], FAKE_HOME);
-    const parsed = JSON.parse(out);
-    const normalize = (s: string) => s.split(/[\\/]/).join("/");
-    assert.equal(
-      normalize(parsed.mcpServers.other.command),
-      `${FAKE_HOME}/bin/other`,
-    );
-  });
-
-  test("null local => remote-based output with self emptied", () => {
-    const remote = JSON.stringify({
-      mcpServers: {
-        "wormhole": { command: "leaked" },
-        other: { command: "R" },
-      },
-    });
-    const out = mergeMcpJsonForPull(remote, null, ["wormhole"]);
-    const parsed = JSON.parse(out);
-    assert.equal(
-      Object.prototype.hasOwnProperty.call(parsed.mcpServers, "wormhole"),
-      false,
-    );
-    assert.deepEqual(parsed.mcpServers.other, { command: "R" });
-  });
-
-  test("invalid local JSON treated as absent (remote-based result)", () => {
-    const remote = JSON.stringify({ mcpServers: { other: { command: "R" } } });
-    const out = mergeMcpJsonForPull(remote, "{broken", ["wormhole"]);
-    const parsed = JSON.parse(out);
-    assert.deepEqual(parsed.mcpServers.other, { command: "R" });
-  });
-
-  test("invalid remote JSON treated as empty remote", () => {
-    const local = JSON.stringify({
-      mcpServers: { "wormhole": { command: "local-self" } },
-    });
-    const out = mergeMcpJsonForPull("{broken", local, ["wormhole"]);
-    const parsed = JSON.parse(out);
-    // self preserved, no other servers
-    assert.deepEqual(parsed.mcpServers["wormhole"], {
-      command: "local-self",
-    });
-  });
-
-  test("creates mcpServers container when remote lacks it but local self exists", () => {
-    const remote = JSON.stringify({ someTopKey: 1 });
-    const local = JSON.stringify({
-      mcpServers: { "wormhole": { command: "local-self" } },
-    });
-    const out = mergeMcpJsonForPull(remote, local, ["wormhole"]);
-    const parsed = JSON.parse(out);
-    assert.deepEqual(parsed.mcpServers["wormhole"], {
-      command: "local-self",
-    });
-    // remote top-level key preserved (remote-first base)
-    assert.equal(parsed.someTopKey, 1);
-  });
-
-  test("output is stable-stringified (deterministic key order)", () => {
-    const remoteA = JSON.stringify({ mcpServers: { b: {}, a: {} }, z: 1 });
-    const remoteB = JSON.stringify({ z: 1, mcpServers: { a: {}, b: {} } });
-    const outA = mergeMcpJsonForPull(remoteA, null, []);
-    const outB = mergeMcpJsonForPull(remoteB, null, []);
-    assert.equal(outA, outB);
-  });
-
-  test("local non-self servers do NOT leak into merged output", () => {
-    const remote = JSON.stringify({ mcpServers: { other: { command: "R" } } });
-    const local = JSON.stringify({
-      mcpServers: {
-        "wormhole": { command: "self" },
-        localOnly: { command: "should-not-appear" },
-      },
-    });
-    const out = mergeMcpJsonForPull(remote, local, ["wormhole"]);
-    const parsed = JSON.parse(out);
-    assert.equal(
-      Object.prototype.hasOwnProperty.call(parsed.mcpServers, "localOnly"),
-      false,
-    );
   });
 });
 

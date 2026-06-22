@@ -24,6 +24,18 @@ export function classifyKey(
   remoteEntry: FileEntry | undefined,
   syncedGeneration: number | undefined,
 ): DiffItem {
+  // scopeExcluded 엔트리는 이 머신의 동기화 범위 밖 — unchanged 로 단락(tombstone 방지).
+  if (remoteEntry?.scopeExcluded) {
+    return {
+      logicalKey,
+      kind: "unchanged",
+      localHash,
+      baseHash,
+      remoteHash: remoteEntry.contentHash,
+      remoteGeneration: remoteEntry.generation,
+    };
+  }
+
   // 원격은 tombstone(deleted)이면 콘텐츠 부재로 취급.
   const remoteExists = remoteEntry !== undefined && !remoteEntry.deleted;
   const remoteHash: string | null = remoteExists ? remoteEntry!.contentHash : null;
