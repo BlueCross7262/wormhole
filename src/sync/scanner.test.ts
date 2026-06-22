@@ -173,4 +173,24 @@ describe("scanLocal", () => {
 
     assert.ok(keys.includes(".claude/CLAUDE.md"), "CLAUDE.md should be included when stateDir is outside home");
   });
+
+  // B1 [E3 Minor] homeRootTargets 미지정 시 home-root .claude.json 열거 안 됨 (opt-in 가드)
+  test("homeRootTargets 미지정 시 home-root .claude.json 미열거 (opt-in 가드)", async () => {
+    const home = path.join(tmpDir, "homeroot-optout");
+    writeFile(path.join(home, ".claude.json"), JSON.stringify({ mcpServers: {} }));
+    writeFile(path.join(home, ".claude", "CLAUDE.md"), "keep");
+
+    const cfg = makeConfig(home, {
+      include: [".claude/**"],
+    });
+    const results = await scanLocal(cfg);
+    const keys = results.map((r) => r.logicalKey);
+
+    assert.equal(
+      keys.includes(".claude.json"),
+      false,
+      "homeRootTargets 미지정 시 .claude.json 이 스캔 결과에 없어야 함",
+    );
+    assert.ok(keys.includes(".claude/CLAUDE.md"), ".claude/CLAUDE.md 는 포함됨");
+  });
 });

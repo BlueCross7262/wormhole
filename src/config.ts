@@ -77,6 +77,11 @@ const LockConfigSchema = z.object({
   acquireRetryDelayMs: z.number().int().nonnegative().default(1000),
 });
 
+const HomeRootTargetSchema = z.object({
+  subkeys: z.array(z.string()),
+  preserveMode: z.literal("denylist"),
+});
+
 const RawConfigSchema = z.object({
   stateDir: z.string().optional(),
   home: z.string().optional(),
@@ -88,6 +93,10 @@ const RawConfigSchema = z.object({
   selfMcpServerNames: z.array(z.string()).default(["wormhole"]),
   conflictPolicy: z.enum(["preserve-both", "latest-wins", "manual"]).default("preserve-both"),
   lock: LockConfigSchema.partial().default({}),
+  // settings.json 중 template(공유) 처리할 top-level 키 목록.
+  templateSettingsKeys: z.array(z.string()).optional(),
+  // home-root 파일(예: .claude.json)의 머지 서브키와 보존모드 맵.
+  homeRootTargets: z.record(HomeRootTargetSchema).optional(),
 });
 
 // 완전한 Config zod 타입 (런타임 검증용)
@@ -243,6 +252,8 @@ function resolvePaths(parsed: z.infer<typeof RawConfigSchema>, home: string, sta
     selfMcpServerNames: parsed.selfMcpServerNames,
     conflictPolicy: parsed.conflictPolicy,
     lock: LockConfigSchema.parse(parsed.lock),
+    templateSettingsKeys: parsed.templateSettingsKeys,
+    homeRootTargets: parsed.homeRootTargets,
   };
 }
 

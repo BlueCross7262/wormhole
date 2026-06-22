@@ -611,6 +611,36 @@ describe("loadConfig — flat .env profile applied to remote", () => {
 });
 
 
+// ── S1.1: templateSettingsKeys / homeRootTargets 신규 필드 ────────
+
+describe("RawConfigSchema — templateSettingsKeys / homeRootTargets optional fields", () => {
+  test("(a) 두 신규 필드 포함 객체 parse 성공 후 값 보존", () => {
+    const raw = {
+      remote: { url: "https://x.example.com/dav", username: "wormhole" },
+      templateSettingsKeys: ["hooks", "statusLine"],
+      homeRootTargets: {
+        ".claude.json": { subkeys: ["mcpServers"], preserveMode: "denylist" },
+      },
+    };
+
+    const cfg = resolveConfig(raw);
+
+    assert.deepEqual(cfg.templateSettingsKeys, ["hooks", "statusLine"]);
+    assert.deepEqual(cfg.homeRootTargets, {
+      ".claude.json": { subkeys: ["mcpServers"], preserveMode: "denylist" },
+    });
+  });
+
+  test("(b) 두 필드 부재 parse 시 undefined 유지 (default 미주입)", () => {
+    const cfg = resolveConfig({
+      remote: { url: "https://x.example.com/dav", username: "wormhole" },
+    });
+
+    assert.equal(cfg.templateSettingsKeys, undefined);
+    assert.equal(cfg.homeRootTargets, undefined);
+  });
+});
+
 // ── 8. WORMHOLE_SYNC_INCLUDE/EXCLUDE — 가산 union 오버라이드 ───
 
 describe("loadConfig — WORMHOLE_SYNC_INCLUDE/EXCLUDE additive union", () => {

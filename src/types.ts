@@ -73,6 +73,14 @@ export interface LockConfig {
   acquireRetryDelayMs: number;
 }
 
+/** homeRootTargets 단일 항목. home-root 파일의 머지 서브키와 보존모드. */
+export interface HomeRootTarget {
+  /** 머지할 top-level 서브키 목록. */
+  subkeys: string[];
+  /** 보존 모드. denylist = subkeys 외 나머지는 머신고유로 보존. */
+  preserveMode: "denylist";
+}
+
 /** 최상위 설정. config 파일 + env 병합 후 검증된 형태. */
 export interface Config {
   /** 로컬 상태 디렉터리(절대경로). 기본 ~/.wormhole. */
@@ -93,6 +101,10 @@ export interface Config {
   conflictPolicy: ResolvePolicy;
   /** 원격 락 설정. */
   lock: LockConfig;
+  /** settings.json 중 template(공유) 처리할 top-level 키 목록. 미지정 시 undefined. */
+  templateSettingsKeys?: string[];
+  /** home-root 파일(예: .claude.json)의 머지 서브키와 보존모드 맵. 미지정 시 undefined. */
+  homeRootTargets?: Record<string, HomeRootTarget>;
 }
 
 // ── 매니페스트 (manifest.ts) ──────────────────────────────
