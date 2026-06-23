@@ -7,6 +7,8 @@ const WORMHOLE_DIR = path.join(os.homedir(), ".wormhole");
 const ENV_PATH = path.join(WORMHOLE_DIR, ".env");
 const CONFIG_PATH = path.join(WORMHOLE_DIR, "config.json");
 
+const resetConfig = process.argv.slice(2).includes("--reset-config");
+
 const ENV_TEMPLATE = `# wormhole MCP 서버 설정
 # 이 파일을 편집하여 실제 값을 입력하고 Claude Code 를 재시작하세요.
 
@@ -110,11 +112,13 @@ if (fs.existsSync(ENV_PATH)) {
   console.log(`작성 완료: ${ENV_PATH}`);
 }
 
-if (fs.existsSync(CONFIG_PATH)) {
+if (fs.existsSync(CONFIG_PATH) && !resetConfig) {
   console.log(`already exists — not overwriting (idempotent): ${CONFIG_PATH}`);
 } else {
   fs.writeFileSync(CONFIG_PATH, JSON.stringify(CONFIG_TEMPLATE, null, 2) + "\n", { encoding: "utf-8" });
-  console.log(`작성 완료: ${CONFIG_PATH}`);
+  console.log(resetConfig
+    ? `config.json 을 기본값으로 재설정함 (이전 내용 폐기): ${CONFIG_PATH}`
+    : `작성 완료: ${CONFIG_PATH}`);
 }
 
 console.log("");
@@ -122,3 +126,6 @@ console.log("다음 단계:");
 console.log("  1. ~/.wormhole/.env 를 열어 WebDAV 정보와 패스프레이즈를 입력한다.");
 console.log("  2. ~/.wormhole/config.json 을 열어 동기화 범위(targets)를 필요에 맞게 수정한다 (선택).");
 console.log("  3. Claude Code 를 재시작하면 /wormhole-sync, /wormhole-status, /wormhole-resolve, /wormhole-doctor 를 바로 사용할 수 있다.");
+if (resetConfig) {
+  console.log(".env 는 변경하지 않았습니다 (비밀값 보존).");
+}

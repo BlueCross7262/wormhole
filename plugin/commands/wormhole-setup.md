@@ -27,3 +27,14 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/setup.mjs
 - `crypto`, `lock` 등 고급 설정은 파일 내 값을 직접 수정한다.
 
 두 파일 설정 완료 후 `/wormhole-status`, `/wormhole-resolve`, `/wormhole-sync`, `/wormhole-doctor` 슬래시 커맨드를 바로 사용할 수 있다. 서버 재시작 불필요.
+
+## `--reset-config` — config.json 기본값 강제 복원
+
+```bash
+node ${CLAUDE_PLUGIN_ROOT}/scripts/setup.mjs --reset-config
+```
+
+`config.json` 을 기본값으로 **강제 덮어쓴다** (기존 내용 폐기).
+`.env` (WebDAV 비밀번호·패스프레이즈) 는 절대 건드리지 않는다.
+
+일반 setup (플래그 없음) 은 두 파일 모두 idempotent — 이미 존재하면 생성하지 않는다.
