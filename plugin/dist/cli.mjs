@@ -1,4 +1,4 @@
-import { createRequire } from 'module'; const require = createRequire(import.meta.url);
+import { createRequire as __wormholeCreateRequire } from 'node:module'; const require = __wormholeCreateRequire(import.meta.url);
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -235,9 +235,9 @@ var require_url_parse = __commonJS({
         rest
       };
     }
-    function resolve2(relative2, base) {
-      if (relative2 === "") return base;
-      var path11 = (base || "/").split("/").slice(0, -1).concat(relative2.split("/")), i2 = path11.length, last = path11[i2 - 1], unshift = false, up = 0;
+    function resolve2(relative3, base) {
+      if (relative3 === "") return base;
+      var path11 = (base || "/").split("/").slice(0, -1).concat(relative3.split("/")), i2 = path11.length, last = path11[i2 - 1], unshift = false, up = 0;
       while (i2--) {
         if (path11[i2] === ".") {
           path11.splice(i2, 1);
@@ -260,7 +260,7 @@ var require_url_parse = __commonJS({
       if (!(this instanceof Url)) {
         return new Url(address, location, parser);
       }
-      var relative2, extracted, parse, instruction, index, key, instructions = rules.slice(), type = typeof location, url = this, i2 = 0;
+      var relative3, extracted, parse, instruction, index, key, instructions = rules.slice(), type = typeof location, url = this, i2 = 0;
       if ("object" !== type && "string" !== type) {
         parser = location;
         location = null;
@@ -268,8 +268,8 @@ var require_url_parse = __commonJS({
       if (parser && "function" !== typeof parser) parser = qs.parse;
       location = lolcation(location);
       extracted = extractProtocol(address || "", location);
-      relative2 = !extracted.protocol && !extracted.slashes;
-      url.slashes = extracted.slashes || relative2 && location.slashes;
+      relative3 = !extracted.protocol && !extracted.slashes;
+      url.slashes = extracted.slashes || relative3 && location.slashes;
       url.protocol = extracted.protocol || location.protocol || "";
       address = extracted.rest;
       if (extracted.protocol === "file:" && (extracted.slashesCount !== 2 || windowsDriveLetter.test(address)) || !extracted.slashes && (extracted.protocol || extracted.slashesCount < 2 || !isSpecial(url.protocol))) {
@@ -300,11 +300,11 @@ var require_url_parse = __commonJS({
           url[key] = index[1];
           address = address.slice(0, index.index);
         }
-        url[key] = url[key] || (relative2 && instruction[3] ? location[key] || "" : "");
+        url[key] = url[key] || (relative3 && instruction[3] ? location[key] || "" : "");
         if (instruction[4]) url[key] = url[key].toLowerCase();
       }
       if (parser) url.query = parser(url.query);
-      if (relative2 && location.slashes && url.pathname.charAt(0) !== "/" && (url.pathname !== "" || location.pathname !== "")) {
+      if (relative3 && location.slashes && url.pathname.charAt(0) !== "/" && (url.pathname !== "" || location.pathname !== "")) {
         url.pathname = resolve2(url.pathname, location.pathname);
       }
       if (url.pathname.charAt(0) !== "/" && isSpecial(url.protocol)) {
@@ -9973,15 +9973,15 @@ var require_pattern = __commonJS({
     exports2.removeDuplicateSlashes = removeDuplicateSlashes;
     function partitionAbsoluteAndRelative(patterns) {
       const absolute = [];
-      const relative2 = [];
+      const relative3 = [];
       for (const pattern of patterns) {
         if (isAbsolute3(pattern)) {
           absolute.push(pattern);
         } else {
-          relative2.push(pattern);
+          relative3.push(pattern);
         }
       }
-      return [absolute, relative2];
+      return [absolute, relative3];
     }
     exports2.partitionAbsoluteAndRelative = partitionAbsoluteAndRelative;
     function isAbsolute3(pattern) {
@@ -16366,7 +16366,6 @@ var DEFAULT_INCLUDE = [
   ".claude/skills/**",
   ".claude/agents/**",
   ".claude/commands/**",
-  ".claude/.mcp.json",
   ".claude/hooks/**",
   ".claude/statusline/**",
   ".claude/hud/**"
@@ -16422,17 +16421,27 @@ var LockConfigSchema = external_exports.object({
   acquireRetries: external_exports.number().int().nonnegative().default(3),
   acquireRetryDelayMs: external_exports.number().int().nonnegative().default(1e3)
 });
+var HomeRootTargetSchema = external_exports.object({
+  subkeys: external_exports.array(external_exports.string()),
+  preserveMode: external_exports.literal("denylist")
+});
+var SettingsJsonSchema = external_exports.object({
+  localOnlyKeys: external_exports.array(external_exports.string()).default(DEFAULT_SETTINGS_LOCAL_KEYS),
+  forceSyncKeys: external_exports.array(external_exports.string()).optional()
+}).default({});
 var RawConfigSchema = external_exports.object({
   stateDir: external_exports.string().optional(),
   home: external_exports.string().optional(),
   remote: RemoteConfigSchema.partial().default({}),
   crypto: CryptoConfigSchema.partial().default({}),
   targets: SyncTargetsSchema.partial().default({}),
-  settingsLocalKeys: external_exports.array(external_exports.string()).default(DEFAULT_SETTINGS_LOCAL_KEYS),
+  settingsJson: SettingsJsonSchema,
   // 자기 자신(wormhole) mcp 서버 이름 목록. .mcp.json 동기화 시 자기참조 제외 기준.
   selfMcpServerNames: external_exports.array(external_exports.string()).default(["wormhole"]),
   conflictPolicy: external_exports.enum(["preserve-both", "latest-wins", "manual"]).default("preserve-both"),
-  lock: LockConfigSchema.partial().default({})
+  lock: LockConfigSchema.partial().default({}),
+  // home-root 파일(예: .claude.json)의 머지 서브키와 보존모드 맵.
+  homeRootTargets: external_exports.record(HomeRootTargetSchema).optional()
 });
 var FullConfigSchema = external_exports.object({
   stateDir: external_exports.string(),
@@ -16440,7 +16449,7 @@ var FullConfigSchema = external_exports.object({
   remote: RemoteConfigSchema,
   crypto: CryptoConfigSchema,
   targets: SyncTargetsSchema,
-  settingsLocalKeys: external_exports.array(external_exports.string()),
+  settingsJson: external_exports.object({ localOnlyKeys: external_exports.array(external_exports.string()), forceSyncKeys: external_exports.array(external_exports.string()).optional() }),
   conflictPolicy: external_exports.enum(["preserve-both", "latest-wins", "manual"]),
   lock: LockConfigSchema
 });
@@ -16488,6 +16497,21 @@ function applyEnvOverrides(raw) {
   if (process.env["WORMHOLE_KEYCHAIN_SERVICE"]) crypto5["keychainService"] = process.env["WORMHOLE_KEYCHAIN_SERVICE"];
   result["crypto"] = crypto5;
   return result;
+}
+function migrateLegacySettingsKeys(raw) {
+  const hasLegacy = "settingsLocalKeys" in raw || "templateSettingsKeys" in raw;
+  if (!hasLegacy) return raw;
+  const out = { ...raw };
+  if (out.settingsJson == null) {
+    const grp = {};
+    if (Array.isArray(out.settingsLocalKeys)) grp.localOnlyKeys = out.settingsLocalKeys;
+    if (Array.isArray(out.templateSettingsKeys)) grp.forceSyncKeys = out.templateSettingsKeys;
+    out.settingsJson = grp;
+    console.warn("[wormhole] config \uC758 settingsLocalKeys/templateSettingsKeys \uB294 deprecated \u2014 settingsJson.{localOnlyKeys,forceSyncKeys} \uB85C \uC774\uC804\uD558\uB77C. \uC774\uBC88 \uC2E4\uD589\uC740 \uC790\uB3D9 \uBCC0\uD658\uB428.");
+  }
+  delete out.settingsLocalKeys;
+  delete out.templateSettingsKeys;
+  return out;
 }
 function normalizeBaseDir(raw) {
   return "/" + raw.replace(/^\/+/, "").replace(/\/+$/, "");
@@ -16538,10 +16562,11 @@ function resolvePaths(parsed, home, stateDir) {
       kdfP: cryptoRaw.kdfP
     },
     targets: SyncTargetsSchema.parse(parsed.targets),
-    settingsLocalKeys: parsed.settingsLocalKeys,
+    settingsJson: parsed.settingsJson,
     selfMcpServerNames: parsed.selfMcpServerNames,
     conflictPolicy: parsed.conflictPolicy,
-    lock: LockConfigSchema.parse(parsed.lock)
+    lock: LockConfigSchema.parse(parsed.lock),
+    homeRootTargets: parsed.homeRootTargets
   };
 }
 function parseCommaList(v) {
@@ -16568,13 +16593,14 @@ async function loadConfig(configPath, dotEnvPath) {
   } catch (err) {
     if (err.code === "ENOENT") {
       throw new Error(
-        `config.json \uC5C6\uC74C (${cfgPath}). /wormhole-setup \uB97C \uC2E4\uD589\uD574 \uC0DD\uC131\uD558\uAC70\uB098 config.example.json \uC744 ~/.wormhole/config.json \uC73C\uB85C \uBCF5\uC0AC\uD558\uB77C.`
+        `config.json \uC5C6\uC74C (${cfgPath}). /wormhole-setup \uB97C \uC2E4\uD589\uD558\uBA74 config.json \uACFC .env \uD15C\uD50C\uB9BF\uC744 \uC790\uB3D9 \uC0DD\uC131\uD55C\uB2E4(\uAE30\uC874 \uD30C\uC77C\uC740 \uBCF4\uC874). \uC0DD\uC131 \uB4A4 ~/.wormhole/.env \uC5D0 WEBDAV_URL/USER/PASS \uC640 \uD328\uC2A4\uD504\uB808\uC774\uC988\uB97C \uCC44\uC6CC\uB77C.`
       );
     }
     throw new Error(`config \uD30C\uC77C \uC77D\uAE30 \uC2E4\uD328 (${cfgPath}): ${err.message}`);
   }
   const withEnv = applyEnvOverrides(fileRaw);
-  const parsed = RawConfigSchema.parse(withEnv);
+  const migrated = migrateLegacySettingsKeys(withEnv);
+  const parsed = RawConfigSchema.parse(migrated);
   const remoteUsername = (parsed.remote?.username ?? "").trim();
   const remoteBaseDir = (parsed.remote?.remoteBaseDir ?? "").trim();
   if (!remoteBaseDir && !remoteUsername) {
@@ -31710,7 +31736,7 @@ async function readMachineIdIfExists(stateDir) {
 }
 
 // src/sync/engine.ts
-import { promises as fs7 } from "node:fs";
+import { promises as fs7, readFileSync as readFileSync2, existsSync } from "node:fs";
 import * as path10 from "node:path";
 import { gzip, gunzip } from "node:zlib";
 import { promisify as promisify2 } from "node:util";
@@ -31723,7 +31749,8 @@ var FileEntrySchema = external_exports.object({
   generation: external_exports.number().int().nonnegative(),
   lastModifiedBy: external_exports.string().max(256),
   deleted: external_exports.boolean(),
-  deletedAt: external_exports.number().nullable()
+  deletedAt: external_exports.number().nullable(),
+  scopeExcluded: external_exports.boolean().optional()
 });
 var ManifestSchema = external_exports.object({
   schemaVersion: external_exports.literal(1),
@@ -31911,6 +31938,16 @@ var ManifestStore = class {
 
 // src/sync/diff.ts
 function classifyKey(logicalKey, localHash, baseHash, remoteEntry, syncedGeneration) {
+  if (remoteEntry?.scopeExcluded) {
+    return {
+      logicalKey,
+      kind: "unchanged",
+      localHash,
+      baseHash,
+      remoteHash: remoteEntry.contentHash,
+      remoteGeneration: remoteEntry.generation
+    };
+  }
   const remoteExists = remoteEntry !== void 0 && !remoteEntry.deleted;
   const remoteHash = remoteExists ? remoteEntry.contentHash : null;
   const remoteGeneration = remoteEntry !== void 0 ? remoteEntry.generation : null;
@@ -32062,11 +32099,12 @@ function summarize(items) {
 var import_fast_glob = __toESM(require_out4(), 1);
 import * as fs5 from "node:fs/promises";
 import * as path8 from "node:path";
+import { createRequire } from "node:module";
 
 // src/sync/paths.ts
 import path7 from "node:path";
 var SETTINGS_LOGICAL_KEY = ".claude/settings.json";
-var MCP_JSON_LOGICAL_KEY = ".claude/.mcp.json";
+var CLAUDE_JSON_LOGICAL_KEY = ".claude.json";
 function toLogical(home, absPath) {
   const rel = path7.relative(home, absPath);
   return rel.split(path7.sep).join("/");
@@ -32099,11 +32137,19 @@ function isWithinHome(home, absPath) {
 function isSettingsKey(logicalKey) {
   return logicalKey === SETTINGS_LOGICAL_KEY;
 }
-function isMcpJsonKey(logicalKey) {
-  return logicalKey === MCP_JSON_LOGICAL_KEY;
+function isClaudeJsonKey(logicalKey) {
+  return logicalKey === CLAUDE_JSON_LOGICAL_KEY;
 }
 
 // src/sync/scanner.ts
+var _require = createRequire(import.meta.url);
+var _mm = _require("micromatch");
+function isKeyInScope(logicalKey, targets) {
+  const inInclude = _mm.isMatch(logicalKey, targets.include, { dot: true });
+  if (!inInclude) return false;
+  if (targets.exclude.length === 0) return true;
+  return !_mm.isMatch(logicalKey, targets.exclude, { dot: true });
+}
 async function scanLocal(config) {
   const { home, targets, stateDir } = config;
   const ignore = [...targets.exclude];
@@ -32136,6 +32182,24 @@ async function scanLocal(config) {
       size: stat3.size,
       mtimeMs: stat3.mtimeMs
     });
+  }
+  if (config.homeRootTargets) {
+    for (const logicalKey of Object.keys(config.homeRootTargets)) {
+      const absPath = toOS(home, logicalKey);
+      let stat3;
+      try {
+        stat3 = await fs5.stat(absPath);
+      } catch {
+        continue;
+      }
+      if (!stat3.isFile()) continue;
+      results.push({
+        logicalKey,
+        absPath,
+        size: stat3.size,
+        mtimeMs: stat3.mtimeMs
+      });
+    }
   }
   results.sort((a, b) => a.logicalKey.localeCompare(b.logicalKey));
   return results;
@@ -32424,14 +32488,18 @@ function isLocalKey(path11, localKeys) {
   }
   return false;
 }
-function pruneLocal(obj, localKeys, prefix) {
+function pruneLocal(obj, localKeys, prefix, templateKeys, home) {
   const out = {};
   for (const [k, v] of Object.entries(obj)) {
     if (isForbiddenKey(k)) continue;
-    const path11 = prefix ? `${prefix}.${k}` : k;
-    if (isLocalKey(path11, localKeys)) continue;
+    const dotPath = prefix ? `${prefix}.${k}` : k;
+    if (isLocalKey(dotPath, templateKeys)) {
+      out[k] = home ? tokenizeHome(v, home) : v;
+      continue;
+    }
+    if (isLocalKey(dotPath, localKeys)) continue;
     if (isPlainObject2(v)) {
-      const pruned = pruneLocal(v, localKeys, path11);
+      const pruned = pruneLocal(v, localKeys, dotPath, templateKeys, home);
       if (Object.keys(pruned).length === 0 && Object.keys(v).length > 0) continue;
       out[k] = pruned;
     } else {
@@ -32440,8 +32508,8 @@ function pruneLocal(obj, localKeys, prefix) {
   }
   return out;
 }
-function extractSharedSubset(obj, localKeys) {
-  return pruneLocal(obj, localKeys, "");
+function extractSharedSubset(obj, localKeys, templateKeys = [], home = "") {
+  return pruneLocal(obj, localKeys, "", templateKeys, home);
 }
 function deepEqual(a, b) {
   if (a === b) return true;
@@ -32513,8 +32581,8 @@ function mergeRecursive(local, remote, base, prefix, conflicts) {
   }
   return out;
 }
-function threeWayMerge(local, remoteShared, baseShared, localKeys) {
-  const localShared = extractSharedSubset(local, localKeys);
+function threeWayMerge(local, remoteShared, baseShared, localKeys, templateKeys = []) {
+  const localShared = extractSharedSubset(local, localKeys, templateKeys);
   const conflictKeys = [];
   const mergedShared = mergeRecursive(
     localShared,
@@ -32551,27 +32619,7 @@ function stableNormalize(value) {
   }
   return value;
 }
-function stripSelfMcpServers(jsonText, selfNames, home = "") {
-  let parsed;
-  try {
-    parsed = JSON.parse(jsonText);
-  } catch {
-    const buf2 = Buffer.from(jsonText, "utf-8");
-    return { text: jsonText, hash: sha2563(buf2), size: buf2.byteLength };
-  }
-  const root = isPlainObject2(parsed) ? structuredCloneSafe(parsed) : {};
-  const servers = root.mcpServers;
-  if (isPlainObject2(servers)) {
-    for (const name of selfNames) {
-      delete servers[name];
-    }
-  }
-  const tokenized = home ? tokenizeHome(root, home) : root;
-  const text = stableStringify(tokenized);
-  const buf = Buffer.from(text, "utf-8");
-  return { text, hash: sha2563(buf), size: buf.byteLength };
-}
-function normalizeSettingsForSync(rawText, localKeys, home = "") {
+function normalizeSettingsForSync(rawText, localKeys, home = "", templateKeys = []) {
   let parsed;
   try {
     parsed = JSON.parse(rawText);
@@ -32580,16 +32628,58 @@ function normalizeSettingsForSync(rawText, localKeys, home = "") {
     return { text: rawText, hash: sha2563(buf2), size: buf2.byteLength };
   }
   const obj = isPlainObject2(parsed) ? parsed : {};
-  const shared = extractSharedSubset(obj, localKeys);
+  const shared = extractSharedSubset(obj, localKeys, templateKeys, home);
   const tokenized = home ? tokenizeHome(shared, home) : shared;
   const text = stableStringify(tokenized);
   const buf = Buffer.from(text, "utf-8");
   return { text, hash: sha2563(buf), size: buf.byteLength };
 }
-function mergeMcpJsonForPull(remoteSharedText, localText, selfNames, home = "") {
+var SECRET_ENV_PATTERN = /_(PAT|TOKEN|SECRET)$/;
+function normalizeClaudeJsonForSync(jsonText, selfNames, home = "") {
+  let parsed;
+  try {
+    parsed = JSON.parse(jsonText);
+  } catch {
+    const buf2 = Buffer.from(jsonText, "utf-8");
+    return { text: jsonText, hash: sha2563(buf2), size: buf2.byteLength };
+  }
+  const root = isPlainObject2(parsed) ? parsed : {};
+  const out = {};
+  if (Object.prototype.hasOwnProperty.call(root, "mcpServers")) {
+    const servers = root.mcpServers;
+    if (isPlainObject2(servers)) {
+      const strippedServers = {};
+      for (const [name, serverVal] of Object.entries(servers)) {
+        if (selfNames.includes(name)) continue;
+        if (!isPlainObject2(serverVal)) {
+          strippedServers[name] = serverVal;
+          continue;
+        }
+        const srv = structuredCloneSafe(serverVal);
+        const env = srv.env;
+        if (isPlainObject2(env)) {
+          for (const envKey of Object.keys(env)) {
+            if (SECRET_ENV_PATTERN.test(envKey)) {
+              delete env[envKey];
+            }
+          }
+        }
+        strippedServers[name] = srv;
+      }
+      out.mcpServers = strippedServers;
+    } else {
+      out.mcpServers = servers;
+    }
+  }
+  const tokenized = home ? tokenizeHome(out, home) : out;
+  const text = stableStringify(tokenized);
+  const buf = Buffer.from(text, "utf-8");
+  return { text, hash: sha2563(buf), size: buf.byteLength };
+}
+function mergeClaudeJsonForPull(localRaw, remoteContent, selfNames, home = "") {
   let remote = {};
   try {
-    const parsed = JSON.parse(remoteSharedText);
+    const parsed = JSON.parse(remoteContent);
     if (isPlainObject2(parsed)) remote = structuredCloneSafe(parsed);
   } catch {
     remote = {};
@@ -32600,25 +32690,52 @@ function mergeMcpJsonForPull(remoteSharedText, localText, selfNames, home = "") 
       delete remote.mcpServers[name];
     }
   }
+  const remoteServers = remote.mcpServers;
+  if (isPlainObject2(remoteServers)) {
+    for (const [, serverVal] of Object.entries(remoteServers)) {
+      if (!isPlainObject2(serverVal)) continue;
+      const env = serverVal.env;
+      if (!isPlainObject2(env)) continue;
+      for (const envKey of Object.keys(env)) {
+        if (SECRET_ENV_PATTERN.test(envKey)) {
+          delete env[envKey];
+        }
+      }
+    }
+  }
   let local = null;
-  if (localText !== null) {
+  if (localRaw !== null) {
     try {
-      const parsed = JSON.parse(localText);
-      if (isPlainObject2(parsed)) local = parsed;
+      const parsed = JSON.parse(localRaw);
+      if (isPlainObject2(parsed)) local = structuredCloneSafe(parsed);
     } catch {
       local = null;
     }
   }
   if (local === null) {
-    return stableStringify(remote);
+    const out = {};
+    if (Object.prototype.hasOwnProperty.call(remote, "mcpServers")) {
+      out.mcpServers = remote.mcpServers;
+    }
+    return stableStringify(out);
   }
-  const merged = structuredCloneSafe(remote);
-  const localServers = local.mcpServers;
-  if (isPlainObject2(localServers)) {
-    const mergedServers = isPlainObject2(merged.mcpServers) ? merged.mcpServers : (merged.mcpServers = {}, merged.mcpServers);
-    for (const name of selfNames) {
-      if (Object.prototype.hasOwnProperty.call(localServers, name)) {
-        mergedServers[name] = localServers[name];
+  const merged = structuredCloneSafe(local);
+  if (Object.prototype.hasOwnProperty.call(remote, "mcpServers")) {
+    merged.mcpServers = remote.mcpServers;
+  } else {
+    delete merged.mcpServers;
+  }
+  if (selfNames.length > 0) {
+    const localServers = local.mcpServers;
+    if (isPlainObject2(localServers)) {
+      const selfEntries = selfNames.filter(
+        (name) => Object.prototype.hasOwnProperty.call(localServers, name)
+      );
+      if (selfEntries.length > 0) {
+        const mergedServers = isPlainObject2(merged.mcpServers) ? merged.mcpServers : (merged.mcpServers = {}, merged.mcpServers);
+        for (const name of selfEntries) {
+          mergedServers[name] = localServers[name];
+        }
       }
     }
   }
@@ -32654,6 +32771,43 @@ function deepAssign(target, src) {
 }
 
 // src/sync/engine.ts
+function checkInstallPrereqs(pulledSettings, pluginsDir) {
+  const settings = pulledSettings;
+  const enabledPlugins = settings?.enabledPlugins ?? {};
+  const required = Object.entries(enabledPlugins).filter(([, v]) => !!v).map(([k]) => k);
+  if (required.length === 0) return { ok: true, missing: [] };
+  let installedPlugins = {};
+  try {
+    const raw = readFileSync2(path10.join(pluginsDir, "installed_plugins.json"), "utf-8");
+    const parsed = JSON.parse(raw);
+    installedPlugins = parsed.plugins ?? {};
+  } catch {
+    return { ok: false, missing: required };
+  }
+  let knownMarketplaces = {};
+  try {
+    const raw = readFileSync2(path10.join(pluginsDir, "known_marketplaces.json"), "utf-8");
+    knownMarketplaces = JSON.parse(raw);
+  } catch {
+  }
+  const missing = [];
+  for (const key of required) {
+    const entries = installedPlugins[key];
+    if (!Array.isArray(entries) || entries.length === 0) {
+      missing.push(key);
+      continue;
+    }
+    const atIdx = key.lastIndexOf("@");
+    if (atIdx > 0) {
+      const marketplace = key.slice(atIdx + 1);
+      const marketEntry = knownMarketplaces[marketplace];
+      if (!marketEntry || !marketEntry.installLocation || !existsSync(marketEntry.installLocation)) {
+        missing.push(key);
+      }
+    }
+  }
+  return { ok: missing.length === 0, missing };
+}
 var MAX_CAS_RETRIES = 3;
 var atomicWriteSeq = 0;
 function delay3(ms) {
@@ -32792,14 +32946,14 @@ var SyncEngine = class {
     for (const f3 of scanned) {
       let contentHash;
       let size = f3.size;
-      if (isSettingsKey(f3.logicalKey) || isMcpJsonKey(f3.logicalKey)) {
+      if (isSettingsKey(f3.logicalKey) || isClaudeJsonKey(f3.logicalKey)) {
         let raw;
         try {
           raw = await fs7.readFile(f3.absPath, "utf-8");
         } catch {
           continue;
         }
-        const norm = isSettingsKey(f3.logicalKey) ? normalizeSettingsForSync(raw, this.config.settingsLocalKeys, this.config.home) : stripSelfMcpServers(raw, this.config.selfMcpServerNames, this.config.home);
+        const norm = isSettingsKey(f3.logicalKey) ? normalizeSettingsForSync(raw, this.config.settingsJson.localOnlyKeys, this.config.home, this.config.settingsJson.forceSyncKeys ?? []) : normalizeClaudeJsonForSync(raw, this.config.selfMcpServerNames, this.config.home);
         contentHash = norm.hash;
         size = norm.size;
       } else {
@@ -32842,9 +32996,14 @@ var SyncEngine = class {
     await this.atomicWriteFile(this.statePath, JSON.stringify(state, null, 2));
   }
   // ── push ────────────────────────────────────────────────────
-  /** dryRun push 계획 — 실제 변경 없이 상태만 분류. */
+  /** dryRun push 계획 — purge 후 상태 분류(실제 원격 쓰기 없음). */
   async planPush() {
-    const status = await this.status();
+    const remoteManifest = await this.manifestStore.read();
+    const manifest = remoteManifest ?? ManifestStore.empty(this.machineId);
+    const local = await this.scanWithHashes();
+    const state = await this.readState();
+    await this.purgeDescopedKeys(local, state, manifest);
+    const status = computeStatus({ local, manifest: remoteManifest, state, machineId: this.machineId });
     const pushed = [
       ...status.summary.added,
       ...status.summary.modified
@@ -32887,6 +33046,7 @@ var SyncEngine = class {
     const expectedGeneration = remoteManifest ? remoteManifest.manifestGeneration : null;
     const local = await this.scanWithHashes();
     const state = await this.readState();
+    await this.purgeDescopedKeys(local, state, manifest);
     const status = computeStatus({
       local,
       manifest: remoteManifest,
@@ -32917,7 +33077,7 @@ var SyncEngine = class {
       let contentHash;
       let size;
       let mtimeMs;
-      if (isSettingsKey(key) || isMcpJsonKey(key)) {
+      if (isSettingsKey(key) || isClaudeJsonKey(key)) {
         const ov = settingsOverride.get(key);
         if (!ov) {
           skipped++;
@@ -33011,14 +33171,14 @@ var SyncEngine = class {
   async preparePushSettings(localMap, _remoteManifest, _state) {
     const out = /* @__PURE__ */ new Map();
     for (const [key, f3] of localMap) {
-      if (!isSettingsKey(key) && !isMcpJsonKey(key)) continue;
+      if (!isSettingsKey(key) && !isClaudeJsonKey(key)) continue;
       let rawText;
       try {
         rawText = await fs7.readFile(f3.absPath, "utf-8");
       } catch {
         continue;
       }
-      const norm = isSettingsKey(key) ? normalizeSettingsForSync(rawText, this.config.settingsLocalKeys, this.config.home) : stripSelfMcpServers(rawText, this.config.selfMcpServerNames, this.config.home);
+      const norm = isSettingsKey(key) ? normalizeSettingsForSync(rawText, this.config.settingsJson.localOnlyKeys, this.config.home, this.config.settingsJson.forceSyncKeys ?? []) : normalizeClaudeJsonForSync(rawText, this.config.selfMcpServerNames, this.config.home);
       const content = Buffer.from(norm.text, "utf-8");
       out.set(key, { content, contentHash: norm.hash, size: norm.size });
     }
@@ -33073,8 +33233,9 @@ var SyncEngine = class {
       state,
       machineId: this.machineId
     });
+    const homeRootKeys = new Set(Object.keys(this.config.homeRootTargets ?? {}));
     const toApply = status.items.filter(
-      (i2) => i2.kind === "remoteAdded" || i2.kind === "remoteModified"
+      (i2) => (i2.kind === "remoteAdded" || i2.kind === "remoteModified") && !remoteManifest?.entries[i2.logicalKey]?.scopeExcluded && (homeRootKeys.has(i2.logicalKey) || isKeyInScope(i2.logicalKey, this.config.targets))
     );
     const toRemove = status.items.filter((i2) => i2.kind === "remoteDeleted");
     const convergedItems = status.items.filter((i2) => i2.kind === "converged");
@@ -33109,8 +33270,8 @@ var SyncEngine = class {
         backedUp.push({ key, absPath, backupPath });
         if (isSettingsKey(key)) {
           await this.applyPullSettings(key, absPath, plain, entry, nextState);
-        } else if (isMcpJsonKey(key)) {
-          await this.applyPullMcpJson(key, absPath, plain, entry, nextState);
+        } else if (isClaudeJsonKey(key)) {
+          await this.applyPullClaudeJson(key, absPath, plain, entry, nextState);
         } else {
           await this.atomicWriteFile(absPath, plain);
           await this.writeBaseSnapshot(key, plain);
@@ -33179,7 +33340,10 @@ var SyncEngine = class {
     const remoteKeys = /* @__PURE__ */ new Set();
     try {
       if (remoteManifest) {
-        const entries = Object.entries(remoteManifest.entries).filter(([, e2]) => !e2.deleted);
+        const homeRootKeysForce = new Set(Object.keys(this.config.homeRootTargets ?? {}));
+        const entries = Object.entries(remoteManifest.entries).filter(
+          ([k, e2]) => !e2.deleted && !e2.scopeExcluded && (homeRootKeysForce.has(k) || isKeyInScope(k, this.config.targets))
+        );
         await mapLimit(entries, IO_CONCURRENCY, async ([key, entry]) => {
           remoteKeys.add(key);
           const absPath = this.safeAbsPath(key);
@@ -33238,7 +33402,8 @@ var SyncEngine = class {
       localObj,
       remoteShared,
       baseShared,
-      this.config.settingsLocalKeys
+      this.config.settingsJson.localOnlyKeys,
+      this.config.settingsJson.forceSyncKeys ?? []
     );
     const mergedReal = home ? detokenizeHome(result.merged, home) : result.merged;
     const mergedText = JSON.stringify(mergedReal, null, 2);
@@ -33250,27 +33415,47 @@ var SyncEngine = class {
       syncedGeneration: entry.generation
     };
   }
-  // .mcp.json pull 적용: 원격(self 제거된 shared)을 로컬에 머지하되 로컬의 자기(wormhole) 항목은 보존.
-  async applyPullMcpJson(key, absPath, remotePlain, entry, nextState) {
-    const remoteSharedText = remotePlain.toString("utf-8");
-    let localText;
+  // .claude.json pull 적용: 원격 mcpServers 만 로컬에 머지하되 mcpServers 외 나머지 키는 로컬 보존.
+  async applyPullClaudeJson(key, absPath, remotePlain, entry, nextState) {
+    const remoteContent = remotePlain.toString("utf-8");
+    let localRaw;
     try {
-      localText = await fs7.readFile(absPath, "utf-8");
+      localRaw = await fs7.readFile(absPath, "utf-8");
     } catch {
-      localText = null;
+      localRaw = null;
     }
-    const mergedText = mergeMcpJsonForPull(
-      remoteSharedText,
-      localText,
-      this.config.selfMcpServerNames,
-      this.config.home
-    );
+    const mergedText = mergeClaudeJsonForPull(localRaw, remoteContent, this.config.selfMcpServerNames, this.config.home);
     await this.atomicWriteFile(absPath, mergedText);
-    await this.writeBaseSnapshot(key, remoteSharedText);
+    await this.writeBaseSnapshot(key, remoteContent);
     nextState[key] = {
       syncedHash: entry.contentHash,
       syncedGeneration: entry.generation
     };
+  }
+  // ── de-scope purge ─────────────────────────────────────────
+  /**
+   * de-scope 키 처리: base 스냅샷·state 엔트리 제거 + manifest 엔트리에 scopeExcluded:true 마킹.
+   * 이렇게 해야 classifyKey 가 localHash=null, baseHash=null 로 평가해 "deleted" 분류 안 함.
+   * local 스캔에 없고 base/state 에 잔존하는 키 = de-scope 대상.
+   */
+  async purgeDescopedKeys(local, state, manifest) {
+    const localKeys = new Set(local.map((f3) => f3.logicalKey));
+    const homeRootKeys = new Set(Object.keys(this.config.homeRootTargets ?? {}));
+    let purged = false;
+    for (const key of Object.keys(state)) {
+      if (localKeys.has(key)) continue;
+      if (homeRootKeys.has(key)) continue;
+      if (isKeyInScope(key, this.config.targets)) continue;
+      await this.removeBaseSnapshot(key);
+      delete state[key];
+      purged = true;
+      if (manifest.entries[key] && !manifest.entries[key].deleted) {
+        manifest.entries[key] = { ...manifest.entries[key], scopeExcluded: true };
+      }
+    }
+    if (purged) {
+      await this.writeState(state);
+    }
   }
   // ── resolve ─────────────────────────────────────────────────
   /** dryRun resolve 계획. */
@@ -33540,6 +33725,57 @@ var SyncEngine = class {
       }
     }
   }
+  /** manifest-only read + pulledSettings 추출. 블롭 다운로드·로컬 파일 미변경.
+   *  락 획득 前 read-only 단계 전용.
+   */
+  async fetchRemote() {
+    const remoteManifest = await this.manifestStore.read();
+    const local = await this.scanWithHashes();
+    const state = await this.readState();
+    const status = computeStatus({ local, manifest: remoteManifest, state, machineId: this.machineId });
+    let pulledSettings = null;
+    if (remoteManifest !== null) {
+      const settingsKey = Object.keys(remoteManifest.entries).find((k) => isSettingsKey(k));
+      if (settingsKey) {
+        try {
+          const plain = await this.downloadBlob(settingsKey);
+          if (plain !== null) {
+            pulledSettings = JSON.parse(plain.toString("utf-8"));
+          }
+        } catch {
+          pulledSettings = null;
+        }
+      }
+    }
+    return { remoteManifest, pulledSettings, status };
+  }
+  /** 단일 락 파이프라인: fetch(manifest-only) → install-check → withLock(재검증→pull→push).
+   *  미설치 플러그인 참조 시 `{aborted: true, missing}` 반환.
+   */
+  async syncAtomic(opts) {
+    const { pluginsDir, policy } = opts;
+    const { pulledSettings } = await this.fetchRemote();
+    const prereq = checkInstallPrereqs(pulledSettings, pluginsDir);
+    if (!prereq.ok) {
+      return { aborted: true, missing: prereq.missing };
+    }
+    return this.mutex.runExclusive(
+      async () => withLock(this.lock, async () => {
+        const { pulledSettings: freshSettings } = await this.fetchRemote();
+        const recheck = checkInstallPrereqs(freshSettings, pluginsDir);
+        if (!recheck.ok) {
+          return { aborted: true, missing: recheck.missing };
+        }
+        const pull = await this.runPull();
+        if (pull.conflicts.length > 0) {
+          const effective = policy ?? this.config.conflictPolicy;
+          await this.runResolve(effective);
+        }
+        const push = await this.runPushWithRetry();
+        return { aborted: false, pull, push };
+      })
+    );
+  }
 };
 
 // src/crypto/passphrase.ts
@@ -33735,6 +33971,7 @@ async function buildEngine(logger2) {
 }
 
 // src/doctor.ts
+import * as nodePath from "node:path";
 function statusOf(err) {
   const e2 = err;
   return e2?.status ?? e2?.response?.status;
@@ -33766,6 +34003,82 @@ async function runDoctor(logger2) {
       status: "fail",
       detail: err.message
     });
+  }
+  if (config !== null) {
+    const ENV_DEP_PATTERNS = ["command", "args", "cwd", "env", "hooks", "permissions"];
+    const hasEnvDep = config.settingsJson.localOnlyKeys.some(
+      (k) => ENV_DEP_PATTERNS.some((p) => k.includes(p))
+    );
+    const includesSettings = config.targets.include.some(
+      (g) => g.includes("settings.json") || g.includes("settings")
+    );
+    if (includesSettings && !hasEnvDep) {
+      checks.push({
+        name: "settingsJson.localOnlyKeys \uD658\uACBD\uC758\uC874\uD0A4",
+        status: "warn",
+        detail: "settings.json \uC774 \uB3D9\uAE30\uD654 \uB300\uC0C1\uC774\uB098 settingsJson.localOnlyKeys \uC5D0 \uD658\uACBD\uC758\uC874\uD0A4(command/args/env/hooks/permissions)\uAC00 \uC5C6\uC74C \u2014 \uBA38\uC2E0\uACE0\uC720 \uC124\uC815\uC774 shared \uB85C \uC720\uCD9C\uB420 \uC704\uD5D8"
+      });
+    } else {
+      checks.push({
+        name: "settingsJson.localOnlyKeys \uD658\uACBD\uC758\uC874\uD0A4",
+        status: "ok",
+        detail: `settingsJson.localOnlyKeys \uC5D0 \uD658\uACBD\uC758\uC874\uD0A4 \uD3EC\uD568 (${config.settingsJson.localOnlyKeys.length}\uAC1C)`
+      });
+    }
+  }
+  if (config !== null) {
+    const ABS_RE = /^([A-Za-z]:[/\\]|\/)/;
+    const foundAbs = config.targets.include.filter((g) => ABS_RE.test(g));
+    if (foundAbs.length > 0) {
+      checks.push({
+        name: "include \uC808\uB300\uACBD\uB85C \uB9AC\uD130\uB7F4",
+        status: "warn",
+        detail: `include \uAE00\uB85C\uBE0C\uC5D0 \uC808\uB300\uACBD\uB85C \uB9AC\uD130\uB7F4 \uBC1C\uACAC \u2014 \uC774\uC8FC \uBD88\uAC00/\uD0C0 \uBA38\uC2E0 \uD638\uD658 \uBD88\uAC00 \uC704\uD5D8: ${foundAbs.join(", ")}`
+      });
+    } else {
+      checks.push({
+        name: "include \uC808\uB300\uACBD\uB85C \uB9AC\uD130\uB7F4",
+        status: "ok",
+        detail: "include \uAE00\uB85C\uBE0C\uC5D0 \uC808\uB300\uACBD\uB85C \uC5C6\uC74C"
+      });
+    }
+  }
+  if (config !== null) {
+    const stateDirRel = nodePath.relative(config.home, config.stateDir).replace(/\\/g, "/");
+    const stateDirLeaks = config.targets.include.filter((g) => {
+      const gg = g.replace(/\\/g, "/");
+      return gg.startsWith(stateDirRel + "/") || gg === stateDirRel || gg.startsWith(stateDirRel + "/**");
+    });
+    if (stateDirLeaks.length > 0) {
+      checks.push({
+        name: "stateDir \uB3D9\uAE30\uD654 \uC720\uCD9C",
+        status: "warn",
+        detail: `stateDir(${stateDirRel}) \uD558\uC704\uAC00 include \uAE00\uB85C\uBE0C\uC5D0 \uD3EC\uD568 \u2014 \uC554\uD638\uD0A4\xB7\uC0C1\uD0DC\uD30C\uC77C \uC720\uCD9C \uC704\uD5D8: ${stateDirLeaks.join(", ")}`
+      });
+    } else {
+      checks.push({
+        name: "stateDir \uB3D9\uAE30\uD654 \uC720\uCD9C",
+        status: "ok",
+        detail: `stateDir(${stateDirRel}) \uC774 include \uBC94\uC704 \uBC16 \u2014 \uC554\uD638 \uC790\uC7AC \uC720\uCD9C \uC5C6\uC74C`
+      });
+    }
+  }
+  if (config !== null) {
+    const SECRET_RE = /(_PAT|_TOKEN|_SECRET)(\b|$|\*)/i;
+    const secretGlobs = config.targets.include.filter((g) => SECRET_RE.test(g));
+    if (secretGlobs.length > 0) {
+      checks.push({
+        name: "include \uC2DC\uD06C\uB9BF \uD328\uD134",
+        status: "warn",
+        detail: `include \uC5D0 *_PAT/*_TOKEN/*_SECRET \uD328\uD134 \uBC1C\uACAC \u2014 \uD1A0\uD070\xB7\uC2DC\uD06C\uB9BF \uD30C\uC77C \uC720\uCD9C \uC704\uD5D8: ${secretGlobs.join(", ")}`
+      });
+    } else {
+      checks.push({
+        name: "include \uC2DC\uD06C\uB9BF \uD328\uD134",
+        status: "ok",
+        detail: "include \uC5D0 \uC2DC\uD06C\uB9BF \uD328\uD134(*_PAT/*_TOKEN/*_SECRET) \uC5C6\uC74C"
+      });
+    }
   }
   if (config === null) {
     checks.push({

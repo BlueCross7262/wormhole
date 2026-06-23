@@ -1,4 +1,4 @@
-import { createRequire } from 'module'; const require = createRequire(import.meta.url);
+import { createRequire as __wormholeCreateRequire } from 'node:module'; const require = __wormholeCreateRequire(import.meta.url);
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -3243,8 +3243,8 @@ var require_utils = __commonJS({
       }
       return ind;
     }
-    function removeDotSegments(path11) {
-      let input = path11;
+    function removeDotSegments(path12) {
+      let input = path12;
       const output = [];
       let nextSlash = -1;
       let len = 0;
@@ -3496,8 +3496,8 @@ var require_schemes = __commonJS({
         wsComponent.secure = void 0;
       }
       if (wsComponent.resourceName) {
-        const [path11, query] = wsComponent.resourceName.split("?");
-        wsComponent.path = path11 && path11 !== "/" ? path11 : void 0;
+        const [path12, query] = wsComponent.resourceName.split("?");
+        wsComponent.path = path12 && path12 !== "/" ? path12 : void 0;
         wsComponent.query = query;
         wsComponent.resourceName = void 0;
       }
@@ -3662,49 +3662,49 @@ var require_fast_uri = __commonJS({
       schemelessOptions.skipEscape = true;
       return serialize(resolved, schemelessOptions);
     }
-    function resolveComponent(base, relative2, options, skipNormalization) {
+    function resolveComponent(base, relative3, options, skipNormalization) {
       const target = {};
       if (!skipNormalization) {
         base = parse3(serialize(base, options), options);
-        relative2 = parse3(serialize(relative2, options), options);
+        relative3 = parse3(serialize(relative3, options), options);
       }
       options = options || {};
-      if (!options.tolerant && relative2.scheme) {
-        target.scheme = relative2.scheme;
-        target.userinfo = relative2.userinfo;
-        target.host = relative2.host;
-        target.port = relative2.port;
-        target.path = removeDotSegments(relative2.path || "");
-        target.query = relative2.query;
+      if (!options.tolerant && relative3.scheme) {
+        target.scheme = relative3.scheme;
+        target.userinfo = relative3.userinfo;
+        target.host = relative3.host;
+        target.port = relative3.port;
+        target.path = removeDotSegments(relative3.path || "");
+        target.query = relative3.query;
       } else {
-        if (relative2.userinfo !== void 0 || relative2.host !== void 0 || relative2.port !== void 0) {
-          target.userinfo = relative2.userinfo;
-          target.host = relative2.host;
-          target.port = relative2.port;
-          target.path = removeDotSegments(relative2.path || "");
-          target.query = relative2.query;
+        if (relative3.userinfo !== void 0 || relative3.host !== void 0 || relative3.port !== void 0) {
+          target.userinfo = relative3.userinfo;
+          target.host = relative3.host;
+          target.port = relative3.port;
+          target.path = removeDotSegments(relative3.path || "");
+          target.query = relative3.query;
         } else {
-          if (!relative2.path) {
+          if (!relative3.path) {
             target.path = base.path;
-            if (relative2.query !== void 0) {
-              target.query = relative2.query;
+            if (relative3.query !== void 0) {
+              target.query = relative3.query;
             } else {
               target.query = base.query;
             }
           } else {
-            if (relative2.path[0] === "/") {
-              target.path = removeDotSegments(relative2.path);
+            if (relative3.path[0] === "/") {
+              target.path = removeDotSegments(relative3.path);
             } else {
               if ((base.userinfo !== void 0 || base.host !== void 0 || base.port !== void 0) && !base.path) {
-                target.path = "/" + relative2.path;
+                target.path = "/" + relative3.path;
               } else if (!base.path) {
-                target.path = relative2.path;
+                target.path = relative3.path;
               } else {
-                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative2.path;
+                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative3.path;
               }
               target.path = removeDotSegments(target.path);
             }
-            target.query = relative2.query;
+            target.query = relative3.query;
           }
           target.userinfo = base.userinfo;
           target.host = base.host;
@@ -3712,7 +3712,7 @@ var require_fast_uri = __commonJS({
         }
         target.scheme = base.scheme;
       }
-      target.fragment = relative2.fragment;
+      target.fragment = relative3.fragment;
       return target;
     }
     function equal(uriA, uriB, options) {
@@ -7091,24 +7091,24 @@ var require_url_parse = __commonJS({
         rest
       };
     }
-    function resolve2(relative2, base) {
-      if (relative2 === "") return base;
-      var path11 = (base || "/").split("/").slice(0, -1).concat(relative2.split("/")), i2 = path11.length, last = path11[i2 - 1], unshift = false, up = 0;
+    function resolve2(relative3, base) {
+      if (relative3 === "") return base;
+      var path12 = (base || "/").split("/").slice(0, -1).concat(relative3.split("/")), i2 = path12.length, last = path12[i2 - 1], unshift = false, up = 0;
       while (i2--) {
-        if (path11[i2] === ".") {
-          path11.splice(i2, 1);
-        } else if (path11[i2] === "..") {
-          path11.splice(i2, 1);
+        if (path12[i2] === ".") {
+          path12.splice(i2, 1);
+        } else if (path12[i2] === "..") {
+          path12.splice(i2, 1);
           up++;
         } else if (up) {
           if (i2 === 0) unshift = true;
-          path11.splice(i2, 1);
+          path12.splice(i2, 1);
           up--;
         }
       }
-      if (unshift) path11.unshift("");
-      if (last === "." || last === "..") path11.push("");
-      return path11.join("/");
+      if (unshift) path12.unshift("");
+      if (last === "." || last === "..") path12.push("");
+      return path12.join("/");
     }
     function Url(address, location, parser) {
       address = trimLeft(address);
@@ -7116,7 +7116,7 @@ var require_url_parse = __commonJS({
       if (!(this instanceof Url)) {
         return new Url(address, location, parser);
       }
-      var relative2, extracted, parse3, instruction, index, key, instructions = rules.slice(), type = typeof location, url = this, i2 = 0;
+      var relative3, extracted, parse3, instruction, index, key, instructions = rules.slice(), type = typeof location, url = this, i2 = 0;
       if ("object" !== type && "string" !== type) {
         parser = location;
         location = null;
@@ -7124,8 +7124,8 @@ var require_url_parse = __commonJS({
       if (parser && "function" !== typeof parser) parser = qs.parse;
       location = lolcation(location);
       extracted = extractProtocol(address || "", location);
-      relative2 = !extracted.protocol && !extracted.slashes;
-      url.slashes = extracted.slashes || relative2 && location.slashes;
+      relative3 = !extracted.protocol && !extracted.slashes;
+      url.slashes = extracted.slashes || relative3 && location.slashes;
       url.protocol = extracted.protocol || location.protocol || "";
       address = extracted.rest;
       if (extracted.protocol === "file:" && (extracted.slashesCount !== 2 || windowsDriveLetter.test(address)) || !extracted.slashes && (extracted.protocol || extracted.slashesCount < 2 || !isSpecial(url.protocol))) {
@@ -7156,11 +7156,11 @@ var require_url_parse = __commonJS({
           url[key] = index[1];
           address = address.slice(0, index.index);
         }
-        url[key] = url[key] || (relative2 && instruction[3] ? location[key] || "" : "");
+        url[key] = url[key] || (relative3 && instruction[3] ? location[key] || "" : "");
         if (instruction[4]) url[key] = url[key].toLowerCase();
       }
       if (parser) url.query = parser(url.query);
-      if (relative2 && location.slashes && url.pathname.charAt(0) !== "/" && (url.pathname !== "" || location.pathname !== "")) {
+      if (relative3 && location.slashes && url.pathname.charAt(0) !== "/" && (url.pathname !== "" || location.pathname !== "")) {
         url.pathname = resolve2(url.pathname, location.pathname);
       }
       if (url.pathname.charAt(0) !== "/" && isSpecial(url.protocol)) {
@@ -7324,14 +7324,14 @@ var require_path_posix = __commonJS({
     posix.resolve = function() {
       var resolvedPath = "", resolvedAbsolute = false;
       for (var i2 = arguments.length - 1; i2 >= -1 && !resolvedAbsolute; i2--) {
-        var path11 = i2 >= 0 ? arguments[i2] : process.cwd();
-        if (!isString(path11)) {
+        var path12 = i2 >= 0 ? arguments[i2] : process.cwd();
+        if (!isString(path12)) {
           throw new TypeError("Arguments to path.resolve must be strings");
-        } else if (!path11) {
+        } else if (!path12) {
           continue;
         }
-        resolvedPath = path11 + "/" + resolvedPath;
-        resolvedAbsolute = path11.charAt(0) === "/";
+        resolvedPath = path12 + "/" + resolvedPath;
+        resolvedAbsolute = path12.charAt(0) === "/";
       }
       resolvedPath = normalizeArray(
         resolvedPath.split("/"),
@@ -7339,36 +7339,36 @@ var require_path_posix = __commonJS({
       ).join("/");
       return (resolvedAbsolute ? "/" : "") + resolvedPath || ".";
     };
-    posix.normalize = function(path11) {
-      var isAbsolute3 = posix.isAbsolute(path11), trailingSlash = path11.substr(-1) === "/";
-      path11 = normalizeArray(path11.split("/"), !isAbsolute3).join("/");
-      if (!path11 && !isAbsolute3) {
-        path11 = ".";
+    posix.normalize = function(path12) {
+      var isAbsolute3 = posix.isAbsolute(path12), trailingSlash = path12.substr(-1) === "/";
+      path12 = normalizeArray(path12.split("/"), !isAbsolute3).join("/");
+      if (!path12 && !isAbsolute3) {
+        path12 = ".";
       }
-      if (path11 && trailingSlash) {
-        path11 += "/";
+      if (path12 && trailingSlash) {
+        path12 += "/";
       }
-      return (isAbsolute3 ? "/" : "") + path11;
+      return (isAbsolute3 ? "/" : "") + path12;
     };
-    posix.isAbsolute = function(path11) {
-      return path11.charAt(0) === "/";
+    posix.isAbsolute = function(path12) {
+      return path12.charAt(0) === "/";
     };
     posix.join = function() {
-      var path11 = "";
+      var path12 = "";
       for (var i2 = 0; i2 < arguments.length; i2++) {
         var segment = arguments[i2];
         if (!isString(segment)) {
           throw new TypeError("Arguments to path.join must be strings");
         }
         if (segment) {
-          if (!path11) {
-            path11 += segment;
+          if (!path12) {
+            path12 += segment;
           } else {
-            path11 += "/" + segment;
+            path12 += "/" + segment;
           }
         }
       }
-      return posix.normalize(path11);
+      return posix.normalize(path12);
     };
     posix.relative = function(from, to) {
       from = posix.resolve(from).substr(1);
@@ -7402,11 +7402,11 @@ var require_path_posix = __commonJS({
       outputParts = outputParts.concat(toParts.slice(samePartsLength));
       return outputParts.join("/");
     };
-    posix._makeLong = function(path11) {
-      return path11;
+    posix._makeLong = function(path12) {
+      return path12;
     };
-    posix.dirname = function(path11) {
-      var result = posixSplitPath(path11), root = result[0], dir = result[1];
+    posix.dirname = function(path12) {
+      var result = posixSplitPath(path12), root = result[0], dir = result[1];
       if (!root && !dir) {
         return ".";
       }
@@ -7415,15 +7415,15 @@ var require_path_posix = __commonJS({
       }
       return root + dir;
     };
-    posix.basename = function(path11, ext2) {
-      var f3 = posixSplitPath(path11)[2];
+    posix.basename = function(path12, ext2) {
+      var f3 = posixSplitPath(path12)[2];
       if (ext2 && f3.substr(-1 * ext2.length) === ext2) {
         f3 = f3.substr(0, f3.length - ext2.length);
       }
       return f3;
     };
-    posix.extname = function(path11) {
-      return posixSplitPath(path11)[3];
+    posix.extname = function(path12) {
+      return posixSplitPath(path12)[3];
     };
     posix.format = function(pathObject) {
       if (!util2.isObject(pathObject)) {
@@ -13329,10 +13329,10 @@ var require_nested_property = __commonJS({
         return false;
       }
     }
-    function traverse(object3, path11) {
+    function traverse(object3, path12) {
       var callback = arguments.length > 2 && arguments[2] !== void 0 ? arguments[2] : function() {
       };
-      var segments = path11.split(PATH_DELIMITER);
+      var segments = path12.split(PATH_DELIMITER);
       var length = segments.length;
       var _loop = function _loop2(idx2) {
         var currentSegment = segments[idx2];
@@ -13473,7 +13473,7 @@ var require_path = __commonJS({
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.convertPosixPathToPattern = exports2.convertWindowsPathToPattern = exports2.convertPathToPattern = exports2.escapePosixPath = exports2.escapeWindowsPath = exports2.escape = exports2.removeLeadingDotSegment = exports2.makeAbsolute = exports2.unixify = void 0;
     var os2 = __require("os");
-    var path11 = __require("path");
+    var path12 = __require("path");
     var IS_WINDOWS_PLATFORM = os2.platform() === "win32";
     var LEADING_DOT_SEGMENT_CHARACTERS_COUNT = 2;
     var POSIX_UNESCAPED_GLOB_SYMBOLS_RE = /(\\?)([()*?[\]{|}]|^!|[!+@](?=\()|\\(?![!()*+?@[\]{|}]))/g;
@@ -13485,7 +13485,7 @@ var require_path = __commonJS({
     }
     exports2.unixify = unixify;
     function makeAbsolute(cwd, filepath) {
-      return path11.resolve(cwd, filepath);
+      return path12.resolve(cwd, filepath);
     }
     exports2.makeAbsolute = makeAbsolute;
     function removeLeadingDotSegment(entry) {
@@ -14782,7 +14782,7 @@ var require_braces = __commonJS({
 var require_constants2 = __commonJS({
   "node_modules/picomatch/lib/constants.js"(exports2, module) {
     "use strict";
-    var path11 = __require("path");
+    var path12 = __require("path");
     var WIN_SLASH = "\\\\/";
     var WIN_NO_SLASH = `[^${WIN_SLASH}]`;
     var DEFAULT_MAX_EXTGLOB_RECURSION = 0;
@@ -14956,7 +14956,7 @@ var require_constants2 = __commonJS({
       /* | */
       CHAR_ZERO_WIDTH_NOBREAK_SPACE: 65279,
       /* \uFEFF */
-      SEP: path11.sep,
+      SEP: path12.sep,
       /**
        * Create EXTGLOB_CHARS
        */
@@ -14983,7 +14983,7 @@ var require_constants2 = __commonJS({
 var require_utils3 = __commonJS({
   "node_modules/picomatch/lib/utils.js"(exports2) {
     "use strict";
-    var path11 = __require("path");
+    var path12 = __require("path");
     var win32 = process.platform === "win32";
     var {
       REGEX_BACKSLASH,
@@ -15012,7 +15012,7 @@ var require_utils3 = __commonJS({
       if (options && typeof options.windows === "boolean") {
         return options.windows;
       }
-      return win32 === true || path11.sep === "\\";
+      return win32 === true || path12.sep === "\\";
     };
     exports2.escapeLast = (input, char, lastIdx) => {
       const idx = input.lastIndexOf(char, lastIdx);
@@ -16376,7 +16376,7 @@ var require_parse2 = __commonJS({
 var require_picomatch = __commonJS({
   "node_modules/picomatch/lib/picomatch.js"(exports2, module) {
     "use strict";
-    var path11 = __require("path");
+    var path12 = __require("path");
     var scan = require_scan();
     var parse3 = require_parse2();
     var utils = require_utils3();
@@ -16461,7 +16461,7 @@ var require_picomatch = __commonJS({
     };
     picomatch.matchBase = (input, glob, options, posix = utils.isWindows(options)) => {
       const regex = glob instanceof RegExp ? glob : picomatch.makeRe(glob, options);
-      return regex.test(path11.basename(input));
+      return regex.test(path12.basename(input));
     };
     picomatch.isMatch = (str, patterns, options) => picomatch(patterns, options)(str);
     picomatch.parse = (pattern, options) => {
@@ -16688,7 +16688,7 @@ var require_pattern2 = __commonJS({
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.isAbsolute = exports2.partitionAbsoluteAndRelative = exports2.removeDuplicateSlashes = exports2.matchAny = exports2.convertPatternsToRe = exports2.makeRe = exports2.getPatternParts = exports2.expandBraceExpansion = exports2.expandPatternsWithBraceExpansion = exports2.isAffectDepthOfReadingPattern = exports2.endsWithSlashGlobStar = exports2.hasGlobStar = exports2.getBaseDirectory = exports2.isPatternRelatedToParentDirectory = exports2.getPatternsOutsideCurrentDirectory = exports2.getPatternsInsideCurrentDirectory = exports2.getPositivePatterns = exports2.getNegativePatterns = exports2.isPositivePattern = exports2.isNegativePattern = exports2.convertToNegativePattern = exports2.convertToPositivePattern = exports2.isDynamicPattern = exports2.isStaticPattern = void 0;
-    var path11 = __require("path");
+    var path12 = __require("path");
     var globParent = require_glob_parent();
     var micromatch = require_micromatch();
     var GLOBSTAR2 = "**";
@@ -16783,7 +16783,7 @@ var require_pattern2 = __commonJS({
     }
     exports2.endsWithSlashGlobStar = endsWithSlashGlobStar;
     function isAffectDepthOfReadingPattern(pattern) {
-      const basename2 = path11.basename(pattern);
+      const basename2 = path12.basename(pattern);
       return endsWithSlashGlobStar(pattern) || isStaticPattern(basename2);
     }
     exports2.isAffectDepthOfReadingPattern = isAffectDepthOfReadingPattern;
@@ -16829,19 +16829,19 @@ var require_pattern2 = __commonJS({
     exports2.removeDuplicateSlashes = removeDuplicateSlashes;
     function partitionAbsoluteAndRelative(patterns) {
       const absolute = [];
-      const relative2 = [];
+      const relative3 = [];
       for (const pattern of patterns) {
         if (isAbsolute3(pattern)) {
           absolute.push(pattern);
         } else {
-          relative2.push(pattern);
+          relative3.push(pattern);
         }
       }
-      return [absolute, relative2];
+      return [absolute, relative3];
     }
     exports2.partitionAbsoluteAndRelative = partitionAbsoluteAndRelative;
     function isAbsolute3(pattern) {
-      return path11.isAbsolute(pattern);
+      return path12.isAbsolute(pattern);
     }
     exports2.isAbsolute = isAbsolute3;
   }
@@ -17018,8 +17018,8 @@ var require_utils4 = __commonJS({
     exports2.errno = errno;
     var fs9 = require_fs();
     exports2.fs = fs9;
-    var path11 = require_path();
-    exports2.path = path11;
+    var path12 = require_path();
+    exports2.path = path12;
     var pattern = require_pattern2();
     exports2.pattern = pattern;
     var stream2 = require_stream();
@@ -17131,8 +17131,8 @@ var require_async = __commonJS({
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.read = void 0;
-    function read2(path11, settings, callback) {
-      settings.fs.lstat(path11, (lstatError, lstat) => {
+    function read2(path12, settings, callback) {
+      settings.fs.lstat(path12, (lstatError, lstat) => {
         if (lstatError !== null) {
           callFailureCallback(callback, lstatError);
           return;
@@ -17141,7 +17141,7 @@ var require_async = __commonJS({
           callSuccessCallback(callback, lstat);
           return;
         }
-        settings.fs.stat(path11, (statError, stat3) => {
+        settings.fs.stat(path12, (statError, stat3) => {
           if (statError !== null) {
             if (settings.throwErrorOnBrokenSymbolicLink) {
               callFailureCallback(callback, statError);
@@ -17173,13 +17173,13 @@ var require_sync = __commonJS({
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.read = void 0;
-    function read2(path11, settings) {
-      const lstat = settings.fs.lstatSync(path11);
+    function read2(path12, settings) {
+      const lstat = settings.fs.lstatSync(path12);
       if (!lstat.isSymbolicLink() || !settings.followSymbolicLink) {
         return lstat;
       }
       try {
-        const stat3 = settings.fs.statSync(path11);
+        const stat3 = settings.fs.statSync(path12);
         if (settings.markSymbolicLink) {
           stat3.isSymbolicLink = () => true;
         }
@@ -17250,17 +17250,17 @@ var require_out = __commonJS({
     var sync = require_sync();
     var settings_1 = require_settings();
     exports2.Settings = settings_1.default;
-    function stat3(path11, optionsOrSettingsOrCallback, callback) {
+    function stat3(path12, optionsOrSettingsOrCallback, callback) {
       if (typeof optionsOrSettingsOrCallback === "function") {
-        async.read(path11, getSettings(), optionsOrSettingsOrCallback);
+        async.read(path12, getSettings(), optionsOrSettingsOrCallback);
         return;
       }
-      async.read(path11, getSettings(optionsOrSettingsOrCallback), callback);
+      async.read(path12, getSettings(optionsOrSettingsOrCallback), callback);
     }
     exports2.stat = stat3;
-    function statSync2(path11, optionsOrSettings) {
+    function statSync2(path12, optionsOrSettings) {
       const settings = getSettings(optionsOrSettings);
-      return sync.read(path11, settings);
+      return sync.read(path12, settings);
     }
     exports2.statSync = statSync2;
     function getSettings(settingsOrOptions = {}) {
@@ -17476,16 +17476,16 @@ var require_async2 = __commonJS({
           return;
         }
         const tasks = names.map((name) => {
-          const path11 = common.joinPathSegments(directory, name, settings.pathSegmentSeparator);
+          const path12 = common.joinPathSegments(directory, name, settings.pathSegmentSeparator);
           return (done) => {
-            fsStat.stat(path11, settings.fsStatSettings, (error2, stats) => {
+            fsStat.stat(path12, settings.fsStatSettings, (error2, stats) => {
               if (error2 !== null) {
                 done(error2);
                 return;
               }
               const entry = {
                 name,
-                path: path11,
+                path: path12,
                 dirent: utils.fs.createDirentFromStats(name, stats)
               };
               if (settings.stats) {
@@ -17603,7 +17603,7 @@ var require_settings2 = __commonJS({
   "node_modules/@nodelib/fs.scandir/out/settings.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
-    var path11 = __require("path");
+    var path12 = __require("path");
     var fsStat = require_out();
     var fs9 = require_fs4();
     var Settings = class {
@@ -17611,7 +17611,7 @@ var require_settings2 = __commonJS({
         this._options = _options;
         this.followSymbolicLinks = this._getValue(this._options.followSymbolicLinks, false);
         this.fs = fs9.createFileSystemAdapter(this._options.fs);
-        this.pathSegmentSeparator = this._getValue(this._options.pathSegmentSeparator, path11.sep);
+        this.pathSegmentSeparator = this._getValue(this._options.pathSegmentSeparator, path12.sep);
         this.stats = this._getValue(this._options.stats, false);
         this.throwErrorOnBrokenSymbolicLink = this._getValue(this._options.throwErrorOnBrokenSymbolicLink, true);
         this.fsStatSettings = new fsStat.Settings({
@@ -17638,17 +17638,17 @@ var require_out2 = __commonJS({
     var sync = require_sync2();
     var settings_1 = require_settings2();
     exports2.Settings = settings_1.default;
-    function scandir(path11, optionsOrSettingsOrCallback, callback) {
+    function scandir(path12, optionsOrSettingsOrCallback, callback) {
       if (typeof optionsOrSettingsOrCallback === "function") {
-        async.read(path11, getSettings(), optionsOrSettingsOrCallback);
+        async.read(path12, getSettings(), optionsOrSettingsOrCallback);
         return;
       }
-      async.read(path11, getSettings(optionsOrSettingsOrCallback), callback);
+      async.read(path12, getSettings(optionsOrSettingsOrCallback), callback);
     }
     exports2.scandir = scandir;
-    function scandirSync(path11, optionsOrSettings) {
+    function scandirSync(path12, optionsOrSettings) {
       const settings = getSettings(optionsOrSettings);
-      return sync.read(path11, settings);
+      return sync.read(path12, settings);
     }
     exports2.scandirSync = scandirSync;
     function getSettings(settingsOrOptions = {}) {
@@ -18295,7 +18295,7 @@ var require_settings3 = __commonJS({
   "node_modules/@nodelib/fs.walk/out/settings.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
-    var path11 = __require("path");
+    var path12 = __require("path");
     var fsScandir = require_out2();
     var Settings = class {
       constructor(_options = {}) {
@@ -18305,7 +18305,7 @@ var require_settings3 = __commonJS({
         this.deepFilter = this._getValue(this._options.deepFilter, null);
         this.entryFilter = this._getValue(this._options.entryFilter, null);
         this.errorFilter = this._getValue(this._options.errorFilter, null);
-        this.pathSegmentSeparator = this._getValue(this._options.pathSegmentSeparator, path11.sep);
+        this.pathSegmentSeparator = this._getValue(this._options.pathSegmentSeparator, path12.sep);
         this.fsScandirSettings = new fsScandir.Settings({
           followSymbolicLinks: this._options.followSymbolicLinks,
           fs: this._options.fs,
@@ -18367,7 +18367,7 @@ var require_reader2 = __commonJS({
   "node_modules/fast-glob/out/readers/reader.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
-    var path11 = __require("path");
+    var path12 = __require("path");
     var fsStat = require_out();
     var utils = require_utils4();
     var Reader = class {
@@ -18380,7 +18380,7 @@ var require_reader2 = __commonJS({
         });
       }
       _getFullEntryPath(filepath) {
-        return path11.resolve(this._settings.cwd, filepath);
+        return path12.resolve(this._settings.cwd, filepath);
       }
       _makeEntry(stats, pattern) {
         const entry = {
@@ -18796,7 +18796,7 @@ var require_provider = __commonJS({
   "node_modules/fast-glob/out/providers/provider.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
-    var path11 = __require("path");
+    var path12 = __require("path");
     var deep_1 = require_deep();
     var entry_1 = require_entry();
     var error_1 = require_error();
@@ -18810,7 +18810,7 @@ var require_provider = __commonJS({
         this.entryTransformer = new entry_2.default(this._settings);
       }
       _getRootDirectory(task) {
-        return path11.resolve(this._settings.cwd, task.base);
+        return path12.resolve(this._settings.cwd, task.base);
       }
       _getReaderOptions(task) {
         const basePath = task.base === "." ? "" : task.base;
@@ -19624,8 +19624,8 @@ function getErrorMap() {
 
 // node_modules/zod/v3/helpers/parseUtil.js
 var makeIssue = (params) => {
-  const { data, path: path11, errorMaps, issueData } = params;
-  const fullPath = [...path11, ...issueData.path || []];
+  const { data, path: path12, errorMaps, issueData } = params;
+  const fullPath = [...path12, ...issueData.path || []];
   const fullIssue = {
     ...issueData,
     path: fullPath
@@ -19741,11 +19741,11 @@ var errorUtil;
 
 // node_modules/zod/v3/types.js
 var ParseInputLazyPath = class {
-  constructor(parent, value, path11, key) {
+  constructor(parent, value, path12, key) {
     this._cachedPath = [];
     this.parent = parent;
     this.data = value;
-    this._path = path11;
+    this._path = path12;
     this._key = key;
   }
   get path() {
@@ -23382,10 +23382,10 @@ function assignProp(target, prop, value) {
     configurable: true
   });
 }
-function getElementAtPath(obj, path11) {
-  if (!path11)
+function getElementAtPath(obj, path12) {
+  if (!path12)
     return obj;
-  return path11.reduce((acc, key) => acc?.[key], obj);
+  return path12.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -23705,11 +23705,11 @@ function aborted(x2, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path11, issues) {
+function prefixIssues(path12, issues) {
   return issues.map((iss) => {
     var _a3;
     (_a3 = iss).path ?? (_a3.path = []);
-    iss.path.unshift(path11);
+    iss.path.unshift(path12);
     return iss;
   });
 }
@@ -33453,6 +33453,7 @@ function registerResolveTool(server, engine) {
 }
 
 // src/tools/sync.ts
+import * as path from "node:path";
 function registerSyncTool(server, engine) {
   server.registerTool(
     "wormhole_sync",
@@ -33469,10 +33470,10 @@ function registerSyncTool(server, engine) {
     async (args, _extra) => {
       try {
         if (args.confirm !== true) {
-          const pull2 = await engine.pull({ dryRun: true });
+          const pull = await engine.pull({ dryRun: true });
           const push = await engine.push({ dryRun: true });
           const payload2 = {
-            pull: pull2,
+            pull,
             push,
             note: "\uBBF8\uB9AC\uBCF4\uAE30 \u2014 \uC2E4\uC81C \uC801\uC6A9\uD558\uB824\uBA74 confirm:true (\uC0AC\uC6A9\uC790 \uD655\uC778 \uD6C4)"
           };
@@ -33482,12 +33483,21 @@ function registerSyncTool(server, engine) {
           };
         }
         const policy = args.policy ?? "preserve-both";
-        const pull = await engine.pull();
-        const payload = { pull };
-        if (pull.conflicts.length > 0) {
-          payload.resolve = await engine.resolve(policy);
+        const engineCfg = engine.config;
+        const pluginsDir = path.join(engineCfg.home, ".claude", "plugins");
+        const result = await engine.syncAtomic({ pluginsDir, policy });
+        if (result.aborted) {
+          const payload2 = {
+            aborted: true,
+            missing: result.missing,
+            note: "\uBBF8\uC124\uCE58 \uD50C\uB7EC\uADF8\uC778\uC774 \uC788\uC5B4 \uB3D9\uAE30\uD654 \uC911\uB2E8\uB428. \uD50C\uB7EC\uADF8\uC778 \uC124\uCE58 \uD6C4 \uC7AC\uC2DC\uB3C4\uD558\uC138\uC694."
+          };
+          return {
+            content: [{ type: "text", text: JSON.stringify(payload2) }],
+            structuredContent: payload2
+          };
         }
-        payload.push = await engine.push();
+        const payload = { pull: result.pull, push: result.push };
         return {
           content: [{ type: "text", text: JSON.stringify(payload) }],
           structuredContent: payload
@@ -33502,9 +33512,12 @@ function registerSyncTool(server, engine) {
   );
 }
 
+// src/doctor.ts
+import * as nodePath from "node:path";
+
 // src/config.ts
 import * as fs from "fs";
-import * as path from "path";
+import * as path2 from "path";
 import * as os from "os";
 var DEFAULT_INCLUDE = [
   ".claude/CLAUDE.md",
@@ -33512,7 +33525,6 @@ var DEFAULT_INCLUDE = [
   ".claude/skills/**",
   ".claude/agents/**",
   ".claude/commands/**",
-  ".claude/.mcp.json",
   ".claude/hooks/**",
   ".claude/statusline/**",
   ".claude/hud/**"
@@ -33568,17 +33580,27 @@ var LockConfigSchema = external_exports.object({
   acquireRetries: external_exports.number().int().nonnegative().default(3),
   acquireRetryDelayMs: external_exports.number().int().nonnegative().default(1e3)
 });
+var HomeRootTargetSchema = external_exports.object({
+  subkeys: external_exports.array(external_exports.string()),
+  preserveMode: external_exports.literal("denylist")
+});
+var SettingsJsonSchema = external_exports.object({
+  localOnlyKeys: external_exports.array(external_exports.string()).default(DEFAULT_SETTINGS_LOCAL_KEYS),
+  forceSyncKeys: external_exports.array(external_exports.string()).optional()
+}).default({});
 var RawConfigSchema = external_exports.object({
   stateDir: external_exports.string().optional(),
   home: external_exports.string().optional(),
   remote: RemoteConfigSchema.partial().default({}),
   crypto: CryptoConfigSchema.partial().default({}),
   targets: SyncTargetsSchema.partial().default({}),
-  settingsLocalKeys: external_exports.array(external_exports.string()).default(DEFAULT_SETTINGS_LOCAL_KEYS),
+  settingsJson: SettingsJsonSchema,
   // 자기 자신(wormhole) mcp 서버 이름 목록. .mcp.json 동기화 시 자기참조 제외 기준.
   selfMcpServerNames: external_exports.array(external_exports.string()).default(["wormhole"]),
   conflictPolicy: external_exports.enum(["preserve-both", "latest-wins", "manual"]).default("preserve-both"),
-  lock: LockConfigSchema.partial().default({})
+  lock: LockConfigSchema.partial().default({}),
+  // home-root 파일(예: .claude.json)의 머지 서브키와 보존모드 맵.
+  homeRootTargets: external_exports.record(HomeRootTargetSchema).optional()
 });
 var FullConfigSchema = external_exports.object({
   stateDir: external_exports.string(),
@@ -33586,17 +33608,17 @@ var FullConfigSchema = external_exports.object({
   remote: RemoteConfigSchema,
   crypto: CryptoConfigSchema,
   targets: SyncTargetsSchema,
-  settingsLocalKeys: external_exports.array(external_exports.string()),
+  settingsJson: external_exports.object({ localOnlyKeys: external_exports.array(external_exports.string()), forceSyncKeys: external_exports.array(external_exports.string()).optional() }),
   conflictPolicy: external_exports.enum(["preserve-both", "latest-wins", "manual"]),
   lock: LockConfigSchema
 });
 function expandTilde(p, home) {
   if (p === "~") return home;
-  if (p.startsWith("~/") || p.startsWith("~\\")) return path.join(home, p.slice(2));
+  if (p.startsWith("~/") || p.startsWith("~\\")) return path2.join(home, p.slice(2));
   return p;
 }
 function loadDotEnvIntoProcess(envPath) {
-  const target = envPath ?? path.join(os.homedir(), ".wormhole", ".env");
+  const target = envPath ?? path2.join(os.homedir(), ".wormhole", ".env");
   let content;
   try {
     content = fs.readFileSync(target, "utf-8");
@@ -33635,6 +33657,21 @@ function applyEnvOverrides(raw) {
   result["crypto"] = crypto5;
   return result;
 }
+function migrateLegacySettingsKeys(raw) {
+  const hasLegacy = "settingsLocalKeys" in raw || "templateSettingsKeys" in raw;
+  if (!hasLegacy) return raw;
+  const out = { ...raw };
+  if (out.settingsJson == null) {
+    const grp = {};
+    if (Array.isArray(out.settingsLocalKeys)) grp.localOnlyKeys = out.settingsLocalKeys;
+    if (Array.isArray(out.templateSettingsKeys)) grp.forceSyncKeys = out.templateSettingsKeys;
+    out.settingsJson = grp;
+    console.warn("[wormhole] config \uC758 settingsLocalKeys/templateSettingsKeys \uB294 deprecated \u2014 settingsJson.{localOnlyKeys,forceSyncKeys} \uB85C \uC774\uC804\uD558\uB77C. \uC774\uBC88 \uC2E4\uD589\uC740 \uC790\uB3D9 \uBCC0\uD658\uB428.");
+  }
+  delete out.settingsLocalKeys;
+  delete out.templateSettingsKeys;
+  return out;
+}
 function normalizeBaseDir(raw) {
   return "/" + raw.replace(/^\/+/, "").replace(/\/+$/, "");
 }
@@ -33654,20 +33691,20 @@ function resolvePaths(parsed, home, stateDir) {
   const cryptoRaw = CryptoConfigSchema.parse(parsed.crypto);
   let passphraseFile = cryptoRaw.passphraseFile;
   if (!passphraseFile) {
-    passphraseFile = path.join(stateDir, "passphrase");
+    passphraseFile = path2.join(stateDir, "passphrase");
   } else {
     passphraseFile = expandTilde(passphraseFile, home);
-    if (!path.isAbsolute(passphraseFile)) {
-      passphraseFile = path.resolve(stateDir, passphraseFile);
+    if (!path2.isAbsolute(passphraseFile)) {
+      passphraseFile = path2.resolve(stateDir, passphraseFile);
     }
   }
   let derivedKeyPath = cryptoRaw.derivedKeyPath;
   if (!derivedKeyPath) {
-    derivedKeyPath = path.join(stateDir, "age-key.txt");
+    derivedKeyPath = path2.join(stateDir, "age-key.txt");
   } else {
     derivedKeyPath = expandTilde(derivedKeyPath, home);
-    if (!path.isAbsolute(derivedKeyPath)) {
-      derivedKeyPath = path.resolve(stateDir, derivedKeyPath);
+    if (!path2.isAbsolute(derivedKeyPath)) {
+      derivedKeyPath = path2.resolve(stateDir, derivedKeyPath);
     }
   }
   return {
@@ -33684,10 +33721,11 @@ function resolvePaths(parsed, home, stateDir) {
       kdfP: cryptoRaw.kdfP
     },
     targets: SyncTargetsSchema.parse(parsed.targets),
-    settingsLocalKeys: parsed.settingsLocalKeys,
+    settingsJson: parsed.settingsJson,
     selfMcpServerNames: parsed.selfMcpServerNames,
     conflictPolicy: parsed.conflictPolicy,
-    lock: LockConfigSchema.parse(parsed.lock)
+    lock: LockConfigSchema.parse(parsed.lock),
+    homeRootTargets: parsed.homeRootTargets
   };
 }
 function parseCommaList(v) {
@@ -33706,7 +33744,7 @@ function dedupe(values) {
 async function loadConfig(configPath, dotEnvPath) {
   const home = os.homedir();
   loadDotEnvIntoProcess(dotEnvPath);
-  const cfgPath = configPath ?? process.env["WORMHOLE_CONFIG"] ?? path.join(home, ".wormhole", "config.json");
+  const cfgPath = configPath ?? process.env["WORMHOLE_CONFIG"] ?? path2.join(home, ".wormhole", "config.json");
   let fileRaw = {};
   try {
     const content = await fs.promises.readFile(cfgPath, "utf-8");
@@ -33714,13 +33752,14 @@ async function loadConfig(configPath, dotEnvPath) {
   } catch (err) {
     if (err.code === "ENOENT") {
       throw new Error(
-        `config.json \uC5C6\uC74C (${cfgPath}). /wormhole-setup \uB97C \uC2E4\uD589\uD574 \uC0DD\uC131\uD558\uAC70\uB098 config.example.json \uC744 ~/.wormhole/config.json \uC73C\uB85C \uBCF5\uC0AC\uD558\uB77C.`
+        `config.json \uC5C6\uC74C (${cfgPath}). /wormhole-setup \uB97C \uC2E4\uD589\uD558\uBA74 config.json \uACFC .env \uD15C\uD50C\uB9BF\uC744 \uC790\uB3D9 \uC0DD\uC131\uD55C\uB2E4(\uAE30\uC874 \uD30C\uC77C\uC740 \uBCF4\uC874). \uC0DD\uC131 \uB4A4 ~/.wormhole/.env \uC5D0 WEBDAV_URL/USER/PASS \uC640 \uD328\uC2A4\uD504\uB808\uC774\uC988\uB97C \uCC44\uC6CC\uB77C.`
       );
     }
     throw new Error(`config \uD30C\uC77C \uC77D\uAE30 \uC2E4\uD328 (${cfgPath}): ${err.message}`);
   }
   const withEnv = applyEnvOverrides(fileRaw);
-  const parsed = RawConfigSchema.parse(withEnv);
+  const migrated = migrateLegacySettingsKeys(withEnv);
+  const parsed = RawConfigSchema.parse(migrated);
   const remoteUsername = (parsed.remote?.username ?? "").trim();
   const remoteBaseDir = (parsed.remote?.remoteBaseDir ?? "").trim();
   if (!remoteBaseDir && !remoteUsername) {
@@ -33739,8 +33778,8 @@ async function loadConfig(configPath, dotEnvPath) {
       ...parseCommaList(process.env["WORMHOLE_SYNC_EXCLUDE"])
     ])
   };
-  const stateDir = parsed.stateDir ? path.resolve(expandTilde(parsed.stateDir, home)) : path.join(home, ".wormhole");
-  const resolvedHome = parsed.home ? path.resolve(expandTilde(parsed.home, home)) : home;
+  const stateDir = parsed.stateDir ? path2.resolve(expandTilde(parsed.stateDir, home)) : path2.join(home, ".wormhole");
+  const resolvedHome = parsed.home ? path2.resolve(expandTilde(parsed.home, home)) : home;
   return resolvePaths(parsed, resolvedHome, stateDir);
 }
 
@@ -36751,11 +36790,11 @@ var qmarksTestNoExtDot = ([$0]) => {
   return (f3) => f3.length === len && f3 !== "." && f3 !== "..";
 };
 var defaultPlatform = typeof process === "object" && process ? typeof process.env === "object" && process.env && process.env.__MINIMATCH_TESTING_PLATFORM__ || process.platform : "posix";
-var path3 = {
+var path4 = {
   win32: { sep: "\\" },
   posix: { sep: "/" }
 };
-var sep = defaultPlatform === "win32" ? path3.win32.sep : path3.posix.sep;
+var sep = defaultPlatform === "win32" ? path4.win32.sep : path4.posix.sep;
 minimatch.sep = sep;
 var GLOBSTAR = /* @__PURE__ */ Symbol("globstar **");
 minimatch.GLOBSTAR = GLOBSTAR;
@@ -40604,16 +40643,16 @@ var MatcherView = class {
    * @returns {string|undefined}
    */
   getCurrentTag() {
-    const path11 = this._matcher.path;
-    return path11.length > 0 ? path11[path11.length - 1].tag : void 0;
+    const path12 = this._matcher.path;
+    return path12.length > 0 ? path12[path12.length - 1].tag : void 0;
   }
   /**
    * Get current namespace.
    * @returns {string|undefined}
    */
   getCurrentNamespace() {
-    const path11 = this._matcher.path;
-    return path11.length > 0 ? path11[path11.length - 1].namespace : void 0;
+    const path12 = this._matcher.path;
+    return path12.length > 0 ? path12[path12.length - 1].namespace : void 0;
   }
   /**
    * Get current node's attribute value.
@@ -40621,9 +40660,9 @@ var MatcherView = class {
    * @returns {*}
    */
   getAttrValue(attrName) {
-    const path11 = this._matcher.path;
-    if (path11.length === 0) return void 0;
-    return path11[path11.length - 1].values?.[attrName];
+    const path12 = this._matcher.path;
+    if (path12.length === 0) return void 0;
+    return path12[path12.length - 1].values?.[attrName];
   }
   /**
    * Check if current node has an attribute.
@@ -40631,9 +40670,9 @@ var MatcherView = class {
    * @returns {boolean}
    */
   hasAttr(attrName) {
-    const path11 = this._matcher.path;
-    if (path11.length === 0) return false;
-    const current = path11[path11.length - 1];
+    const path12 = this._matcher.path;
+    if (path12.length === 0) return false;
+    const current = path12[path12.length - 1];
     return current.values !== void 0 && attrName in current.values;
   }
   /**
@@ -40641,18 +40680,18 @@ var MatcherView = class {
    * @returns {number}
    */
   getPosition() {
-    const path11 = this._matcher.path;
-    if (path11.length === 0) return -1;
-    return path11[path11.length - 1].position ?? 0;
+    const path12 = this._matcher.path;
+    if (path12.length === 0) return -1;
+    return path12[path12.length - 1].position ?? 0;
   }
   /**
    * Get current node's repeat counter (occurrence count of this tag name).
    * @returns {number}
    */
   getCounter() {
-    const path11 = this._matcher.path;
-    if (path11.length === 0) return -1;
-    return path11[path11.length - 1].counter ?? 0;
+    const path12 = this._matcher.path;
+    if (path12.length === 0) return -1;
+    return path12[path12.length - 1].counter ?? 0;
   }
   /**
    * Get current node's sibling index (alias for getPosition).
@@ -43299,8 +43338,8 @@ function getParser({ attributeNamePrefix, attributeParsers, entityDecoder: entit
   }
   return new XMLParser(parserOptions);
 }
-function displaynameTagParser(path11, value) {
-  if (path11.endsWith("propstat.prop.displayname")) {
+function displaynameTagParser(path12, value) {
+  if (path12.endsWith("propstat.prop.displayname")) {
     return;
   }
   return value;
@@ -43458,11 +43497,11 @@ async function createDirectory(context, dirPath, options = {}) {
   const response = await request(requestOptions, context);
   handleResponseCode(context, response);
 }
-function ensureCollectionPath(path11) {
-  if (!path11.endsWith("/")) {
-    return path11 + "/";
+function ensureCollectionPath(path12) {
+  if (!path12.endsWith("/")) {
+    return path12 + "/";
   }
-  return path11;
+  return path12;
 }
 async function createDirectoryRecursively(context, dirPath, options = {}) {
   const paths = getAllDirectories(normalisePath(dirPath));
@@ -43765,7 +43804,7 @@ function parseGenericResponse(xml) {
 
 // node_modules/webdav/dist/node/operations/lock.js
 var DEFAULT_TIMEOUT = "Infinite, Second-4100000000";
-async function lock(context, path11, options = {}) {
+async function lock(context, path12, options = {}) {
   const { refreshToken, timeout = DEFAULT_TIMEOUT } = options;
   const headers = {
     Accept: "text/plain,application/xml",
@@ -43775,7 +43814,7 @@ async function lock(context, path11, options = {}) {
     headers.If = refreshToken;
   }
   const requestOptions = prepareRequestOptions({
-    url: joinURL(context.remoteURL, encodePath(path11)),
+    url: joinURL(context.remoteURL, encodePath(path12)),
     method: "LOCK",
     headers,
     data: generateLockXML(context.contactHref)
@@ -43795,9 +43834,9 @@ async function lock(context, path11, options = {}) {
     serverTimeout
   };
 }
-async function unlock(context, path11, token, options = {}) {
+async function unlock(context, path12, token, options = {}) {
   const requestOptions = prepareRequestOptions({
-    url: joinURL(context.remoteURL, encodePath(path11)),
+    url: joinURL(context.remoteURL, encodePath(path12)),
     method: "UNLOCK",
     headers: {
       "Lock-Token": token
@@ -43828,9 +43867,9 @@ function parseQuota(result) {
 
 // node_modules/webdav/dist/node/operations/getQuota.js
 async function getQuota(context, options = {}) {
-  const path11 = options.path || "/";
+  const path12 = options.path || "/";
   const requestOptions = prepareRequestOptions({
-    url: joinURL(context.remoteURL, path11),
+    url: joinURL(context.remoteURL, path12),
     method: "PROPFIND",
     headers: {
       Accept: "text/plain,application/xml",
@@ -44076,29 +44115,29 @@ function createClient(remoteURL, options = {}) {
   setupAuth(context, username, password, token, ha1);
   return {
     copyFile: (filename, destination, options2) => copyFile(context, filename, destination, options2),
-    createDirectory: (path11, options2) => createDirectory(context, path11, options2),
+    createDirectory: (path12, options2) => createDirectory(context, path12, options2),
     createReadStream: (filename, options2) => createReadStream2(context, filename, options2),
     createWriteStream: (filename, options2, callback) => createWriteStream(context, filename, options2, callback),
-    customRequest: (path11, requestOptions) => customRequest(context, path11, requestOptions),
+    customRequest: (path12, requestOptions) => customRequest(context, path12, requestOptions),
     deleteFile: (filename, options2) => deleteFile(context, filename, options2),
-    exists: (path11, options2) => exists(context, path11, options2),
-    getDirectoryContents: (path11, options2) => getDirectoryContents(context, path11, options2),
+    exists: (path12, options2) => exists(context, path12, options2),
+    getDirectoryContents: (path12, options2) => getDirectoryContents(context, path12, options2),
     getFileContents: (filename, options2) => getFileContents(context, filename, options2),
     getFileDownloadLink: (filename) => getFileDownloadLink(context, filename),
     getFileUploadLink: (filename) => getFileUploadLink(context, filename),
     getHeaders: () => Object.assign({}, context.headers),
     getQuota: (options2) => getQuota(context, options2),
-    lock: (path11, options2) => lock(context, path11, options2),
+    lock: (path12, options2) => lock(context, path12, options2),
     moveFile: (filename, destinationFilename, options2) => moveFile(context, filename, destinationFilename, options2),
     putFileContents: (filename, data, options2) => putFileContents(context, filename, data, options2),
     partialUpdateFileContents: (filePath, start, end, data, options2) => partialUpdateFileContents(context, filePath, start, end, data, options2),
-    getDAVCompliance: (path11) => getDAVCompliance(context, path11),
-    search: (path11, options2) => getSearch2(context, path11, options2),
+    getDAVCompliance: (path12) => getDAVCompliance(context, path12),
+    search: (path12, options2) => getSearch2(context, path12, options2),
     setHeaders: (headers2) => {
       context.headers = Object.assign({}, headers2);
     },
-    stat: (path11, options2) => getStat(context, path11, options2),
-    unlock: (path11, token2, options2) => unlock(context, path11, token2, options2),
+    stat: (path12, options2) => getStat(context, path12, options2),
+    unlock: (path12, token2, options2) => unlock(context, path12, token2, options2),
     registerAttributeParser: (parser) => {
       context.parsing.attributeParsers.push(parser);
     },
@@ -44141,18 +44180,18 @@ var RemoteStore = class {
     }
   }
   // 경로를 baseDir 기준으로 결합. 절대경로면 그대로, 아니면 baseDir 접두.
-  resolvePath(path11) {
-    if (path11.startsWith("/") && !path11.startsWith(this.baseDir)) {
-      return path11;
+  resolvePath(path12) {
+    if (path12.startsWith("/") && !path12.startsWith(this.baseDir)) {
+      return path12;
     }
-    if (path11.startsWith(this.baseDir)) {
-      return path11;
+    if (path12.startsWith(this.baseDir)) {
+      return path12;
     }
-    return `${this.baseDir}/${path11}`.replace(/\/+/g, "/");
+    return `${this.baseDir}/${path12}`.replace(/\/+/g, "/");
   }
   // 디렉터리 보장(recursive). 이미 있으면 no-op.
-  async ensureDir(path11) {
-    const resolved = this.resolvePath(path11);
+  async ensureDir(path12) {
+    const resolved = this.resolvePath(path12);
     try {
       const exists2 = await this.client.exists(resolved);
       if (!exists2) {
@@ -44164,8 +44203,8 @@ var RemoteStore = class {
     }
   }
   // 파일/디렉터리 존재 여부.
-  async exists(path11) {
-    const resolved = this.resolvePath(path11);
+  async exists(path12) {
+    const resolved = this.resolvePath(path12);
     try {
       return await this.client.exists(resolved);
     } catch {
@@ -44176,8 +44215,8 @@ var RemoteStore = class {
   // 원자적 업로드: tmp 파일에 쓴 후 최종 경로로 이동.
   // tmp 이름에 머신ID + 모듈 카운터를 붙여 동시/연속 호출 간 충돌을 방지한다.
   // moveFile 실패 시 남은 tmp(orphan)를 삭제한 뒤 원인 에러를 재throw.
-  async putAtomic(path11, data, machineId) {
-    const resolved = this.resolvePath(path11);
+  async putAtomic(path12, data, machineId) {
+    const resolved = this.resolvePath(path12);
     const token = `${machineId}.${atomicTmpCounter++}`;
     const tmpPath = `${resolved}.tmp.${token}`;
     await this.client.putFileContents(tmpPath, data, { overwrite: true });
@@ -44196,21 +44235,21 @@ var RemoteStore = class {
     }
   }
   // 단순 업로드(원자성 불필요한 경우: lock.json 등).
-  async put(path11, data) {
-    const resolved = this.resolvePath(path11);
+  async put(path12, data) {
+    const resolved = this.resolvePath(path12);
     await this.client.putFileContents(resolved, data, { overwrite: true });
     this.logger?.debug(`[RemoteStore] \uC5C5\uB85C\uB4DC \uC644\uB8CC: ${resolved}`);
   }
   // 텍스트로 읽기. 없으면 throw.
-  async getText(path11) {
-    const resolved = this.resolvePath(path11);
+  async getText(path12) {
+    const resolved = this.resolvePath(path12);
     const result = await this.client.getFileContents(resolved, { format: "text" });
     return result;
   }
   // 본문 + ETag 동시 회수. 없으면(404) null.
   // ETag 는 낙관적 잠금(조건부 PUT)에 사용. 서버가 ETag 를 안 주면 etag=null.
-  async getTextWithETag(path11) {
-    const resolved = this.resolvePath(path11);
+  async getTextWithETag(path12) {
+    const resolved = this.resolvePath(path12);
     try {
       const result = await this.client.getFileContents(resolved, {
         format: "text",
@@ -44228,8 +44267,8 @@ var RemoteStore = class {
   // 서버측 원자 비교-후-쓰기(CAS)이므로 read→put 사이 경쟁이 끼어들 수 없다.
   // 불일치(412/405/409)면 PreconditionFailedError throw.
   // expectedEtag 가 null(서버가 ETag 미지원)이면 best-effort 로 무조건 PUT(경고 로깅).
-  async putIfMatch(path11, data, etag, machineId) {
-    const resolved = this.resolvePath(path11);
+  async putIfMatch(path12, data, etag, machineId) {
+    const resolved = this.resolvePath(path12);
     if (etag === null) {
       this.logger?.warn(
         `[RemoteStore] putIfMatch: ETag \uC5C6\uC74C(\uC11C\uBC84 \uBBF8\uC9C0\uC6D0?) \u2014 best-effort PUT \uC73C\uB85C \uD3F4\uBC31: ${resolved} (machineId=${machineId})`
@@ -44258,8 +44297,8 @@ var RemoteStore = class {
   // If-None-Match:* 조건부 PUT: 원격에 리소스가 "없을 때만" 생성한다.
   // 동시에 여러 머신이 생성을 시도해도 서버측에서 한쪽만 성공시킨다(원자적 생성).
   // 이미 존재(412/405/409)면 PreconditionFailedError throw.
-  async putIfNoneMatch(path11, data, machineId) {
-    const resolved = this.resolvePath(path11);
+  async putIfNoneMatch(path12, data, machineId) {
+    const resolved = this.resolvePath(path12);
     try {
       await this.client.customRequest(resolved, {
         method: "PUT",
@@ -44279,14 +44318,14 @@ var RemoteStore = class {
     }
   }
   // 바이너리로 읽기.
-  async getBinary(path11) {
-    const resolved = this.resolvePath(path11);
+  async getBinary(path12) {
+    const resolved = this.resolvePath(path12);
     const result = await this.client.getFileContents(resolved, { format: "binary" });
     return result;
   }
   // 텍스트 읽되 없으면(404) null 반환.
-  async getTextIfExists(path11) {
-    const resolved = this.resolvePath(path11);
+  async getTextIfExists(path12) {
+    const resolved = this.resolvePath(path12);
     try {
       const exists2 = await this.client.exists(resolved);
       if (!exists2) return null;
@@ -44301,8 +44340,8 @@ var RemoteStore = class {
   // 디렉터리 항목 열거. 없거나 에러면 빈 배열.
   // 디렉터리 항목 열거. 디렉터리 부재(404)만 빈 배열, 그 외 에러(401/403/5xx)는 재throw.
   // 기존엔 catch{} 로 모든 에러를 빈 배열로 흡수해 인증/서버 오류를 "빈 디렉터리"로 오인했다.
-  async list(path11) {
-    const resolved = this.resolvePath(path11);
+  async list(path12) {
+    const resolved = this.resolvePath(path12);
     try {
       const contents = await this.client.getDirectoryContents(resolved);
       const items = Array.isArray(contents) ? contents : contents.data;
@@ -44318,8 +44357,8 @@ var RemoteStore = class {
     }
   }
   // 파일 삭제. 없으면 무시(멱등).
-  async deleteFile(path11) {
-    const resolved = this.resolvePath(path11);
+  async deleteFile(path12) {
+    const resolved = this.resolvePath(path12);
     try {
       const exists2 = await this.client.exists(resolved);
       if (!exists2) return;
@@ -44349,7 +44388,7 @@ function classifyEtag(etag) {
 
 // src/crypto/age.ts
 import { promises as fs3 } from "node:fs";
-import * as path5 from "node:path";
+import * as path6 from "node:path";
 
 // node_modules/age-encryption/node_modules/@noble/hashes/esm/cryptoNode.js
 import * as nc from "node:crypto";
@@ -45220,7 +45259,7 @@ function alphabet(letters) {
   };
 }
 // @__NO_SIDE_EFFECTS__
-function join2(separator = "") {
+function join3(separator = "") {
   astr("join", separator);
   return {
     encode: (from) => {
@@ -45350,9 +45389,9 @@ var base643 = hasBase64Builtin ? {
   decode(s2) {
     return decodeBase64Builtin(s2, false);
   }
-} : /* @__PURE__ */ chain(/* @__PURE__ */ radix2(6), /* @__PURE__ */ alphabet("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"), /* @__PURE__ */ padding(6), /* @__PURE__ */ join2(""));
-var base64nopad = /* @__PURE__ */ chain(/* @__PURE__ */ radix2(6), /* @__PURE__ */ alphabet("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"), /* @__PURE__ */ join2(""));
-var BECH_ALPHABET = /* @__PURE__ */ chain(/* @__PURE__ */ alphabet("qpzry9x8gf2tvdw0s3jn54khce6mua7l"), /* @__PURE__ */ join2(""));
+} : /* @__PURE__ */ chain(/* @__PURE__ */ radix2(6), /* @__PURE__ */ alphabet("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"), /* @__PURE__ */ padding(6), /* @__PURE__ */ join3(""));
+var base64nopad = /* @__PURE__ */ chain(/* @__PURE__ */ radix2(6), /* @__PURE__ */ alphabet("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"), /* @__PURE__ */ join3(""));
+var BECH_ALPHABET = /* @__PURE__ */ chain(/* @__PURE__ */ alphabet("qpzry9x8gf2tvdw0s3jn54khce6mua7l"), /* @__PURE__ */ join3(""));
 var POLYMOD_GENERATORS = [996825010, 642813549, 513874426, 1027748829, 705979059];
 function bech32Polymod(pre) {
   const b = pre >> 25;
@@ -48806,7 +48845,7 @@ var AgeCrypto = class _AgeCrypto {
   }
   // 파생된 identity 를 0600 으로 캐시. 부모 디렉터리 mkdir -p.
   static async #cacheIdentity(cachePath, identity, logger2) {
-    await fs3.mkdir(path5.dirname(cachePath), { recursive: true });
+    await fs3.mkdir(path6.dirname(cachePath), { recursive: true });
     const body = `# wormhole \uD30C\uC0DD age \uD0A4 \u2014 passphrase \uB85C\uBD80\uD130 \uC790\uB3D9 \uC0DD\uC131\uB428. \uC218\uB3D9 \uD3B8\uC9D1 \uAE08\uC9C0.
 ${identity}
 `;
@@ -48980,7 +49019,8 @@ var FileEntrySchema = external_exports.object({
   generation: external_exports.number().int().nonnegative(),
   lastModifiedBy: external_exports.string().max(256),
   deleted: external_exports.boolean(),
-  deletedAt: external_exports.number().nullable()
+  deletedAt: external_exports.number().nullable(),
+  scopeExcluded: external_exports.boolean().optional()
 });
 var ManifestSchema = external_exports.object({
   schemaVersion: external_exports.literal(1),
@@ -49360,10 +49400,10 @@ function classifyLock(raw, now, selfId, defaultTtlMs) {
 
 // src/sync/machine.ts
 import * as fs5 from "fs/promises";
-import * as path6 from "path";
+import * as path7 from "path";
 import * as crypto3 from "crypto";
 async function loadOrCreateMachineId(stateDir) {
-  const filePath = path6.join(stateDir, "machine-id");
+  const filePath = path7.join(stateDir, "machine-id");
   try {
     const content = await fs5.readFile(filePath, "utf-8");
     const id2 = content.trim();
@@ -49384,7 +49424,7 @@ async function loadOrCreateMachineId(stateDir) {
   return id;
 }
 async function readMachineIdIfExists(stateDir) {
-  const filePath = path6.join(stateDir, "machine-id");
+  const filePath = path7.join(stateDir, "machine-id");
   try {
     const content = await fs5.readFile(filePath, "utf-8");
     const id = content.trim();
@@ -49426,6 +49466,82 @@ async function runDoctor(logger2) {
       status: "fail",
       detail: err.message
     });
+  }
+  if (config2 !== null) {
+    const ENV_DEP_PATTERNS = ["command", "args", "cwd", "env", "hooks", "permissions"];
+    const hasEnvDep = config2.settingsJson.localOnlyKeys.some(
+      (k) => ENV_DEP_PATTERNS.some((p) => k.includes(p))
+    );
+    const includesSettings = config2.targets.include.some(
+      (g) => g.includes("settings.json") || g.includes("settings")
+    );
+    if (includesSettings && !hasEnvDep) {
+      checks.push({
+        name: "settingsJson.localOnlyKeys \uD658\uACBD\uC758\uC874\uD0A4",
+        status: "warn",
+        detail: "settings.json \uC774 \uB3D9\uAE30\uD654 \uB300\uC0C1\uC774\uB098 settingsJson.localOnlyKeys \uC5D0 \uD658\uACBD\uC758\uC874\uD0A4(command/args/env/hooks/permissions)\uAC00 \uC5C6\uC74C \u2014 \uBA38\uC2E0\uACE0\uC720 \uC124\uC815\uC774 shared \uB85C \uC720\uCD9C\uB420 \uC704\uD5D8"
+      });
+    } else {
+      checks.push({
+        name: "settingsJson.localOnlyKeys \uD658\uACBD\uC758\uC874\uD0A4",
+        status: "ok",
+        detail: `settingsJson.localOnlyKeys \uC5D0 \uD658\uACBD\uC758\uC874\uD0A4 \uD3EC\uD568 (${config2.settingsJson.localOnlyKeys.length}\uAC1C)`
+      });
+    }
+  }
+  if (config2 !== null) {
+    const ABS_RE = /^([A-Za-z]:[/\\]|\/)/;
+    const foundAbs = config2.targets.include.filter((g) => ABS_RE.test(g));
+    if (foundAbs.length > 0) {
+      checks.push({
+        name: "include \uC808\uB300\uACBD\uB85C \uB9AC\uD130\uB7F4",
+        status: "warn",
+        detail: `include \uAE00\uB85C\uBE0C\uC5D0 \uC808\uB300\uACBD\uB85C \uB9AC\uD130\uB7F4 \uBC1C\uACAC \u2014 \uC774\uC8FC \uBD88\uAC00/\uD0C0 \uBA38\uC2E0 \uD638\uD658 \uBD88\uAC00 \uC704\uD5D8: ${foundAbs.join(", ")}`
+      });
+    } else {
+      checks.push({
+        name: "include \uC808\uB300\uACBD\uB85C \uB9AC\uD130\uB7F4",
+        status: "ok",
+        detail: "include \uAE00\uB85C\uBE0C\uC5D0 \uC808\uB300\uACBD\uB85C \uC5C6\uC74C"
+      });
+    }
+  }
+  if (config2 !== null) {
+    const stateDirRel = nodePath.relative(config2.home, config2.stateDir).replace(/\\/g, "/");
+    const stateDirLeaks = config2.targets.include.filter((g) => {
+      const gg = g.replace(/\\/g, "/");
+      return gg.startsWith(stateDirRel + "/") || gg === stateDirRel || gg.startsWith(stateDirRel + "/**");
+    });
+    if (stateDirLeaks.length > 0) {
+      checks.push({
+        name: "stateDir \uB3D9\uAE30\uD654 \uC720\uCD9C",
+        status: "warn",
+        detail: `stateDir(${stateDirRel}) \uD558\uC704\uAC00 include \uAE00\uB85C\uBE0C\uC5D0 \uD3EC\uD568 \u2014 \uC554\uD638\uD0A4\xB7\uC0C1\uD0DC\uD30C\uC77C \uC720\uCD9C \uC704\uD5D8: ${stateDirLeaks.join(", ")}`
+      });
+    } else {
+      checks.push({
+        name: "stateDir \uB3D9\uAE30\uD654 \uC720\uCD9C",
+        status: "ok",
+        detail: `stateDir(${stateDirRel}) \uC774 include \uBC94\uC704 \uBC16 \u2014 \uC554\uD638 \uC790\uC7AC \uC720\uCD9C \uC5C6\uC74C`
+      });
+    }
+  }
+  if (config2 !== null) {
+    const SECRET_RE = /(_PAT|_TOKEN|_SECRET)(\b|$|\*)/i;
+    const secretGlobs = config2.targets.include.filter((g) => SECRET_RE.test(g));
+    if (secretGlobs.length > 0) {
+      checks.push({
+        name: "include \uC2DC\uD06C\uB9BF \uD328\uD134",
+        status: "warn",
+        detail: `include \uC5D0 *_PAT/*_TOKEN/*_SECRET \uD328\uD134 \uBC1C\uACAC \u2014 \uD1A0\uD070\xB7\uC2DC\uD06C\uB9BF \uD30C\uC77C \uC720\uCD9C \uC704\uD5D8: ${secretGlobs.join(", ")}`
+      });
+    } else {
+      checks.push({
+        name: "include \uC2DC\uD06C\uB9BF \uD328\uD134",
+        status: "ok",
+        detail: "include \uC5D0 \uC2DC\uD06C\uB9BF \uD328\uD134(*_PAT/*_TOKEN/*_SECRET) \uC5C6\uC74C"
+      });
+    }
   }
   if (config2 === null) {
     checks.push({
@@ -49716,13 +49832,23 @@ function registerAllTools(server, engine) {
 }
 
 // src/sync/engine.ts
-import { promises as fs8 } from "node:fs";
-import * as path10 from "node:path";
+import { promises as fs8, readFileSync as readFileSync2, existsSync } from "node:fs";
+import * as path11 from "node:path";
 import { gzip, gunzip } from "node:zlib";
 import { promisify as promisify3 } from "node:util";
 
 // src/sync/diff.ts
 function classifyKey(logicalKey, localHash, baseHash, remoteEntry, syncedGeneration) {
+  if (remoteEntry?.scopeExcluded) {
+    return {
+      logicalKey,
+      kind: "unchanged",
+      localHash,
+      baseHash,
+      remoteHash: remoteEntry.contentHash,
+      remoteGeneration: remoteEntry.generation
+    };
+  }
   const remoteExists = remoteEntry !== void 0 && !remoteEntry.deleted;
   const remoteHash = remoteExists ? remoteEntry.contentHash : null;
   const remoteGeneration = remoteEntry !== void 0 ? remoteEntry.generation : null;
@@ -49873,18 +49999,19 @@ function summarize(items) {
 // src/sync/scanner.ts
 var import_fast_glob = __toESM(require_out4(), 1);
 import * as fs6 from "node:fs/promises";
-import * as path8 from "node:path";
+import * as path9 from "node:path";
+import { createRequire } from "node:module";
 
 // src/sync/paths.ts
-import path7 from "node:path";
+import path8 from "node:path";
 var SETTINGS_LOGICAL_KEY = ".claude/settings.json";
-var MCP_JSON_LOGICAL_KEY = ".claude/.mcp.json";
+var CLAUDE_JSON_LOGICAL_KEY = ".claude.json";
 function toLogical(home, absPath) {
-  const rel = path7.relative(home, absPath);
-  return rel.split(path7.sep).join("/");
+  const rel = path8.relative(home, absPath);
+  return rel.split(path8.sep).join("/");
 }
 function toOS(home, logicalKey) {
-  return path7.join(home, ...logicalKey.split("/"));
+  return path8.join(home, ...logicalKey.split("/"));
 }
 function isValidLogicalKey(logicalKey) {
   if (typeof logicalKey !== "string" || logicalKey.length === 0) return false;
@@ -49902,26 +50029,34 @@ function isValidLogicalKey(logicalKey) {
   return true;
 }
 function isWithinHome(home, absPath) {
-  const rel = path7.relative(home, absPath);
+  const rel = path8.relative(home, absPath);
   if (rel.length === 0) return false;
   if (rel.startsWith("..")) return false;
-  if (path7.isAbsolute(rel)) return false;
+  if (path8.isAbsolute(rel)) return false;
   return true;
 }
 function isSettingsKey(logicalKey) {
   return logicalKey === SETTINGS_LOGICAL_KEY;
 }
-function isMcpJsonKey(logicalKey) {
-  return logicalKey === MCP_JSON_LOGICAL_KEY;
+function isClaudeJsonKey(logicalKey) {
+  return logicalKey === CLAUDE_JSON_LOGICAL_KEY;
 }
 
 // src/sync/scanner.ts
+var _require = createRequire(import.meta.url);
+var _mm = _require("micromatch");
+function isKeyInScope(logicalKey, targets) {
+  const inInclude = _mm.isMatch(logicalKey, targets.include, { dot: true });
+  if (!inInclude) return false;
+  if (targets.exclude.length === 0) return true;
+  return !_mm.isMatch(logicalKey, targets.exclude, { dot: true });
+}
 async function scanLocal(config2) {
   const { home, targets, stateDir } = config2;
   const ignore = [...targets.exclude];
-  const relState = path8.relative(home, stateDir);
-  if (relState !== "" && !relState.startsWith("..") && !path8.isAbsolute(relState)) {
-    ignore.push(`${relState.split(path8.sep).join("/")}/**`);
+  const relState = path9.relative(home, stateDir);
+  if (relState !== "" && !relState.startsWith("..") && !path9.isAbsolute(relState)) {
+    ignore.push(`${relState.split(path9.sep).join("/")}/**`);
   }
   const matches = await (0, import_fast_glob.default)(targets.include, {
     cwd: home,
@@ -49933,7 +50068,7 @@ async function scanLocal(config2) {
   });
   const results = [];
   for (const rel of matches) {
-    const absPath = path8.join(home, ...rel.split("/"));
+    const absPath = path9.join(home, ...rel.split("/"));
     const logicalKey = toLogical(home, absPath);
     let stat3;
     try {
@@ -49948,6 +50083,24 @@ async function scanLocal(config2) {
       size: stat3.size,
       mtimeMs: stat3.mtimeMs
     });
+  }
+  if (config2.homeRootTargets) {
+    for (const logicalKey of Object.keys(config2.homeRootTargets)) {
+      const absPath = toOS(home, logicalKey);
+      let stat3;
+      try {
+        stat3 = await fs6.stat(absPath);
+      } catch {
+        continue;
+      }
+      if (!stat3.isFile()) continue;
+      results.push({
+        logicalKey,
+        absPath,
+        size: stat3.size,
+        mtimeMs: stat3.mtimeMs
+      });
+    }
   }
   results.sort((a, b) => a.logicalKey.localeCompare(b.logicalKey));
   return results;
@@ -49975,7 +50128,7 @@ function blobName(logicalKey) {
 }
 
 // src/sync/settings-merge.ts
-import * as path9 from "node:path";
+import * as path10 from "node:path";
 function isPlainObject4(v) {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
@@ -50009,7 +50162,7 @@ function detokenizeHome(value, home) {
   if (typeof value === "string") {
     if (value === HOME_TOKEN) return home;
     if (value.startsWith(HOME_TOKEN + "/") || value.startsWith(HOME_TOKEN + "\\")) {
-      const suffix = value.slice(HOME_TOKEN.length).split(/[\\/]/).join(path9.sep);
+      const suffix = value.slice(HOME_TOKEN.length).split(/[\\/]/).join(path10.sep);
       return home + suffix;
     }
     return value;
@@ -50028,8 +50181,8 @@ function detokenizeHome(value, home) {
 function segMatches(pattern, seg) {
   return pattern === "*" || pattern === seg;
 }
-function isLocalKey(path11, localKeys) {
-  const segs = path11.split(".");
+function isLocalKey(path12, localKeys) {
+  const segs = path12.split(".");
   for (const key of localKeys) {
     const pat = key.split(".");
     if (pat.length > segs.length) continue;
@@ -50044,14 +50197,18 @@ function isLocalKey(path11, localKeys) {
   }
   return false;
 }
-function pruneLocal(obj, localKeys, prefix) {
+function pruneLocal(obj, localKeys, prefix, templateKeys, home) {
   const out = {};
   for (const [k, v] of Object.entries(obj)) {
     if (isForbiddenKey(k)) continue;
-    const path11 = prefix ? `${prefix}.${k}` : k;
-    if (isLocalKey(path11, localKeys)) continue;
+    const dotPath = prefix ? `${prefix}.${k}` : k;
+    if (isLocalKey(dotPath, templateKeys)) {
+      out[k] = home ? tokenizeHome(v, home) : v;
+      continue;
+    }
+    if (isLocalKey(dotPath, localKeys)) continue;
     if (isPlainObject4(v)) {
-      const pruned = pruneLocal(v, localKeys, path11);
+      const pruned = pruneLocal(v, localKeys, dotPath, templateKeys, home);
       if (Object.keys(pruned).length === 0 && Object.keys(v).length > 0) continue;
       out[k] = pruned;
     } else {
@@ -50060,8 +50217,8 @@ function pruneLocal(obj, localKeys, prefix) {
   }
   return out;
 }
-function extractSharedSubset(obj, localKeys) {
-  return pruneLocal(obj, localKeys, "");
+function extractSharedSubset(obj, localKeys, templateKeys = [], home = "") {
+  return pruneLocal(obj, localKeys, "", templateKeys, home);
 }
 function deepEqual(a, b) {
   if (a === b) return true;
@@ -50093,7 +50250,7 @@ function mergeRecursive(local, remote, base, prefix, conflicts) {
   ]);
   for (const k of keys) {
     if (isForbiddenKey(k)) continue;
-    const path11 = prefix ? `${prefix}.${k}` : k;
+    const path12 = prefix ? `${prefix}.${k}` : k;
     const hasLocal = Object.prototype.hasOwnProperty.call(local, k);
     const hasRemote = Object.prototype.hasOwnProperty.call(remote, k);
     const hasBase = Object.prototype.hasOwnProperty.call(base, k);
@@ -50123,18 +50280,18 @@ function mergeRecursive(local, remote, base, prefix, conflicts) {
         lv,
         rv,
         isPlainObject4(bv) ? bv : {},
-        path11,
+        path12,
         conflicts
       );
       continue;
     }
-    conflicts.push(path11);
+    conflicts.push(path12);
     if (hasLocal) out[k] = lv;
   }
   return out;
 }
-function threeWayMerge(local, remoteShared, baseShared, localKeys) {
-  const localShared = extractSharedSubset(local, localKeys);
+function threeWayMerge(local, remoteShared, baseShared, localKeys, templateKeys = []) {
+  const localShared = extractSharedSubset(local, localKeys, templateKeys);
   const conflictKeys = [];
   const mergedShared = mergeRecursive(
     localShared,
@@ -50171,27 +50328,7 @@ function stableNormalize(value) {
   }
   return value;
 }
-function stripSelfMcpServers(jsonText, selfNames, home = "") {
-  let parsed;
-  try {
-    parsed = JSON.parse(jsonText);
-  } catch {
-    const buf2 = Buffer.from(jsonText, "utf-8");
-    return { text: jsonText, hash: sha2563(buf2), size: buf2.byteLength };
-  }
-  const root = isPlainObject4(parsed) ? structuredCloneSafe(parsed) : {};
-  const servers = root.mcpServers;
-  if (isPlainObject4(servers)) {
-    for (const name of selfNames) {
-      delete servers[name];
-    }
-  }
-  const tokenized = home ? tokenizeHome(root, home) : root;
-  const text = stableStringify(tokenized);
-  const buf = Buffer.from(text, "utf-8");
-  return { text, hash: sha2563(buf), size: buf.byteLength };
-}
-function normalizeSettingsForSync(rawText, localKeys, home = "") {
+function normalizeSettingsForSync(rawText, localKeys, home = "", templateKeys = []) {
   let parsed;
   try {
     parsed = JSON.parse(rawText);
@@ -50200,16 +50337,58 @@ function normalizeSettingsForSync(rawText, localKeys, home = "") {
     return { text: rawText, hash: sha2563(buf2), size: buf2.byteLength };
   }
   const obj = isPlainObject4(parsed) ? parsed : {};
-  const shared = extractSharedSubset(obj, localKeys);
+  const shared = extractSharedSubset(obj, localKeys, templateKeys, home);
   const tokenized = home ? tokenizeHome(shared, home) : shared;
   const text = stableStringify(tokenized);
   const buf = Buffer.from(text, "utf-8");
   return { text, hash: sha2563(buf), size: buf.byteLength };
 }
-function mergeMcpJsonForPull(remoteSharedText, localText, selfNames, home = "") {
+var SECRET_ENV_PATTERN = /_(PAT|TOKEN|SECRET)$/;
+function normalizeClaudeJsonForSync(jsonText, selfNames, home = "") {
+  let parsed;
+  try {
+    parsed = JSON.parse(jsonText);
+  } catch {
+    const buf2 = Buffer.from(jsonText, "utf-8");
+    return { text: jsonText, hash: sha2563(buf2), size: buf2.byteLength };
+  }
+  const root = isPlainObject4(parsed) ? parsed : {};
+  const out = {};
+  if (Object.prototype.hasOwnProperty.call(root, "mcpServers")) {
+    const servers = root.mcpServers;
+    if (isPlainObject4(servers)) {
+      const strippedServers = {};
+      for (const [name, serverVal] of Object.entries(servers)) {
+        if (selfNames.includes(name)) continue;
+        if (!isPlainObject4(serverVal)) {
+          strippedServers[name] = serverVal;
+          continue;
+        }
+        const srv = structuredCloneSafe(serverVal);
+        const env = srv.env;
+        if (isPlainObject4(env)) {
+          for (const envKey of Object.keys(env)) {
+            if (SECRET_ENV_PATTERN.test(envKey)) {
+              delete env[envKey];
+            }
+          }
+        }
+        strippedServers[name] = srv;
+      }
+      out.mcpServers = strippedServers;
+    } else {
+      out.mcpServers = servers;
+    }
+  }
+  const tokenized = home ? tokenizeHome(out, home) : out;
+  const text = stableStringify(tokenized);
+  const buf = Buffer.from(text, "utf-8");
+  return { text, hash: sha2563(buf), size: buf.byteLength };
+}
+function mergeClaudeJsonForPull(localRaw, remoteContent, selfNames, home = "") {
   let remote = {};
   try {
-    const parsed = JSON.parse(remoteSharedText);
+    const parsed = JSON.parse(remoteContent);
     if (isPlainObject4(parsed)) remote = structuredCloneSafe(parsed);
   } catch {
     remote = {};
@@ -50220,25 +50399,52 @@ function mergeMcpJsonForPull(remoteSharedText, localText, selfNames, home = "") 
       delete remote.mcpServers[name];
     }
   }
+  const remoteServers = remote.mcpServers;
+  if (isPlainObject4(remoteServers)) {
+    for (const [, serverVal] of Object.entries(remoteServers)) {
+      if (!isPlainObject4(serverVal)) continue;
+      const env = serverVal.env;
+      if (!isPlainObject4(env)) continue;
+      for (const envKey of Object.keys(env)) {
+        if (SECRET_ENV_PATTERN.test(envKey)) {
+          delete env[envKey];
+        }
+      }
+    }
+  }
   let local = null;
-  if (localText !== null) {
+  if (localRaw !== null) {
     try {
-      const parsed = JSON.parse(localText);
-      if (isPlainObject4(parsed)) local = parsed;
+      const parsed = JSON.parse(localRaw);
+      if (isPlainObject4(parsed)) local = structuredCloneSafe(parsed);
     } catch {
       local = null;
     }
   }
   if (local === null) {
-    return stableStringify(remote);
+    const out = {};
+    if (Object.prototype.hasOwnProperty.call(remote, "mcpServers")) {
+      out.mcpServers = remote.mcpServers;
+    }
+    return stableStringify(out);
   }
-  const merged = structuredCloneSafe(remote);
-  const localServers = local.mcpServers;
-  if (isPlainObject4(localServers)) {
-    const mergedServers = isPlainObject4(merged.mcpServers) ? merged.mcpServers : (merged.mcpServers = {}, merged.mcpServers);
-    for (const name of selfNames) {
-      if (Object.prototype.hasOwnProperty.call(localServers, name)) {
-        mergedServers[name] = localServers[name];
+  const merged = structuredCloneSafe(local);
+  if (Object.prototype.hasOwnProperty.call(remote, "mcpServers")) {
+    merged.mcpServers = remote.mcpServers;
+  } else {
+    delete merged.mcpServers;
+  }
+  if (selfNames.length > 0) {
+    const localServers = local.mcpServers;
+    if (isPlainObject4(localServers)) {
+      const selfEntries = selfNames.filter(
+        (name) => Object.prototype.hasOwnProperty.call(localServers, name)
+      );
+      if (selfEntries.length > 0) {
+        const mergedServers = isPlainObject4(merged.mcpServers) ? merged.mcpServers : (merged.mcpServers = {}, merged.mcpServers);
+        for (const name of selfEntries) {
+          mergedServers[name] = localServers[name];
+        }
       }
     }
   }
@@ -50274,6 +50480,43 @@ function deepAssign(target, src) {
 }
 
 // src/sync/engine.ts
+function checkInstallPrereqs(pulledSettings, pluginsDir) {
+  const settings = pulledSettings;
+  const enabledPlugins = settings?.enabledPlugins ?? {};
+  const required2 = Object.entries(enabledPlugins).filter(([, v]) => !!v).map(([k]) => k);
+  if (required2.length === 0) return { ok: true, missing: [] };
+  let installedPlugins = {};
+  try {
+    const raw = readFileSync2(path11.join(pluginsDir, "installed_plugins.json"), "utf-8");
+    const parsed = JSON.parse(raw);
+    installedPlugins = parsed.plugins ?? {};
+  } catch {
+    return { ok: false, missing: required2 };
+  }
+  let knownMarketplaces = {};
+  try {
+    const raw = readFileSync2(path11.join(pluginsDir, "known_marketplaces.json"), "utf-8");
+    knownMarketplaces = JSON.parse(raw);
+  } catch {
+  }
+  const missing = [];
+  for (const key of required2) {
+    const entries = installedPlugins[key];
+    if (!Array.isArray(entries) || entries.length === 0) {
+      missing.push(key);
+      continue;
+    }
+    const atIdx = key.lastIndexOf("@");
+    if (atIdx > 0) {
+      const marketplace = key.slice(atIdx + 1);
+      const marketEntry = knownMarketplaces[marketplace];
+      if (!marketEntry || !marketEntry.installLocation || !existsSync(marketEntry.installLocation)) {
+        missing.push(key);
+      }
+    }
+  }
+  return { ok: missing.length === 0, missing };
+}
 var MAX_CAS_RETRIES = 3;
 var atomicWriteSeq = 0;
 function delay3(ms) {
@@ -50343,9 +50586,9 @@ var SyncEngine = class {
     );
     this.lock = new RemoteLock(this.remote, this.config, this.machineId, this.logger);
     this.mutex = new AsyncMutex();
-    this.statePath = path10.join(this.config.stateDir, "state.json");
-    this.baseDir = path10.join(this.config.stateDir, "base");
-    this.backupsDir = path10.join(this.config.stateDir, "backups");
+    this.statePath = path11.join(this.config.stateDir, "state.json");
+    this.baseDir = path11.join(this.config.stateDir, "base");
+    this.backupsDir = path11.join(this.config.stateDir, "backups");
   }
   // ── 공개 API ────────────────────────────────────────────────
   /** 현재 동기화 상태 계산. 부수효과 없음. */
@@ -50412,14 +50655,14 @@ var SyncEngine = class {
     for (const f3 of scanned) {
       let contentHash;
       let size = f3.size;
-      if (isSettingsKey(f3.logicalKey) || isMcpJsonKey(f3.logicalKey)) {
+      if (isSettingsKey(f3.logicalKey) || isClaudeJsonKey(f3.logicalKey)) {
         let raw;
         try {
           raw = await fs8.readFile(f3.absPath, "utf-8");
         } catch {
           continue;
         }
-        const norm = isSettingsKey(f3.logicalKey) ? normalizeSettingsForSync(raw, this.config.settingsLocalKeys, this.config.home) : stripSelfMcpServers(raw, this.config.selfMcpServerNames, this.config.home);
+        const norm = isSettingsKey(f3.logicalKey) ? normalizeSettingsForSync(raw, this.config.settingsJson.localOnlyKeys, this.config.home, this.config.settingsJson.forceSyncKeys ?? []) : normalizeClaudeJsonForSync(raw, this.config.selfMcpServerNames, this.config.home);
         contentHash = norm.hash;
         size = norm.size;
       } else {
@@ -50462,9 +50705,14 @@ var SyncEngine = class {
     await this.atomicWriteFile(this.statePath, JSON.stringify(state, null, 2));
   }
   // ── push ────────────────────────────────────────────────────
-  /** dryRun push 계획 — 실제 변경 없이 상태만 분류. */
+  /** dryRun push 계획 — purge 후 상태 분류(실제 원격 쓰기 없음). */
   async planPush() {
-    const status = await this.status();
+    const remoteManifest = await this.manifestStore.read();
+    const manifest = remoteManifest ?? ManifestStore.empty(this.machineId);
+    const local = await this.scanWithHashes();
+    const state = await this.readState();
+    await this.purgeDescopedKeys(local, state, manifest);
+    const status = computeStatus({ local, manifest: remoteManifest, state, machineId: this.machineId });
     const pushed = [
       ...status.summary.added,
       ...status.summary.modified
@@ -50507,6 +50755,7 @@ var SyncEngine = class {
     const expectedGeneration = remoteManifest ? remoteManifest.manifestGeneration : null;
     const local = await this.scanWithHashes();
     const state = await this.readState();
+    await this.purgeDescopedKeys(local, state, manifest);
     const status = computeStatus({
       local,
       manifest: remoteManifest,
@@ -50537,7 +50786,7 @@ var SyncEngine = class {
       let contentHash;
       let size;
       let mtimeMs;
-      if (isSettingsKey(key) || isMcpJsonKey(key)) {
+      if (isSettingsKey(key) || isClaudeJsonKey(key)) {
         const ov = settingsOverride.get(key);
         if (!ov) {
           skipped++;
@@ -50631,14 +50880,14 @@ var SyncEngine = class {
   async preparePushSettings(localMap, _remoteManifest, _state) {
     const out = /* @__PURE__ */ new Map();
     for (const [key, f3] of localMap) {
-      if (!isSettingsKey(key) && !isMcpJsonKey(key)) continue;
+      if (!isSettingsKey(key) && !isClaudeJsonKey(key)) continue;
       let rawText;
       try {
         rawText = await fs8.readFile(f3.absPath, "utf-8");
       } catch {
         continue;
       }
-      const norm = isSettingsKey(key) ? normalizeSettingsForSync(rawText, this.config.settingsLocalKeys, this.config.home) : stripSelfMcpServers(rawText, this.config.selfMcpServerNames, this.config.home);
+      const norm = isSettingsKey(key) ? normalizeSettingsForSync(rawText, this.config.settingsJson.localOnlyKeys, this.config.home, this.config.settingsJson.forceSyncKeys ?? []) : normalizeClaudeJsonForSync(rawText, this.config.selfMcpServerNames, this.config.home);
       const content = Buffer.from(norm.text, "utf-8");
       out.set(key, { content, contentHash: norm.hash, size: norm.size });
     }
@@ -50693,8 +50942,9 @@ var SyncEngine = class {
       state,
       machineId: this.machineId
     });
+    const homeRootKeys = new Set(Object.keys(this.config.homeRootTargets ?? {}));
     const toApply = status.items.filter(
-      (i2) => i2.kind === "remoteAdded" || i2.kind === "remoteModified"
+      (i2) => (i2.kind === "remoteAdded" || i2.kind === "remoteModified") && !remoteManifest?.entries[i2.logicalKey]?.scopeExcluded && (homeRootKeys.has(i2.logicalKey) || isKeyInScope(i2.logicalKey, this.config.targets))
     );
     const toRemove = status.items.filter((i2) => i2.kind === "remoteDeleted");
     const convergedItems = status.items.filter((i2) => i2.kind === "converged");
@@ -50708,7 +50958,7 @@ var SyncEngine = class {
       };
     }
     const runTs = this.makeRunTs();
-    const backupRoot = path10.join(this.backupsDir, runTs);
+    const backupRoot = path11.join(this.backupsDir, runTs);
     const applied = [];
     const removed = [];
     const nextState = { ...state };
@@ -50729,8 +50979,8 @@ var SyncEngine = class {
         backedUp.push({ key, absPath, backupPath });
         if (isSettingsKey(key)) {
           await this.applyPullSettings(key, absPath, plain, entry, nextState);
-        } else if (isMcpJsonKey(key)) {
-          await this.applyPullMcpJson(key, absPath, plain, entry, nextState);
+        } else if (isClaudeJsonKey(key)) {
+          await this.applyPullClaudeJson(key, absPath, plain, entry, nextState);
         } else {
           await this.atomicWriteFile(absPath, plain);
           await this.writeBaseSnapshot(key, plain);
@@ -50791,7 +51041,7 @@ var SyncEngine = class {
     const remoteManifest = await this.manifestStore.read();
     const local = await this.scanWithHashes();
     const runTs = this.makeRunTs();
-    const backupRoot = path10.join(this.backupsDir, runTs);
+    const backupRoot = path11.join(this.backupsDir, runTs);
     const applied = [];
     const removed = [];
     const nextState = {};
@@ -50799,7 +51049,10 @@ var SyncEngine = class {
     const remoteKeys = /* @__PURE__ */ new Set();
     try {
       if (remoteManifest) {
-        const entries = Object.entries(remoteManifest.entries).filter(([, e2]) => !e2.deleted);
+        const homeRootKeysForce = new Set(Object.keys(this.config.homeRootTargets ?? {}));
+        const entries = Object.entries(remoteManifest.entries).filter(
+          ([k, e2]) => !e2.deleted && !e2.scopeExcluded && (homeRootKeysForce.has(k) || isKeyInScope(k, this.config.targets))
+        );
         await mapLimit(entries, IO_CONCURRENCY, async ([key, entry]) => {
           remoteKeys.add(key);
           const absPath = this.safeAbsPath(key);
@@ -50858,7 +51111,8 @@ var SyncEngine = class {
       localObj,
       remoteShared,
       baseShared,
-      this.config.settingsLocalKeys
+      this.config.settingsJson.localOnlyKeys,
+      this.config.settingsJson.forceSyncKeys ?? []
     );
     const mergedReal = home ? detokenizeHome(result.merged, home) : result.merged;
     const mergedText = JSON.stringify(mergedReal, null, 2);
@@ -50870,27 +51124,47 @@ var SyncEngine = class {
       syncedGeneration: entry.generation
     };
   }
-  // .mcp.json pull 적용: 원격(self 제거된 shared)을 로컬에 머지하되 로컬의 자기(wormhole) 항목은 보존.
-  async applyPullMcpJson(key, absPath, remotePlain, entry, nextState) {
-    const remoteSharedText = remotePlain.toString("utf-8");
-    let localText;
+  // .claude.json pull 적용: 원격 mcpServers 만 로컬에 머지하되 mcpServers 외 나머지 키는 로컬 보존.
+  async applyPullClaudeJson(key, absPath, remotePlain, entry, nextState) {
+    const remoteContent = remotePlain.toString("utf-8");
+    let localRaw;
     try {
-      localText = await fs8.readFile(absPath, "utf-8");
+      localRaw = await fs8.readFile(absPath, "utf-8");
     } catch {
-      localText = null;
+      localRaw = null;
     }
-    const mergedText = mergeMcpJsonForPull(
-      remoteSharedText,
-      localText,
-      this.config.selfMcpServerNames,
-      this.config.home
-    );
+    const mergedText = mergeClaudeJsonForPull(localRaw, remoteContent, this.config.selfMcpServerNames, this.config.home);
     await this.atomicWriteFile(absPath, mergedText);
-    await this.writeBaseSnapshot(key, remoteSharedText);
+    await this.writeBaseSnapshot(key, remoteContent);
     nextState[key] = {
       syncedHash: entry.contentHash,
       syncedGeneration: entry.generation
     };
+  }
+  // ── de-scope purge ─────────────────────────────────────────
+  /**
+   * de-scope 키 처리: base 스냅샷·state 엔트리 제거 + manifest 엔트리에 scopeExcluded:true 마킹.
+   * 이렇게 해야 classifyKey 가 localHash=null, baseHash=null 로 평가해 "deleted" 분류 안 함.
+   * local 스캔에 없고 base/state 에 잔존하는 키 = de-scope 대상.
+   */
+  async purgeDescopedKeys(local, state, manifest) {
+    const localKeys = new Set(local.map((f3) => f3.logicalKey));
+    const homeRootKeys = new Set(Object.keys(this.config.homeRootTargets ?? {}));
+    let purged = false;
+    for (const key of Object.keys(state)) {
+      if (localKeys.has(key)) continue;
+      if (homeRootKeys.has(key)) continue;
+      if (isKeyInScope(key, this.config.targets)) continue;
+      await this.removeBaseSnapshot(key);
+      delete state[key];
+      purged = true;
+      if (manifest.entries[key] && !manifest.entries[key].deleted) {
+        manifest.entries[key] = { ...manifest.entries[key], scopeExcluded: true };
+      }
+    }
+    if (purged) {
+      await this.writeState(state);
+    }
   }
   // ── resolve ─────────────────────────────────────────────────
   /** dryRun resolve 계획. */
@@ -50926,7 +51200,7 @@ var SyncEngine = class {
       return { policy, resolved: [], conflictCopies: [], backupDir: null };
     }
     const runTs = this.makeRunTs();
-    const backupRoot = path10.join(this.backupsDir, runTs);
+    const backupRoot = path11.join(this.backupsDir, runTs);
     const resolved = [];
     const conflictCopies = [];
     const nextState = { ...state };
@@ -51012,11 +51286,11 @@ var SyncEngine = class {
   // ── 파일 입출력 유틸 ────────────────────────────────────────
   /** 로컬 원자적 쓰기: 같은 디렉터리에 tmp 작성 → rename. 부모 mkdir -p. */
   async atomicWriteFile(absPath, data) {
-    const dir = path10.dirname(absPath);
+    const dir = path11.dirname(absPath);
     await fs8.mkdir(dir, { recursive: true });
-    const tmpPath = path10.join(
+    const tmpPath = path11.join(
       dir,
-      `.${path10.basename(absPath)}.tmp.${this.machineId}.${process.pid}.${atomicWriteSeq++}`
+      `.${path11.basename(absPath)}.tmp.${this.machineId}.${process.pid}.${atomicWriteSeq++}`
     );
     const fh = await fs8.open(tmpPath, "w");
     try {
@@ -51110,7 +51384,7 @@ var SyncEngine = class {
   // ── base 스냅샷 ─────────────────────────────────────────────
   /** base 스냅샷 경로: <stateDir>/base/<sha256(logicalKey)>. */
   baseSnapshotPath(key) {
-    return path10.join(this.baseDir, sha2563(key));
+    return path11.join(this.baseDir, sha2563(key));
   }
   /** base 스냅샷 기록(마지막 동기화 평문 보관). */
   async writeBaseSnapshot(key, data) {
@@ -51136,8 +51410,8 @@ var SyncEngine = class {
   async backupFile(absPath, key, backupRoot) {
     try {
       const data = await fs8.readFile(absPath);
-      const backupPath = path10.join(backupRoot, ...key.split("/"));
-      await fs8.mkdir(path10.dirname(backupPath), { recursive: true });
+      const backupPath = path11.join(backupRoot, ...key.split("/"));
+      await fs8.mkdir(path11.dirname(backupPath), { recursive: true });
       await fs8.writeFile(backupPath, data);
       return backupPath;
     } catch (err) {
@@ -51159,6 +51433,57 @@ var SyncEngine = class {
         this.logger?.error(`[engine] \uB864\uBC31 \uC2E4\uD328 ${b.key}: ${String(err.message)}`);
       }
     }
+  }
+  /** manifest-only read + pulledSettings 추출. 블롭 다운로드·로컬 파일 미변경.
+   *  락 획득 前 read-only 단계 전용.
+   */
+  async fetchRemote() {
+    const remoteManifest = await this.manifestStore.read();
+    const local = await this.scanWithHashes();
+    const state = await this.readState();
+    const status = computeStatus({ local, manifest: remoteManifest, state, machineId: this.machineId });
+    let pulledSettings = null;
+    if (remoteManifest !== null) {
+      const settingsKey = Object.keys(remoteManifest.entries).find((k) => isSettingsKey(k));
+      if (settingsKey) {
+        try {
+          const plain = await this.downloadBlob(settingsKey);
+          if (plain !== null) {
+            pulledSettings = JSON.parse(plain.toString("utf-8"));
+          }
+        } catch {
+          pulledSettings = null;
+        }
+      }
+    }
+    return { remoteManifest, pulledSettings, status };
+  }
+  /** 단일 락 파이프라인: fetch(manifest-only) → install-check → withLock(재검증→pull→push).
+   *  미설치 플러그인 참조 시 `{aborted: true, missing}` 반환.
+   */
+  async syncAtomic(opts) {
+    const { pluginsDir, policy } = opts;
+    const { pulledSettings } = await this.fetchRemote();
+    const prereq = checkInstallPrereqs(pulledSettings, pluginsDir);
+    if (!prereq.ok) {
+      return { aborted: true, missing: prereq.missing };
+    }
+    return this.mutex.runExclusive(
+      async () => withLock(this.lock, async () => {
+        const { pulledSettings: freshSettings } = await this.fetchRemote();
+        const recheck = checkInstallPrereqs(freshSettings, pluginsDir);
+        if (!recheck.ok) {
+          return { aborted: true, missing: recheck.missing };
+        }
+        const pull = await this.runPull();
+        if (pull.conflicts.length > 0) {
+          const effective = policy ?? this.config.conflictPolicy;
+          await this.runResolve(effective);
+        }
+        const push = await this.runPushWithRetry();
+        return { aborted: false, pull, push };
+      })
+    );
   }
 };
 

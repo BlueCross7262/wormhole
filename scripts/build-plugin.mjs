@@ -74,8 +74,11 @@ const ESBUILD_COMMON = {
   format: "esm",
   target: "node20",
   // 일부 transitive 의존성이 내부적으로 CJS require 를 쓰므로 banner 로 require 를 주입한다.
+  // createRequire 를 alias 로 import 한다: esbuild 0.28+ 가 ESM 출력에 자체
+  // `import { createRequire } from "node:module"` 를 top-level 로 emit 하므로,
+  // banner 가 같은 식별자를 쓰면 "Identifier 'createRequire' has already been declared" 충돌이 난다.
   banner: {
-    js: "import { createRequire } from 'module'; const require = createRequire(import.meta.url);",
+    js: "import { createRequire as __wormholeCreateRequire } from 'node:module'; const require = __wormholeCreateRequire(import.meta.url);",
   },
   logLevel: "info",
 };
