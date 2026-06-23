@@ -93,16 +93,14 @@ export interface Config {
   crypto: CryptoConfig;
   /** 동기화 대상 글로브. */
   targets: SyncTargets;
-  /** settings.json 에서 머신고유로 제외할 JSON dot-path 키. 빈 배열 허용. */
-  settingsLocalKeys: string[];
+  /** settings.json 동기화 관련 키 설정. */
+  settingsJson: { localOnlyKeys: string[]; forceSyncKeys?: string[] };
   /** 자기 자신(wormhole) mcp 서버 이름 목록. .mcp.json 동기화 시 자기참조 제외 기준. */
   selfMcpServerNames: string[];
   /** 충돌 기본 정책. */
   conflictPolicy: ResolvePolicy;
   /** 원격 락 설정. */
   lock: LockConfig;
-  /** settings.json 중 template(공유) 처리할 top-level 키 목록. 미지정 시 undefined. */
-  templateSettingsKeys?: string[];
   /** home-root 파일(예: .claude.json)의 머지 서브키와 보존모드 맵. 미지정 시 undefined. */
   homeRootTargets?: Record<string, HomeRootTarget>;
 }

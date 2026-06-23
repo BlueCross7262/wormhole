@@ -1443,7 +1443,7 @@
   - `WRITABLE_WEBDAV`
   - 머신 A `~/.claude/settings.json`: `{ "mcpServers": { "all-local": { "command": "/usr/bin/tool", "args": [], "cwd": "/tmp", "env": {} } }, "theme": "dark" }`
   - mcpServers.all-local 에 로컬키(command/args/cwd/env) 만 존재, 공유 키(type 등) 없음
-  - config.json `settingsLocalKeys = DEFAULT_SETTINGS_LOCAL_KEYS` (mcpServers.*.command/args/cwd/env 포함)
+  - config.json `settingsJson.localOnlyKeys = DEFAULT_SETTINGS_LOCAL_KEYS` (mcpServers.*.command/args/cwd/env 포함)
 - **대상 도구**: `wormhole_sync`, `wormhole_status`
 - **절차**:
   1. tools/call `wormhole_sync {"confirm": true}`
@@ -1468,7 +1468,7 @@
 - **전제조건**:
   - `TWO_MACHINE` (머신 A/B = 별도 HOME+stateDir, 동일 `WRITABLE_WEBDAV` + 동일 passphrase)
   - 양 머신이 동일 base 스냅샷에서 출발(최초 1회 sync 로 base 정합)
-  - 공유키 후보: settings.json 의 비-localKey leaf(예: 'theme' 또는 임의 shared scalar). settingsLocalKeys(mcpServers.*.command/args/cwd/env, permissions.*, hooks, statusLine.command) 에 포함되지 않는 키여야 함
+  - 공유키 후보: settings.json 의 비-localKey leaf(예: 'theme' 또는 임의 shared scalar). settingsJson.localOnlyKeys(mcpServers.*.command/args/cwd/env, permissions.*, hooks, statusLine.command) 에 포함되지 않는 키여야 함
   - `STDIO_RPC_CLIENT` 두 인스턴스
 - **대상 도구**: `wormhole_sync`, `wormhole_status`
 - **절차**:
@@ -1524,7 +1524,7 @@
 - **전제조건**:
   - WRITABLE_WEBDAV 단일 머신, server.mjs 부팅 가능(buildEngine 전 단계 통과)
   - 로컬 ~/.claude/settings.json 을 비-JSON 텍스트 '{broken' 로 기록(JSON.parse 시 SyntaxError 유발)
-  - config.json 의 settings 동기화 대상에 settings.json 포함, settingsLocalKeys 설정됨
+  - config.json 의 settings 동기화 대상에 settings.json 포함, settingsJson.localOnlyKeys 설정됨
   - STDIO_RPC_CLIENT 또는 MCP_INSPECTOR 준비
 - **대상 도구**: `wormhole_status`, `wormhole_sync`
 - **절차**:

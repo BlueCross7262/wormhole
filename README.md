@@ -458,7 +458,8 @@ cp config.example.json ~/.wormhole/config.json
 | `crypto.kdfP` | scrypt p | `1` |
 | `targets.include` | 동기화 포함 glob | 6번 참고 |
 | `targets.exclude` | 동기화 제외 glob | 자격증명·캐시·로컬 오버라이드 |
-| `settingsLocalKeys` | `settings.json` 에서 머신 고유로 제외할 키 | `mcpServers.*`, `permissions.*`, `hooks`, `statusLine.command` |
+| `settingsJson.localOnlyKeys` | `settings.json` 에서 머신 고유로 제외할 키 (denylist) | `mcpServers.*`, `permissions.*`, `hooks`, `statusLine.command` |
+| `settingsJson.forceSyncKeys` | denylist 에 막혀도 강제 shared 로 동기화할 키 | (미지정 시 없음) |
 | `selfMcpServerNames` | `.mcp.json` 동기화 시 자기참조 제외 기준 | `["wormhole"]` |
 | `conflictPolicy` | 충돌 기본 정책 | `preserve-both` |
 
@@ -491,7 +492,7 @@ WORMHOLE_SYNC_EXCLUDE=.claude/secret-notes/**
 
 > **트레이드오프 — 스크립트 파일 vs. settings.json 와이어링**
 >
-> 훅·스테이터스라인 스크립트 파일은 동기화되지만, `settings.json` 의 훅 연결(`hooks.*`)과 `statusLine.command` 는 **머신 로컬** 로 유지된다 (`settingsLocalKeys` 기본값).
+> 훅·스테이터스라인 스크립트 파일은 동기화되지만, `settings.json` 의 훅 연결(`hooks.*`)과 `statusLine.command` 는 **머신 로컬** 로 유지된다 (`settingsJson.localOnlyKeys` 기본값).
 > 이유: `hooks.*.command` 와 `statusLine.command` 에는 Windows `C:\Program Files\nodejs\node.exe` 같은 OS·머신 고유 인터프리터 절대경로가 들어가며, wormhole 의 `${HOME}` 토큰화 범위 밖이라 그대로 동기화하면 타 머신에서 경로가 깨진다.
 > 결과: 새 머신에 pull 하면 스크립트 파일은 도착하지만 와이어링은 각 머신이 직접 재설정해야 한다 (OMC 재실행 또는 수동 지정 1회).
 > 스크립트 파일이 없는 상태에서 와이어링만 있는 기존 환경은 이전과 동일하게 동작한다.
@@ -609,7 +610,7 @@ wormhole 은 **명시적 단발 동기화** 모델이다. 상주 서버·자동 
 - pull 적용 전 로컬 스냅샷을 백업한다.
 - 모든 연산은 멱등이며, 부분 실패 시 롤백/재시도한다 (push 는 매니페스트 CAS 커밋을 원자 지점으로 삼아 자가복구).
 - 동시쓰기 방어: 원격 매니페스트 ETag 기반 낙관적 잠금 + 락 파일, 충돌 시 지수 백오프 재시도.
-- `settings.json` 은 키 단위로 머지하며 머신 고유키 (`settingsLocalKeys`) 를 보호한다. `settings.local.json` 은 동기화에서 제외된다 (기기 로컬 오버라이드).
+- `settings.json` 은 키 단위로 머지하며 머신 고유키 (`settingsJson.localOnlyKeys`) 를 보호한다. `settings.local.json` 은 동기화에서 제외된다 (기기 로컬 오버라이드).
 
 ---
 

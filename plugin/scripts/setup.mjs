@@ -74,15 +74,17 @@ const CONFIG_TEMPLATE = {
       "**/cache/**"
     ]
   },
-  settingsLocalKeys: [
-    "mcpServers.*.command",
-    "mcpServers.*.args",
-    "mcpServers.*.cwd",
-    "mcpServers.*.env",
-    "permissions.*",
-    "hooks",
-    "statusLine.command"
-  ],
+  settingsJson: {
+    localOnlyKeys: [
+      "mcpServers.*.command",
+      "mcpServers.*.args",
+      "mcpServers.*.cwd",
+      "mcpServers.*.env",
+      "permissions.*",
+      "hooks",
+      "statusLine.command"
+    ]
+  },
   selfMcpServerNames: ["wormhole"],
   conflictPolicy: "preserve-both",
   lock: {

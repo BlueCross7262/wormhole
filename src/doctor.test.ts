@@ -566,7 +566,7 @@ function writeConfigFull(
   return p;
 }
 
-describe("runDoctor — 이주완전성 체크 (1) settingsLocalKeys 환경의존키 누락", () => {
+describe("runDoctor — 이주완전성 체크 (1) settingsJson.localOnlyKeys 환경의존키 누락", () => {
   before(() => { snapshotEnv(); });
   after(() => { restoreEnv(); });
 
@@ -581,30 +581,32 @@ describe("runDoctor — 이주완전성 체크 (1) settingsLocalKeys 환경의�
     fs.rmSync(tmpRoot, { recursive: true, force: true });
   });
 
-  test("settingsLocalKeys 비어 있음(환경의존키 0개) → warn", async () => {
+  test("settingsJson.localOnlyKeys 비어 있음(환경의존키 0개) → warn", async () => {
     const stateDir = path.join(tmpRoot, "state");
     fs.mkdirSync(stateDir, { recursive: true });
     process.env["WORMHOLE_CONFIG"] = writeConfigFull(stateDir, DEAD_URL, {
-      settingsLocalKeys: [],
+      settingsJson: { localOnlyKeys: [] },
     });
     const result = await runDoctor(logger);
-    const c = findCheck(result, "settingsLocalKeys");
-    assert.equal(c.status, "warn", `settingsLocalKeys 비어 있으면 warn. detail: ${c.detail}`);
+    const c = findCheck(result, "settingsJson.localOnlyKeys");
+    assert.equal(c.status, "warn", `settingsJson.localOnlyKeys 비어 있으면 warn. detail: ${c.detail}`);
   });
 
-  test("settingsLocalKeys 에 환경의존키 포함(기본값) → ok", async () => {
+  test("settingsJson.localOnlyKeys 에 환경의존키 포함(기본값) → ok", async () => {
     const stateDir = path.join(tmpRoot, "state");
     fs.mkdirSync(stateDir, { recursive: true });
     process.env["WORMHOLE_CONFIG"] = writeConfigFull(stateDir, DEAD_URL, {
-      settingsLocalKeys: [
-        "mcpServers.*.command",
-        "mcpServers.*.args",
-        "mcpServers.*.env",
-        "hooks",
-      ],
+      settingsJson: {
+        localOnlyKeys: [
+          "mcpServers.*.command",
+          "mcpServers.*.args",
+          "mcpServers.*.env",
+          "hooks",
+        ],
+      },
     });
     const result = await runDoctor(logger);
-    const c = findCheck(result, "settingsLocalKeys");
+    const c = findCheck(result, "settingsJson.localOnlyKeys");
     assert.equal(c.status, "ok", `환경의존키 포함 시 ok. detail: ${c.detail}`);
   });
 });

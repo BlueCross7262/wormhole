@@ -771,3 +771,50 @@ describe("extractSharedSubset — templateKeys 지정 키는 tokenizeHome 후 sh
     assert.ok((sl.command as string).startsWith(TEMPLATE_TOKEN), "command 는 \${HOME} 토큰화됨");
   });
 });
+
+describe("threeWayMerge — templateKeys pull 동작", () => {
+  test("(a) templateKeys 지정 키는 pull 시 원격 값으로 채택된다", () => {
+    const local = { permissions: { defaultMode: "bypassPermissions" } };
+    const remoteShared = { permissions: { defaultMode: "default" } };
+    const baseShared = { permissions: { defaultMode: "bypassPermissions" } };
+    const res = threeWayMerge(
+      local,
+      remoteShared,
+      baseShared,
+      ["permissions.*"],
+      ["permissions.defaultMode"],
+    );
+    assert.strictEqual(
+      (res.merged.permissions as Record<string, unknown>).defaultMode,
+      "default",
+      "merged 에 원격 값 채택",
+    );
+    assert.strictEqual(
+      ((res.sharedSubset as Record<string, unknown>).permissions as Record<string, unknown>).defaultMode,
+      "default",
+      "sharedSubset 에도 원격 값 포함",
+    );
+  });
+
+  test("(b) templateKeys 없으면 localKeys denylist 로 drop — 로컬 값 보존", () => {
+    const local = { permissions: { defaultMode: "bypassPermissions" } };
+    const remoteShared = { permissions: { defaultMode: "default" } };
+    const baseShared = { permissions: { defaultMode: "bypassPermissions" } };
+    const res = threeWayMerge(
+      local,
+      remoteShared,
+      baseShared,
+      ["permissions.*"],
+      [],
+    );
+    assert.ok(
+      !Object.prototype.hasOwnProperty.call(res.sharedSubset, "permissions"),
+      "sharedSubset 에 permissions 키 없음",
+    );
+    assert.strictEqual(
+      (res.merged.permissions as Record<string, unknown>).defaultMode,
+      "bypassPermissions",
+      "merged 에 로컬 값 보존",
+    );
+  });
+});

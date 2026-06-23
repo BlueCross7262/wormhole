@@ -21,7 +21,8 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/setup.mjs
 **`~/.wormhole/config.json`** — 동기화 범위 및 동작 설정 (선택적으로 편집)
 
 - `targets.include` / `targets.exclude` — 동기화할 glob 패턴 목록. 기본값은 `.claude/` 하위 주요 파일을 포함한다.
-- `settingsLocalKeys` — 머신별로 유지할 settings.json 키 경로 목록 (동기화에서 제외).
+- `settingsJson.localOnlyKeys` — 머신별로 유지할 settings.json 키 경로 목록 (동기화에서 제외).
+- `settingsJson.forceSyncKeys` — denylist 에 막혀도 강제 shared 로 동기화할 키 목록 (선택).
 - `conflictPolicy` — 충돌 시 처리 방식 (`preserve-both` / `latest-wins` / `manual`).
 - `crypto`, `lock` 등 고급 설정은 파일 내 값을 직접 수정한다.
 

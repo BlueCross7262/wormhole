@@ -323,7 +323,7 @@ export class SyncEngine {
           continue; // 스캔 후 삭제됨.
         }
         const norm = isSettingsKey(f.logicalKey)
-          ? normalizeSettingsForSync(raw, this.config.settingsLocalKeys, this.config.home, this.config.templateSettingsKeys ?? [])
+          ? normalizeSettingsForSync(raw, this.config.settingsJson.localOnlyKeys, this.config.home, this.config.settingsJson.forceSyncKeys ?? [])
           : normalizeClaudeJsonForSync(raw, this.config.selfMcpServerNames, this.config.home);
         contentHash = norm.hash;
         size = norm.size;
@@ -596,7 +596,7 @@ export class SyncEngine {
         continue;
       }
       const norm = isSettingsKey(key)
-        ? normalizeSettingsForSync(rawText, this.config.settingsLocalKeys, this.config.home, this.config.templateSettingsKeys ?? [])
+        ? normalizeSettingsForSync(rawText, this.config.settingsJson.localOnlyKeys, this.config.home, this.config.settingsJson.forceSyncKeys ?? [])
         : normalizeClaudeJsonForSync(rawText, this.config.selfMcpServerNames, this.config.home);
       const content = Buffer.from(norm.text, "utf-8");
       out.set(key, { content, contentHash: norm.hash, size: norm.size });
@@ -877,7 +877,8 @@ export class SyncEngine {
       localObj,
       remoteShared,
       baseShared,
-      this.config.settingsLocalKeys,
+      this.config.settingsJson.localOnlyKeys,
+      this.config.settingsJson.forceSyncKeys ?? [],
     );
 
     // 사용자 파일은 실제 home 경로로 복원해서 쓴다.

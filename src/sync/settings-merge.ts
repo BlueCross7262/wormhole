@@ -234,8 +234,9 @@ export function threeWayMerge(
   remoteShared: Record<string, unknown>,
   baseShared: Record<string, unknown>,
   localKeys: string[],
+  templateKeys: string[] = [],
 ): SettingsMergeResult {
-  const localShared = extractSharedSubset(local, localKeys);
+  const localShared = extractSharedSubset(local, localKeys, templateKeys);
   const conflictKeys: string[] = [];
 
   const mergedShared = mergeRecursive(

@@ -81,19 +81,22 @@ const HomeRootTargetSchema = z.object({
   preserveMode: z.literal("denylist"),
 });
 
+const SettingsJsonSchema = z.object({
+  localOnlyKeys: z.array(z.string()).default(DEFAULT_SETTINGS_LOCAL_KEYS),
+  forceSyncKeys: z.array(z.string()).optional(),
+}).default({});
+
 const RawConfigSchema = z.object({
   stateDir: z.string().optional(),
   home: z.string().optional(),
   remote: RemoteConfigSchema.partial().default({}),
   crypto: CryptoConfigSchema.partial().default({}),
   targets: SyncTargetsSchema.partial().default({}),
-  settingsLocalKeys: z.array(z.string()).default(DEFAULT_SETTINGS_LOCAL_KEYS),
+  settingsJson: SettingsJsonSchema,
   // 자기 자신(wormhole) mcp 서버 이름 목록. .mcp.json 동기화 시 자기참조 제외 기준.
   selfMcpServerNames: z.array(z.string()).default(["wormhole"]),
   conflictPolicy: z.enum(["preserve-both", "latest-wins", "manual"]).default("preserve-both"),
   lock: LockConfigSchema.partial().default({}),
-  // settings.json 중 template(공유) 처리할 top-level 키 목록.
-  templateSettingsKeys: z.array(z.string()).optional(),
   // home-root 파일(예: .claude.json)의 머지 서브키와 보존모드 맵.
   homeRootTargets: z.record(HomeRootTargetSchema).optional(),
 });
@@ -105,7 +108,7 @@ const FullConfigSchema = z.object({
   remote: RemoteConfigSchema,
   crypto: CryptoConfigSchema,
   targets: SyncTargetsSchema,
-  settingsLocalKeys: z.array(z.string()),
+  settingsJson: z.object({ localOnlyKeys: z.array(z.string()), forceSyncKeys: z.array(z.string()).optional() }),
   conflictPolicy: z.enum(["preserve-both", "latest-wins", "manual"]),
   lock: LockConfigSchema,
 });
@@ -183,6 +186,22 @@ function applyEnvOverrides(raw: Record<string, unknown>): Record<string, unknown
   return result;
 }
 
+function migrateLegacySettingsKeys(raw: Record<string, unknown>): Record<string, unknown> {
+  const hasLegacy = "settingsLocalKeys" in raw || "templateSettingsKeys" in raw;
+  if (!hasLegacy) return raw;
+  const out = { ...raw };
+  if (out.settingsJson == null) {
+    const grp: Record<string, unknown> = {};
+    if (Array.isArray(out.settingsLocalKeys)) grp.localOnlyKeys = out.settingsLocalKeys;
+    if (Array.isArray(out.templateSettingsKeys)) grp.forceSyncKeys = out.templateSettingsKeys;
+    out.settingsJson = grp;
+    console.warn("[wormhole] config 의 settingsLocalKeys/templateSettingsKeys 는 deprecated — settingsJson.{localOnlyKeys,forceSyncKeys} 로 이전하라. 이번 실행은 자동 변환됨.");
+  }
+  delete out.settingsLocalKeys;
+  delete out.templateSettingsKeys;
+  return out;
+}
+
 
 // remoteBaseDir 정규화: 정확히 1개의 선행 슬래시, 후행 슬래시 제거.
 // 예: "wormhole_claude_code" -> "/wormhole_claude_code", "/foo/" -> "/foo".
@@ -247,11 +266,10 @@ function resolvePaths(parsed: z.infer<typeof RawConfigSchema>, home: string, sta
       kdfP: cryptoRaw.kdfP,
     },
     targets: SyncTargetsSchema.parse(parsed.targets),
-    settingsLocalKeys: parsed.settingsLocalKeys,
+    settingsJson: parsed.settingsJson,
     selfMcpServerNames: parsed.selfMcpServerNames,
     conflictPolicy: parsed.conflictPolicy,
     lock: LockConfigSchema.parse(parsed.lock),
-    templateSettingsKeys: parsed.templateSettingsKeys,
     homeRootTargets: parsed.homeRootTargets,
   };
 }
@@ -261,7 +279,8 @@ function resolvePaths(parsed: z.infer<typeof RawConfigSchema>, home: string, sta
 export function resolveConfig(raw: unknown): Config {
   const home = os.homedir();
   const withEnv = applyEnvOverrides(raw as Record<string, unknown>);
-  const parsed = RawConfigSchema.parse(withEnv);
+  const migrated = migrateLegacySettingsKeys(withEnv);
+  const parsed = RawConfigSchema.parse(migrated);
 
   const stateDir = parsed.stateDir
     ? path.resolve(expandTilde(parsed.stateDir, home))
@@ -320,7 +339,8 @@ export async function loadConfig(configPath?: string, dotEnvPath?: string): Prom
   }
 
   const withEnv = applyEnvOverrides(fileRaw);
-  const parsed = RawConfigSchema.parse(withEnv);
+  const migrated = migrateLegacySettingsKeys(withEnv);
+  const parsed = RawConfigSchema.parse(migrated);
 
   // remoteBaseDir 가드: 명시적 remoteBaseDir 가 없고 username 도 비어 있으면 도출 불가 → 명확히 halt.
   // (remoteBaseDir 는 username 에서 "/" + username 으로 도출되므로 username 이 필수다.)

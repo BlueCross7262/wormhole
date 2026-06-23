@@ -15,13 +15,12 @@
     "include": [
       ".claude/CLAUDE.md",
       ".claude/settings.json",
-      ".claude/skills/**",
       ".claude/agents/**",
       ".claude/commands/**",
-      ".claude/.mcp.json",
-      ".claude/hooks/**",
-      ".claude/statusline/**",
-      ".claude/hud/**"
+      ".claude/hud/**",
+      ".claude/rules/**",
+      ".claude/scripts/**",
+      ".claude/skills/**"
     ],
     "exclude": [
       ".claude/.credentials.json",
@@ -36,18 +35,32 @@
       "**/cache/**"
     ]
   },
-  "settingsLocalKeys": [
-    "mcpServers.*.command",
-    "mcpServers.*.args",
-    "mcpServers.*.cwd",
-    "mcpServers.*.env",
-    "permissions.*",
-    "hooks",
-    "statusLine.command"
-  ],
+  "settingsJson": {
+    "_comment": "localOnlyKeys=denylist(sync 제외, 머신 로컬). forceSyncKeys=denylist 막혀도 강제 shared(override). home 절대경로는 ${HOME} 토큰화로 이식. push/pull 양방향. 보안 민감 키(permissions.defaultMode, skipDangerousModePermissionPrompt)는 의도적 제외 — 동기화 시 권한 우회 모드 전파 footgun. 필요하면 배포 예시 아닌 개인 config 에만.",
+    "localOnlyKeys": [
+      "mcpServers.*.command",
+      "mcpServers.*.args",
+      "mcpServers.*.cwd",
+      "mcpServers.*.env",
+      "permissions.*",
+      "hooks"
+    ],
+    "forceSyncKeys": [
+      "hooks",
+      "env.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS",
+      "enabledPlugins",
+      "extraKnownMarketplaces",
+      "effortLevel",
+      "ultracode",
+      "tui",
+      "theme",
+      "enableWorkflows",
+      "language",
+      "advisorModel"
+    ]
+  },
   "selfMcpServerNames": ["wormhole"],
   "conflictPolicy": "preserve-both",
-  "templateSettingsKeys": ["hooks", "statusLine"],
   "homeRootTargets": {
     ".claude.json": { "subkeys": ["mcpServers"], "preserveMode": "denylist" }
   },

@@ -82,12 +82,12 @@ export async function runDoctor(logger: Logger): Promise<DoctorResult> {
     });
   }
 
-  // ── Check 10: settingsLocalKeys 환경의존키 누락 ─────────────────────
-  // settings.json 이 동기화 대상인데 settingsLocalKeys 가 비어 있으면
+  // ── Check 10: settingsJson.localOnlyKeys 환경의존키 누락 ─────────────────────
+  // settings.json 이 동기화 대상인데 settingsJson.localOnlyKeys 가 비어 있으면
   // mcpServers.*.command/args/env, hooks 등 환경의존 키가 shared 로 새어나갈 위험.
   if (config !== null) {
     const ENV_DEP_PATTERNS = ["command", "args", "cwd", "env", "hooks", "permissions"];
-    const hasEnvDep = config.settingsLocalKeys.some((k) =>
+    const hasEnvDep = config.settingsJson.localOnlyKeys.some((k) =>
       ENV_DEP_PATTERNS.some((p) => k.includes(p)),
     );
     const includesSettings = config.targets.include.some((g) =>
@@ -95,16 +95,16 @@ export async function runDoctor(logger: Logger): Promise<DoctorResult> {
     );
     if (includesSettings && !hasEnvDep) {
       checks.push({
-        name: "settingsLocalKeys 환경의존키",
+        name: "settingsJson.localOnlyKeys 환경의존키",
         status: "warn",
         detail:
-          "settings.json 이 동기화 대상이나 settingsLocalKeys 에 환경의존키(command/args/env/hooks/permissions)가 없음 — 머신고유 설정이 shared 로 유출될 위험",
+          "settings.json 이 동기화 대상이나 settingsJson.localOnlyKeys 에 환경의존키(command/args/env/hooks/permissions)가 없음 — 머신고유 설정이 shared 로 유출될 위험",
       });
     } else {
       checks.push({
-        name: "settingsLocalKeys 환경의존키",
+        name: "settingsJson.localOnlyKeys 환경의존키",
         status: "ok",
-        detail: `settingsLocalKeys 에 환경의존키 포함 (${config.settingsLocalKeys.length}개)`,
+        detail: `settingsJson.localOnlyKeys 에 환경의존키 포함 (${config.settingsJson.localOnlyKeys.length}개)`,
       });
     }
   }

@@ -142,21 +142,21 @@
 
 | featureId | 동작(요약) | scope | 커버 시나리오 | 강도 |
 |---|---|---|---|---|
-| F-SETTINGS-01 | push settings.json 시 settingsLocalKeys(dot-path + 와일드카드) 매칭 키를 제거한 shared su… | mcp-boundary | SMR-01, SMR-07 | direct |
+| F-SETTINGS-01 | push settings.json 시 settingsJson.localOnlyKeys(dot-path + 와일드카드) 매칭 키를 제거한 shared su… | mcp-boundary | SMR-01, SMR-07 | direct |
 | F-SETTINGS-02 | push 시 home 절대경로가 ${HOME} 토큰으로 치환되어 원격에 저장 — 다른 머신이 pull 해도 깨지지 않게 이식; 경로 접미… | mcp-boundary | SMR-02 | direct |
 | F-SETTINGS-03 | push 시 settings/.mcp.json 콘텐츠가 stableStringify(키 재귀정렬, 배열순서 보존, 2-space, tra… | mcp-boundary | SMR-03 | partial |
 | F-SETTINGS-04 | scan(status)과 push 가 동일 정규화 파이프라인(normalizeSettingsForSync / stripSelfMcpSer… | mcp-boundary | SMR-03 | direct |
 | F-SETTINGS-05 | push .mcp.json 시 selfMcpServerNames(wormhole 등) 엔트리를 mcpServers 객체에서 삭제한 후 업… | mcp-boundary | SMR-05, SMR-02 | direct |
 | F-SETTINGS-06 | push .mcp.json/settings 파싱 실패 시 throw 없이 원본 텍스트를 그대로 반환하되 hash/size 는 원본 바이트… | mcp-boundary | SMR-10 | direct |
 | F-SETTINGS-07 | pruneLocal 이 로컬키 제거로 비어버린 중첩 컨테이너(예: mcpServers.x.command 만 있던 mcpServers)를 … | mcp-boundary | SMR-07 | direct |
-| F-SETTINGS-08 | pull settings.json 시 키단위 3-way 머지: 원격 공유 변경분은 받아들이되 settingsLocalKeys 머신로컬키는… | mcp-boundary | SMR-04, SMR-08 | direct |
+| F-SETTINGS-08 | pull settings.json 시 키단위 3-way 머지: 원격 공유 변경분은 받아들이되 settingsJson.localOnlyKeys 머신로컬키는… | mcp-boundary | SMR-04, SMR-08 | direct |
 | F-SETTINGS-09 | pull 적용된 settings 파일은 ${HOME} 토큰이 이 머신 실제 home 경로(path.sep 로 구분자 재구성)로 detok… | mcp-boundary | SMR-02, SMR-05 | direct |
 | F-SETTINGS-10 | pull settings 3-way 머지서 양측 동시 상이 변경된 leaf 키는 conflict 로 수집되고 로컬값 유지 — status… | mcp-boundary | SMR-08 | partial |
 | F-SETTINGS-11 | pull .mcp.json 시 원격 비-self 서버 엔트리는 remote-wins 로 적용하되 로컬 self(wormhole) 엔트리는… | mcp-boundary | SMR-05 | direct |
 | F-SETTINGS-12 | pull .mcp.json 시 원격은 ${HOME} 토큰에서 로컬 home 으로 detokenize 후 기록되고, 방어적으로 self 엔… | mcp-boundary | SMR-02, SMR-05 | partial |
 | F-SETTINGS-13 | pull .mcp.json 시 로컬 파일 부재/파싱실패면 원격 기반 + self 비움 상태를 stableStringify 해 기록 — 로… | mcp-boundary | SMR-11 | direct |
 | F-SETTINGS-14 | 프로토타입 오염 방어: 원격 JSON 의 __proto__/constructor/prototype 키가 tokenize/detokeniz… | mcp-boundary | SMR-09 | direct |
-| F-SETTINGS-15 | settingsLocalKeys 와일드카드 매칭 규칙: 패턴이 path 의 prefix 면 매칭('mcpServers.*' 가 'mcpS… | prior-covered-internal | — | none |
+| F-SETTINGS-15 | settingsJson.localOnlyKeys 와일드카드 매칭 규칙: 패턴이 path 의 prefix 면 매칭('mcpServers.*' 가 'mcpS… | prior-covered-internal | — | none |
 | F-SETTINGS-16 | mergeRecursive 3-way 분기 로직(양측미변경 base유지, 한쪽변경 채택, 양측동일변경 수렴, 양측상이 객체면 재귀·lea… | prior-covered-internal | — | none |
 | F-SETTINGS-17 | applyShared/removeShared/deepAssign 가 merged 객체서 기존 shared 키를 제거 후 머지본으로 덮어 … | prior-covered-internal | — | none |
 | F-SETTINGS-18 | tokenize/detokenize 라운드트립 충실도(string/array/object 재귀, 비-home 경로·non-string 원… | prior-covered-internal | — | none |
