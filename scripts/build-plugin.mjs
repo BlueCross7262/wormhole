@@ -22,6 +22,8 @@ const repoRoot = path.resolve(__dirname, "..");
 
 const CLI_OUTFILE = path.join(repoRoot, "plugin", "dist", "cli.mjs");
 const SERVER_OUTFILE = path.join(repoRoot, "plugin", "dist", "server.mjs");
+const CONFIG_EXAMPLE_SRC = path.join(repoRoot, "config.example.json");
+const CONFIG_EXAMPLE_MIRROR = path.join(repoRoot, "plugin", "scripts", "config.example.json");
 const NPM_CMD = process.platform === "win32" ? "npm.cmd" : "npm";
 
 function log(msg) {
@@ -65,6 +67,15 @@ log("[1/6] typecheck (tsc --noEmit)...");
   if (error) fail("typecheck", `npm 실행 불가: ${String(error.message)}`);
   if (code !== 0) fail("typecheck", `tsc 가 오류와 함께 종료 (exit ${code}).`);
   log("[1/6] typecheck OK");
+}
+
+// ── config.example.json 미러 동기화 (setup.mjs SSOT) ──────────
+// setup.mjs 는 plugin/scripts/ 안의 config.example.json 만 런타임에 읽는다
+// (배포 단위 = plugin/, root 의 config.example.json 은 패키지에 없음).
+// root SSOT 를 사본으로 동기화해 drift 를 막는다.
+{
+  fs.copyFileSync(CONFIG_EXAMPLE_SRC, CONFIG_EXAMPLE_MIRROR);
+  log(`[*] config.example.json 미러 동기화 OK → ${CONFIG_EXAMPLE_MIRROR}`);
 }
 
 // 공통 esbuild 옵션 (두 번들 공유).

@@ -2,6 +2,10 @@
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
+import { fileURLToPath } from "url";
+
+const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
+const CONFIG_EXAMPLE_PATH = path.join(SCRIPT_DIR, "config.example.json");
 
 const WORMHOLE_DIR = path.join(os.homedir(), ".wormhole");
 const ENV_PATH = path.join(WORMHOLE_DIR, ".env");
@@ -41,60 +45,27 @@ WEBDAV_PASS=your-password
 # WORMHOLE_LOG_LEVEL=info
 `;
 
-const CONFIG_TEMPLATE = {
-  stateDir: "~/.wormhole",
-  crypto: {
-    passphraseEnv: "WORMHOLE_PASSPHRASE",
-    passphraseFile: "",
-    derivedKeyPath: "",
-    kdfN: 65536,
-    kdfR: 8,
-    kdfP: 1
-  },
-  targets: {
-    include: [
-      ".claude/CLAUDE.md",
-      ".claude/settings.json",
-      ".claude/skills/**",
-      ".claude/agents/**",
-      ".claude/commands/**",
-      ".claude/.mcp.json",
-      ".claude/hooks/**",
-      ".claude/statusline/**",
-      ".claude/hud/**"
-    ],
-    exclude: [
-      ".claude/.credentials.json",
-      ".claude/settings.local.json",
-      "**/*.token",
-      "**/*.key",
-      ".claude/projects/**",
-      ".claude/todos/**",
-      ".claude/statsig/**",
-      ".claude/history/**",
-      "**/*.log",
-      "**/cache/**"
-    ]
-  },
-  settingsJson: {
-    localOnlyKeys: [
-      "mcpServers.*.command",
-      "mcpServers.*.args",
-      "mcpServers.*.cwd",
-      "mcpServers.*.env",
-      "permissions.*",
-      "hooks",
-      "statusLine.command"
-    ]
-  },
-  selfMcpServerNames: ["wormhole"],
-  conflictPolicy: "preserve-both",
-  lock: {
-    ttlMs: 30000,
-    acquireRetries: 3,
-    acquireRetryDelayMs: 1000
+function stripComments(value) {
+  if (Array.isArray(value)) return value.map(stripComments);
+  if (value && typeof value === "object") {
+    const out = {};
+    for (const [key, val] of Object.entries(value)) {
+      if (key === "_comment") continue;
+      out[key] = stripComments(val);
+    }
+    return out;
   }
-};
+  return value;
+}
+
+let CONFIG_TEMPLATE;
+try {
+  CONFIG_TEMPLATE = stripComments(JSON.parse(fs.readFileSync(CONFIG_EXAMPLE_PATH, "utf-8")));
+} catch (e) {
+  console.error(`config.example.json 을 읽지 못했습니다: ${CONFIG_EXAMPLE_PATH}`);
+  console.error(String(e?.message ?? e));
+  process.exit(1);
+}
 
 fs.mkdirSync(WORMHOLE_DIR, { recursive: true });
 
