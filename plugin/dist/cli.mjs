@@ -24166,9 +24166,9 @@ minimatch.braceExpand = braceExpand;
 var makeRe = (pattern, options = {}) => new Minimatch(pattern, options).makeRe();
 minimatch.makeRe = makeRe;
 var match = (list, pattern, options = {}) => {
-  const mm = new Minimatch(pattern, options);
-  list = list.filter((f3) => mm.match(f3));
-  if (mm.options.nonull && !list.length) {
+  const mm2 = new Minimatch(pattern, options);
+  list = list.filter((f3) => mm2.match(f3));
+  if (mm2.options.nonull && !list.length) {
     list.push(pattern);
   }
   return list;
@@ -32097,9 +32097,9 @@ function summarize(items) {
 
 // src/sync/scanner.ts
 var import_fast_glob = __toESM(require_out4(), 1);
+var import_micromatch = __toESM(require_micromatch(), 1);
 import * as fs5 from "node:fs/promises";
 import * as path8 from "node:path";
-import { createRequire } from "node:module";
 
 // src/sync/paths.ts
 import path7 from "node:path";
@@ -32142,13 +32142,11 @@ function isClaudeJsonKey(logicalKey) {
 }
 
 // src/sync/scanner.ts
-var _require = createRequire(import.meta.url);
-var _mm = _require("micromatch");
 function isKeyInScope(logicalKey, targets) {
-  const inInclude = _mm.isMatch(logicalKey, targets.include, { dot: true });
+  const inInclude = import_micromatch.default.isMatch(logicalKey, targets.include, { dot: true });
   if (!inInclude) return false;
   if (targets.exclude.length === 0) return true;
-  return !_mm.isMatch(logicalKey, targets.exclude, { dot: true });
+  return !import_micromatch.default.isMatch(logicalKey, targets.exclude, { dot: true });
 }
 async function scanLocal(config) {
   const { home, targets, stateDir } = config;

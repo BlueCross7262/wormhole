@@ -185,12 +185,24 @@ function spawnCapture(args, timeoutMs) {
   });
 }
 
+// ── 번들 격리 복사 (설치 환경 재현) ──────────────────────────
+// smoke 를 repoRoot 에서 실행하면 createRequire 가 repoRoot/node_modules 로
+// 외부 의존성을 해석해 "번들에서 누락된 의존성" 버그를 가린다 (0.5.4 micromatch 사고).
+// 자체 완결 번들은 node_modules 조상이 없는 디렉터리에서도 동작해야 하므로,
+// 임시 격리 디렉터리에 복사해 그곳에서 smoke 를 돌린다.
+const ISO_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "wormhole-smoke-"));
+const CLI_ISO = path.join(ISO_DIR, "cli.mjs");
+const SERVER_ISO = path.join(ISO_DIR, "server.mjs");
+fs.copyFileSync(CLI_OUTFILE, CLI_ISO);
+fs.copyFileSync(SERVER_OUTFILE, SERVER_ISO);
+log(`[smoke] 격리 디렉터리: ${ISO_DIR}`);
+
 // ── 5) Smoke-test A: cli.mjs --help ──────────────────────────
 // --help 는 buildEngine() 를 호출하지 않으므로 비밀 없이 exit 0 이어야 한다.
 // exit 0 + 모듈 오류 시그니처 부재 = PASS.
 log("[5/6] smoke-test A (cli.mjs --help) ...");
 {
-  const { exitCode, output } = await spawnCapture([CLI_OUTFILE, "--help"], 4000);
+  const { exitCode, output } = await spawnCapture([CLI_ISO, "--help"], 4000);
   const hit = MODULE_ERROR_SIGNATURES.find((sig) => output.includes(sig));
   const excerpt = output.trim().split("\n").slice(0, 20).join("\n");
 
@@ -217,7 +229,7 @@ log("[5/6] smoke-test A (cli.mjs --help) ...");
 // 프로세스가 블로킹되면 타임아웃 후 kill (exitCode=null) 하며, 모듈 오류 없으면 PASS.
 log("[6/6] smoke-test B (server.mjs bundle integrity) ...");
 {
-  const { output } = await spawnCapture([SERVER_OUTFILE], 3000);
+  const { output } = await spawnCapture([SERVER_ISO], 3000);
   const hit = MODULE_ERROR_SIGNATURES.find((sig) => output.includes(sig));
   const excerpt = output.trim().split("\n").slice(0, 20).join("\n");
 
@@ -230,6 +242,9 @@ log("[6/6] smoke-test B (server.mjs bundle integrity) ...");
   log("[6/6] smoke-test B PASS (server.mjs 모듈 오류 없음)");
   if (excerpt) log(`--- captured output (head) ---\n${excerpt}`);
 }
+
+// 격리 디렉터리 정리.
+fs.rmSync(ISO_DIR, { recursive: true, force: true });
 
 // ── 산출물 크기 ──────────────────────────────────────────────
 {
