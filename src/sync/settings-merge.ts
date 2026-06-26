@@ -1,4 +1,3 @@
-import * as path from "node:path";
 import type { SettingsMergeResult } from "../types.js";
 import { sha256 } from "./hash.js";
 
@@ -24,14 +23,23 @@ const HOME_TOKEN = "${HOME}";
 export function tokenizeHome(value: unknown, home: string): unknown {
   if (typeof value === "string") {
     if (home === "") return value;
-    if (value === home) return HOME_TOKEN;
-    if (value.startsWith(home + "/") || value.startsWith(home + "\\")) {
-      // 접미사를 canonical posix("/")로 정규화해 저장 → 어느 OS 가 pull 해도 자기 path.sep 로 재구성 가능
-      // (Win 의 `\` 가 그대로 새어 POSIX 머신에서 깨지는 것을 방지).
-      const suffix = value.slice(home.length).split(/[\\/]/).join("/");
-      return HOME_TOKEN + suffix;
-    }
-    return value;
+    // 임베디드 bounded 매칭: mid-string 에 박힌 home 경로도 토큰화한다.
+    // home 을 구분자(/ or \)로 분할 → 각 segment regex-escape → [/\\] 로 join.
+    // 경계 조건: home 뒤에 구분자/따옴표/공백/줄끝만 허용 → 형제 dir 오매칭 방지.
+    // ponytail: greedy [^"']* 는 따옴표가 bound. 한 문자열에 ${HOME} 2개거나 unquoted
+    //           다중토큰이면 첫 매치가 과그랩 가능 — 실 hook command(따옴표 wrap)는 안전.
+    //           업그레이드 경로 = 따옴표 인지 파서.
+    const escReSeg = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const homePat = home.split(/[/\\]/).map(escReSeg).join("[/\\\\]");
+    let out = value.replace(
+      new RegExp(homePat + "([/\\\\][^\"']*|(?=[\"'\\s]|$))", "g"),
+      (_m: string, suf: string) => HOME_TOKEN + suf.split(/[/\\]/).join("/"),
+    );
+    out = out.replace(
+      /(^|["'\s=])~([/\\][^"']*)/g,
+      (_m: string, pre: string, suf: string) => pre + HOME_TOKEN + suf.split(/[/\\]/).join("/"),
+    );
+    return out;
   }
   if (Array.isArray(value)) return value.map((v) => tokenizeHome(v, home));
   if (isPlainObject(value)) {
@@ -47,13 +55,13 @@ export function tokenizeHome(value: unknown, home: string): unknown {
 
 export function detokenizeHome(value: unknown, home: string): unknown {
   if (typeof value === "string") {
-    if (value === HOME_TOKEN) return home;
-    if (value.startsWith(HOME_TOKEN + "/") || value.startsWith(HOME_TOKEN + "\\")) {
-      // 토큰 접미사(canonical posix)를 로컬 OS 구분자(path.sep)로 재구성.
-      const suffix = value.slice(HOME_TOKEN.length).split(/[\\/]/).join(path.sep);
-      return home + suffix;
-    }
-    return value;
+    // forward-slash 정준 복원: 실 Claude Code settings 데이터가 forward-slash 라
+    // forward 복원해야 same-OS 라운드트립이 identity(churn 없음).
+    const homeFwd = home.split(/[\\/]/).join("/");
+    return value.replace(
+      /\$\{HOME\}([^"']*)/g,
+      (_m: string, suf: string) => homeFwd + suf.split(/[\\/]/).join("/"),
+    );
   }
   if (Array.isArray(value)) return value.map((v) => detokenizeHome(v, home));
   if (isPlainObject(value)) {

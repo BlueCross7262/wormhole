@@ -1,6 +1,5 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import * as path from "node:path";
 import {
   tokenizeHome,
   detokenizeHome,
@@ -92,10 +91,9 @@ describe("tokenizeHome / detokenizeHome", () => {
     assert.equal(detokenizeHome(HOME_TOKEN, FAKE_HOME), FAKE_HOME);
   });
 
-  test("detokenize: token + suffix reconstructed with local path.sep", () => {
+  test("detokenize: token + suffix reconstructed with forward slashes", () => {
     const out = detokenizeHome(`${HOME_TOKEN}/.claude/CLAUDE.md`, FAKE_HOME);
-    // the suffix segments are re-joined with the local OS separator
-    assert.equal(out, FAKE_HOME + ["", ".claude", "CLAUDE.md"].join(path.sep));
+    assert.equal(out, `${FAKE_HOME}/.claude/CLAUDE.md`);
   });
 
   test("detokenize: string without token is unchanged", () => {
@@ -134,6 +132,83 @@ describe("tokenizeHome / detokenizeHome", () => {
       normalize(original.mcpServers.other.args[0] as string),
     );
     assert.equal(back.mcpServers.other.args[1], "--x");
+  });
+
+  test("compound command: home embedded mid-string is tokenized", () => {
+    const home = "C:\\Users\\tou72";
+    const input = `"C:/Program Files/nodejs/node.exe" "C:/Users/tou72/.claude/hooks/x.mjs"`;
+    const result = tokenizeHome(input, home) as string;
+    assert.equal(result, `"C:/Program Files/nodejs/node.exe" "${HOME_TOKEN}/.claude/hooks/x.mjs"`);
+  });
+
+  test("compound command: detokenize roundtrip identity (forward-slash)", () => {
+    const home = "C:\\Users\\tou72";
+    const input = `"C:/Program Files/nodejs/node.exe" "C:/Users/tou72/.claude/hooks/x.mjs"`;
+    const tokenized = tokenizeHome(input, home) as string;
+    const restored = detokenizeHome(tokenized, home) as string;
+    assert.equal(restored, `"C:/Program Files/nodejs/node.exe" "C:/Users/tou72/.claude/hooks/x.mjs"`);
+  });
+
+  test("compound command backslash: tokenize produces forward-slash token", () => {
+    const home = "C:\\Users\\tou72";
+    const input = `"C:\\Program Files\\nodejs\\node.exe" "C:\\Users\\tou72\\.claude\\hooks\\x.mjs"`;
+    const result = tokenizeHome(input, home) as string;
+    assert.equal(result, `"C:\\Program Files\\nodejs\\node.exe" "${HOME_TOKEN}/.claude/hooks/x.mjs"`);
+  });
+
+  test("compound backslash: fixpoint — tokenize twice is idempotent", () => {
+    const home = "C:\\Users\\tou72";
+    const input = `"C:\\Program Files\\nodejs\\node.exe" "C:\\Users\\tou72\\.claude\\hooks\\x.mjs"`;
+    const once = tokenizeHome(input, home) as string;
+    const twice = tokenizeHome(once, home) as string;
+    assert.equal(twice, once);
+  });
+
+  test("cross-OS detokenize: different home replaces token", () => {
+    const tokenized = `"C:/Program Files/nodejs/node.exe" "${HOME_TOKEN}/.claude/hooks/x.mjs"`;
+    const result = detokenizeHome(tokenized, "/home/bob") as string;
+    assert.equal(result, `"C:/Program Files/nodejs/node.exe" "/home/bob/.claude/hooks/x.mjs"`);
+  });
+
+  test("tilde forward-slash is tokenized", () => {
+    assert.equal(tokenizeHome("~/.claude/hooks/x", "/home/alice"), `${HOME_TOKEN}/.claude/hooks/x`);
+  });
+
+  test("tilde backslash is tokenized", () => {
+    assert.equal(tokenizeHome("~\\.claude\\hooks\\x", "/home/alice"), `${HOME_TOKEN}/.claude/hooks/x`);
+  });
+
+  test("sibling dir is NOT tokenized", () => {
+    const home = "C:\\Users\\tou72";
+    assert.equal(tokenizeHome("C:/Users/tou72backup/x", home), "C:/Users/tou72backup/x");
+  });
+
+  test("node.exe arg is NOT tokenized (non-home path)", () => {
+    const home = "C:\\Users\\tou72";
+    const input = `"C:/Program Files/nodejs/node.exe" "${HOME_TOKEN}/.claude/hooks/x.mjs"`;
+    const result = detokenizeHome(input, home) as string;
+    assert.ok(result.includes("C:/Program Files/nodejs/node.exe"), "node.exe path unchanged");
+  });
+
+  test("idempotent: tokenize(tokenize(x)) === tokenize(x)", () => {
+    const input = `${FAKE_HOME}/.claude/hooks/x`;
+    const once = tokenizeHome(input, FAKE_HOME) as string;
+    const twice = tokenizeHome(once, FAKE_HOME) as string;
+    assert.equal(twice, once);
+  });
+
+  test("special-char home: dot in path does not overbroad-match", () => {
+    const home = "/home/a.b";
+    assert.equal(tokenizeHome("/home/axb/something", home), "/home/axb/something");
+    assert.equal(tokenizeHome(`${home}/ok`, home), `${HOME_TOKEN}/ok`);
+  });
+
+  test("greedy ceiling: two ${HOME} tokens in one string — known behavior documented", () => {
+    // [^"']* 가 공백을 삼켜 첫 match 가 "/a/b ${HOME}/c/d" 전부를 캡처한다.
+    // 두 번째 ${HOME} 은 치환되지 않는 것이 알려진 ceiling — 따옴표 wrap 된 실 hook 커맨드는 안전.
+    const value = `${HOME_TOKEN}/a/b ${HOME_TOKEN}/c/d`;
+    const result = detokenizeHome(value, FAKE_HOME) as string;
+    assert.equal(result, `${FAKE_HOME}/a/b ${HOME_TOKEN}/c/d`);
   });
 });
 
@@ -743,10 +818,9 @@ describe("extractSharedSubset — templateKeys 지정 키는 tokenizeHome 후 sh
   });
 
   test("pull-side: detokenizeHome 후 복원 — deepEqual 원본과 일치", () => {
-    // detokenizeHome 은 로컬 path.sep 으로 suffix 를 재구성한다.
-    // 따라서 expected 도 path.join 으로 구성해야 플랫폼 무관하게 일치한다.
-    const hookPath = path.join(TEMPLATE_HOME, ".claude", "hooks", "pre.js");
-    const statusPath = path.join(TEMPLATE_HOME, ".claude", "statusline.js");
+    // detokenizeHome 은 forward-slash 정준으로 복원한다.
+    const hookPath = `${TEMPLATE_HOME}/.claude/hooks/pre.js`;
+    const statusPath = `${TEMPLATE_HOME}/.claude/statusline.js`;
     const original = {
       hooks: {
         PreToolUse: [{ matcher: "Bash", command: hookPath }],
