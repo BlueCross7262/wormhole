@@ -16,7 +16,6 @@ function makeConfig(home: string, overrides?: Partial<Config["targets"]> & { sta
     },
     remote: { url: "http://localhost", username: "u", password: "p", basePath: "/" },
     crypto: { type: "passphrase" },
-    settingsJson: { localOnlyKeys: [] },
     selfMcpServerNames: [],
     conflictPolicy: "newer",
     lock: { enabled: false, ttlMs: 0, pollMs: 0 },

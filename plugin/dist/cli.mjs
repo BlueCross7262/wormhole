@@ -16631,15 +16631,6 @@ var DEFAULT_EXCLUDE = [
   "**/*.log",
   "**/cache/**"
 ];
-var DEFAULT_SETTINGS_LOCAL_KEYS = [
-  "mcpServers.*.command",
-  "mcpServers.*.args",
-  "mcpServers.*.cwd",
-  "mcpServers.*.env",
-  "permissions.*",
-  "hooks",
-  "statusLine.command"
-];
 var RemoteConfigSchema = external_exports.object({
   url: external_exports.string().min(1),
   username: external_exports.string().default(""),
@@ -16674,17 +16665,12 @@ var HomeRootTargetSchema = external_exports.object({
   subkeys: external_exports.array(external_exports.string()),
   preserveMode: external_exports.literal("denylist")
 });
-var SettingsJsonSchema = external_exports.object({
-  localOnlyKeys: external_exports.array(external_exports.string()).default(DEFAULT_SETTINGS_LOCAL_KEYS),
-  forceSyncKeys: external_exports.array(external_exports.string()).optional()
-}).default({});
 var RawConfigSchema = external_exports.object({
   stateDir: external_exports.string().optional(),
   home: external_exports.string().optional(),
   remote: RemoteConfigSchema.partial().default({}),
   crypto: CryptoConfigSchema.partial().default({}),
   targets: SyncTargetsSchema.partial().default({}),
-  settingsJson: SettingsJsonSchema,
   // 자기 자신(wormhole) mcp 서버 이름 목록. .mcp.json 동기화 시 자기참조 제외 기준.
   selfMcpServerNames: external_exports.array(external_exports.string()).default(["wormhole"]),
   conflictPolicy: external_exports.enum(["preserve-both", "latest-wins", "manual"]).default("preserve-both"),
@@ -16698,7 +16684,6 @@ var FullConfigSchema = external_exports.object({
   remote: RemoteConfigSchema,
   crypto: CryptoConfigSchema,
   targets: SyncTargetsSchema,
-  settingsJson: external_exports.object({ localOnlyKeys: external_exports.array(external_exports.string()), forceSyncKeys: external_exports.array(external_exports.string()).optional() }),
   conflictPolicy: external_exports.enum(["preserve-both", "latest-wins", "manual"]),
   lock: LockConfigSchema
 });
@@ -16746,21 +16731,6 @@ function applyEnvOverrides(raw) {
   if (process.env["WORMHOLE_KEYCHAIN_SERVICE"]) crypto5["keychainService"] = process.env["WORMHOLE_KEYCHAIN_SERVICE"];
   result["crypto"] = crypto5;
   return result;
-}
-function migrateLegacySettingsKeys(raw) {
-  const hasLegacy = "settingsLocalKeys" in raw || "templateSettingsKeys" in raw;
-  if (!hasLegacy) return raw;
-  const out = { ...raw };
-  if (out.settingsJson == null) {
-    const grp = {};
-    if (Array.isArray(out.settingsLocalKeys)) grp.localOnlyKeys = out.settingsLocalKeys;
-    if (Array.isArray(out.templateSettingsKeys)) grp.forceSyncKeys = out.templateSettingsKeys;
-    out.settingsJson = grp;
-    console.warn("[wormhole] config \uC758 settingsLocalKeys/templateSettingsKeys \uB294 deprecated \u2014 settingsJson.{localOnlyKeys,forceSyncKeys} \uB85C \uC774\uC804\uD558\uB77C. \uC774\uBC88 \uC2E4\uD589\uC740 \uC790\uB3D9 \uBCC0\uD658\uB428.");
-  }
-  delete out.settingsLocalKeys;
-  delete out.templateSettingsKeys;
-  return out;
 }
 function normalizeBaseDir(raw) {
   return "/" + raw.replace(/^\/+/, "").replace(/\/+$/, "");
@@ -16811,7 +16781,6 @@ function resolvePaths(parsed, home, stateDir) {
       kdfP: cryptoRaw.kdfP
     },
     targets: SyncTargetsSchema.parse(parsed.targets),
-    settingsJson: parsed.settingsJson,
     selfMcpServerNames: parsed.selfMcpServerNames,
     conflictPolicy: parsed.conflictPolicy,
     lock: LockConfigSchema.parse(parsed.lock),
@@ -16848,8 +16817,7 @@ async function loadConfig(configPath, dotEnvPath) {
     throw new Error(`config \uD30C\uC77C \uC77D\uAE30 \uC2E4\uD328 (${cfgPath}): ${err.message}`);
   }
   const withEnv = applyEnvOverrides(fileRaw);
-  const migrated = migrateLegacySettingsKeys(withEnv);
-  const parsed = RawConfigSchema.parse(migrated);
+  const parsed = RawConfigSchema.parse(withEnv);
   const remoteUsername = (parsed.remote?.username ?? "").trim();
   const remoteBaseDir = (parsed.remote?.remoteBaseDir ?? "").trim();
   if (!remoteBaseDir && !remoteUsername) {
@@ -32723,47 +32691,20 @@ function detokenizeHome(value, home) {
   }
   return value;
 }
-function segMatches(pattern, seg) {
-  return pattern === "*" || pattern === seg;
-}
-function isLocalKey(path11, localKeys) {
-  const segs = path11.split(".");
-  for (const key of localKeys) {
-    const pat = key.split(".");
-    if (pat.length > segs.length) continue;
-    let ok = true;
-    for (let i2 = 0; i2 < pat.length; i2++) {
-      if (!segMatches(pat[i2], segs[i2])) {
-        ok = false;
-        break;
-      }
-    }
-    if (ok) return true;
-  }
-  return false;
-}
-function pruneLocal(obj, localKeys, prefix, templateKeys, home) {
+function pruneLocal(obj) {
   const out = {};
   for (const [k, v] of Object.entries(obj)) {
     if (isForbiddenKey(k)) continue;
-    const dotPath = prefix ? `${prefix}.${k}` : k;
-    if (isLocalKey(dotPath, templateKeys)) {
-      out[k] = home ? tokenizeHome(v, home) : v;
-      continue;
-    }
-    if (isLocalKey(dotPath, localKeys)) continue;
     if (isPlainObject2(v)) {
-      const pruned = pruneLocal(v, localKeys, dotPath, templateKeys, home);
-      if (Object.keys(pruned).length === 0 && Object.keys(v).length > 0) continue;
-      out[k] = pruned;
+      out[k] = pruneLocal(v);
     } else {
       out[k] = v;
     }
   }
   return out;
 }
-function extractSharedSubset(obj, localKeys, templateKeys = [], home = "") {
-  return pruneLocal(obj, localKeys, "", templateKeys, home);
+function extractSharedSubset(obj) {
+  return pruneLocal(obj);
 }
 function deepEqual2(a, b) {
   if (a === b) return true;
@@ -32835,8 +32776,8 @@ function mergeRecursive(local, remote, base, prefix, conflicts) {
   }
   return out;
 }
-function threeWayMerge(local, remoteShared, baseShared, localKeys, templateKeys = []) {
-  const localShared = extractSharedSubset(local, localKeys, templateKeys);
+function threeWayMerge(local, remoteShared, baseShared) {
+  const localShared = extractSharedSubset(local);
   const conflictKeys = [];
   const mergedShared = mergeRecursive(
     localShared,
@@ -32873,7 +32814,7 @@ function stableNormalize(value) {
   }
   return value;
 }
-function normalizeSettingsForSync(rawText, localKeys, home = "", templateKeys = []) {
+function normalizeSettingsForSync(rawText, home = "") {
   let parsed;
   try {
     parsed = JSON.parse(rawText);
@@ -32882,7 +32823,7 @@ function normalizeSettingsForSync(rawText, localKeys, home = "", templateKeys = 
     return { text: rawText, hash: sha2563(buf2), size: buf2.byteLength };
   }
   const obj = isPlainObject2(parsed) ? parsed : {};
-  const shared = extractSharedSubset(obj, localKeys, templateKeys, home);
+  const shared = extractSharedSubset(obj);
   const tokenized = home ? tokenizeHome(shared, home) : shared;
   const text = stableStringify(tokenized);
   const buf = Buffer.from(text, "utf-8");
@@ -33207,7 +33148,7 @@ var SyncEngine = class {
         } catch {
           continue;
         }
-        const norm = isSettingsKey(f3.logicalKey) ? normalizeSettingsForSync(raw, this.config.settingsJson.localOnlyKeys, this.config.home, this.config.settingsJson.forceSyncKeys ?? []) : normalizeClaudeJsonForSync(raw, this.config.selfMcpServerNames, this.config.home);
+        const norm = isSettingsKey(f3.logicalKey) ? normalizeSettingsForSync(raw, this.config.home) : normalizeClaudeJsonForSync(raw, this.config.selfMcpServerNames, this.config.home);
         contentHash = norm.hash;
         size = norm.size;
       } else {
@@ -33432,7 +33373,7 @@ var SyncEngine = class {
       } catch {
         continue;
       }
-      const norm = isSettingsKey(key) ? normalizeSettingsForSync(rawText, this.config.settingsJson.localOnlyKeys, this.config.home, this.config.settingsJson.forceSyncKeys ?? []) : normalizeClaudeJsonForSync(rawText, this.config.selfMcpServerNames, this.config.home);
+      const norm = isSettingsKey(key) ? normalizeSettingsForSync(rawText, this.config.home) : normalizeClaudeJsonForSync(rawText, this.config.selfMcpServerNames, this.config.home);
       const content = Buffer.from(norm.text, "utf-8");
       out.set(key, { content, contentHash: norm.hash, size: norm.size });
     }
@@ -33658,13 +33599,7 @@ var SyncEngine = class {
     const localReal = await this.readJsonFile(absPath) ?? {};
     const localObj = home ? tokenizeHome(localReal, home) : localReal;
     const baseShared = await this.readBaseSnapshotJson(key) ?? {};
-    const result = threeWayMerge(
-      localObj,
-      remoteShared,
-      baseShared,
-      this.config.settingsJson.localOnlyKeys,
-      this.config.settingsJson.forceSyncKeys ?? []
-    );
+    const result = threeWayMerge(localObj, remoteShared, baseShared);
     const mergedReal = home ? detokenizeHome(result.merged, home) : result.merged;
     const mergedText = JSON.stringify(mergedReal, null, 2);
     await this.atomicWriteFile(absPath, mergedText);
@@ -33680,10 +33615,8 @@ var SyncEngine = class {
     const remoteShared = this.parseJson(remotePlain.toString("utf-8")) ?? {};
     const localReal = await this.readJsonFile(absPath) ?? {};
     const localObj = home ? tokenizeHome(localReal, home) : localReal;
-    const localKeys = this.config.settingsJson.localOnlyKeys;
-    const forceKeys = this.config.settingsJson.forceSyncKeys ?? [];
-    const baseShared = extractSharedSubset(localObj, localKeys, forceKeys);
-    const result = threeWayMerge(localObj, remoteShared, baseShared, localKeys, forceKeys);
+    const baseShared = extractSharedSubset(localObj);
+    const result = threeWayMerge(localObj, remoteShared, baseShared);
     const mergedReal = home ? detokenizeHome(result.merged, home) : result.merged;
     await this.atomicWriteFile(absPath, JSON.stringify(mergedReal, null, 2));
     await this.writeBaseSnapshot(key, JSON.stringify(remoteShared, null, 2));
@@ -34281,28 +34214,6 @@ async function runDoctor(logger2) {
       status: "fail",
       detail: err.message
     });
-  }
-  if (config !== null) {
-    const ENV_DEP_PATTERNS = ["command", "args", "cwd", "env", "hooks", "permissions"];
-    const hasEnvDep = config.settingsJson.localOnlyKeys.some(
-      (k) => ENV_DEP_PATTERNS.some((p) => k.includes(p))
-    );
-    const includesSettings = config.targets.include.some(
-      (g) => g.includes("settings.json") || g.includes("settings")
-    );
-    if (includesSettings && !hasEnvDep) {
-      checks.push({
-        name: "settingsJson.localOnlyKeys \uD658\uACBD\uC758\uC874\uD0A4",
-        status: "warn",
-        detail: "settings.json \uC774 \uB3D9\uAE30\uD654 \uB300\uC0C1\uC774\uB098 settingsJson.localOnlyKeys \uC5D0 \uD658\uACBD\uC758\uC874\uD0A4(command/args/env/hooks/permissions)\uAC00 \uC5C6\uC74C \u2014 \uBA38\uC2E0\uACE0\uC720 \uC124\uC815\uC774 shared \uB85C \uC720\uCD9C\uB420 \uC704\uD5D8"
-      });
-    } else {
-      checks.push({
-        name: "settingsJson.localOnlyKeys \uD658\uACBD\uC758\uC874\uD0A4",
-        status: "ok",
-        detail: `settingsJson.localOnlyKeys \uC5D0 \uD658\uACBD\uC758\uC874\uD0A4 \uD3EC\uD568 (${config.settingsJson.localOnlyKeys.length}\uAC1C)`
-      });
-    }
   }
   if (config !== null) {
     const ABS_RE = /^([A-Za-z]:[/\\]|\/)/;

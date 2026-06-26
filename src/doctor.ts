@@ -82,33 +82,6 @@ export async function runDoctor(logger: Logger): Promise<DoctorResult> {
     });
   }
 
-  // ── Check 10: settingsJson.localOnlyKeys 환경의존키 누락 ─────────────────────
-  // settings.json 이 동기화 대상인데 settingsJson.localOnlyKeys 가 비어 있으면
-  // mcpServers.*.command/args/env, hooks 등 환경의존 키가 shared 로 새어나갈 위험.
-  if (config !== null) {
-    const ENV_DEP_PATTERNS = ["command", "args", "cwd", "env", "hooks", "permissions"];
-    const hasEnvDep = config.settingsJson.localOnlyKeys.some((k) =>
-      ENV_DEP_PATTERNS.some((p) => k.includes(p)),
-    );
-    const includesSettings = config.targets.include.some((g) =>
-      g.includes("settings.json") || g.includes("settings"),
-    );
-    if (includesSettings && !hasEnvDep) {
-      checks.push({
-        name: "settingsJson.localOnlyKeys 환경의존키",
-        status: "warn",
-        detail:
-          "settings.json 이 동기화 대상이나 settingsJson.localOnlyKeys 에 환경의존키(command/args/env/hooks/permissions)가 없음 — 머신고유 설정이 shared 로 유출될 위험",
-      });
-    } else {
-      checks.push({
-        name: "settingsJson.localOnlyKeys 환경의존키",
-        status: "ok",
-        detail: `settingsJson.localOnlyKeys 에 환경의존키 포함 (${config.settingsJson.localOnlyKeys.length}개)`,
-      });
-    }
-  }
-
   // ── Check 11: include 글로브 절대경로 리터럴 ────────────────────────
   // home-prefix(C:/Users/x, /home/x, /Users/x) 및 비-home 절대경로(/usr, C:/Program Files)
   // 포함 시 타 머신 이주 불가 위험.

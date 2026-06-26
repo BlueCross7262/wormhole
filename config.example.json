@@ -38,30 +38,6 @@
       ".claude/skills/omc-reference/**"
     ]
   },
-  "settingsJson": {
-    "_comment": "localOnlyKeys=denylist(sync 제외, 머신 로컬). forceSyncKeys=denylist 막혀도 강제 shared(override). home 절대경로는 ${HOME} 토큰화로 이식. push/pull 양방향. 보안 민감 키(permissions.defaultMode, skipDangerousModePermissionPrompt)는 의도적 제외 — 동기화 시 권한 우회 모드 전파 footgun. 필요하면 배포 예시 아닌 개인 config 에만. 플러그인은 enabledPlugins 를 forceSyncKeys 에 넣지 않아 기본 동기화되며(부모 강제 시 자식 예외 불가), 특정 플러그인만 동기화에서 빼려면 localOnlyKeys 에 enabledPlugins.<plugin@marketplace> 를 추가한다.",
-    "localOnlyKeys": [
-      "mcpServers.*.command",
-      "mcpServers.*.args",
-      "mcpServers.*.cwd",
-      "mcpServers.*.env",
-      "permissions.*",
-      "hooks",
-      "enabledPlugins.figma@claude-plugins-official"
-    ],
-    "forceSyncKeys": [
-      "hooks",
-      "env.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS",
-      "extraKnownMarketplaces",
-      "effortLevel",
-      "ultracode",
-      "tui",
-      "theme",
-      "enableWorkflows",
-      "language",
-      "advisorModel"
-    ]
-  },
   "selfMcpServerNames": ["wormhole"],
   "conflictPolicy": "preserve-both",
   "homeRootTargets": {

@@ -75,56 +75,13 @@ export function detokenizeHome(value: unknown, home: string): unknown {
   return value;
 }
 
-// dot-path 한 세그먼트가 패턴 세그먼트와 매칭되는지("*" 는 임의 키 1개).
-function segMatches(pattern: string, seg: string): boolean {
-  return pattern === "*" || pattern === seg;
-}
-
-// 주어진 dot-path 가 localKeys 중 하나와 매칭되는지(와일드카드 지원).
-// 패턴이 path 의 prefix 면 매칭 — "mcpServers.*" 는 "mcpServers.foo.command" 도 포함.
-function isLocalKey(path: string, localKeys: string[]): boolean {
-  const segs = path.split(".");
-  for (const key of localKeys) {
-    const pat = key.split(".");
-    if (pat.length > segs.length) continue;
-    let ok = true;
-    for (let i = 0; i < pat.length; i++) {
-      if (!segMatches(pat[i], segs[i])) {
-        ok = false;
-        break;
-      }
-    }
-    if (ok) return true;
-  }
-  return false;
-}
-
-// 객체를 깊이 순회하며 localKeys 에 매칭되지 않는 키만 복제한다.
-// templateKeys 에 매칭되는 키는 drop 대신 tokenizeHome 후 포함한다.
-function pruneLocal(
-  obj: Record<string, unknown>,
-  localKeys: string[],
-  prefix: string,
-  templateKeys: string[],
-  home: string,
-): Record<string, unknown> {
+// 객체를 깊이 순회하며 forbidden 키를 제거한 깊은 복제를 반환한다.
+function pruneLocal(obj: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(obj)) {
     if (isForbiddenKey(k)) continue;
-    const dotPath = prefix ? `${prefix}.${k}` : k;
-    if (isLocalKey(dotPath, templateKeys)) {
-      // templateKey: drop 대신 tokenizeHome 후 shared 에 포함한다.
-      out[k] = home ? tokenizeHome(v, home) : v;
-      continue;
-    }
-    if (isLocalKey(dotPath, localKeys)) continue;
     if (isPlainObject(v)) {
-      const pruned = pruneLocal(v, localKeys, dotPath, templateKeys, home);
-      // 자식이 "로컬키 제거로 인해" 비었으면(원래는 내용이 있었음) 부모도 생략한다.
-      // 머신 고유 중첩키(예: mcpServers.x.command)만 있던 컨테이너가 빈 껍데기로 원격에 새는 것을 막는다.
-      // 원래부터 빈 객체({})는 보존한다.
-      if (Object.keys(pruned).length === 0 && Object.keys(v).length > 0) continue;
-      out[k] = pruned;
+      out[k] = pruneLocal(v);
     } else {
       out[k] = v;
     }
@@ -132,15 +89,8 @@ function pruneLocal(
   return out;
 }
 
-// 로컬고유키(localKeys)를 제거한 shared subset 을 반환한다(깊은 복제).
-// templateKeys 에 매칭되는 키는 drop 대신 tokenizeHome 후 shared 에 포함한다.
-export function extractSharedSubset(
-  obj: Record<string, unknown>,
-  localKeys: string[],
-  templateKeys: string[] = [],
-  home = "",
-): Record<string, unknown> {
-  return pruneLocal(obj, localKeys, "", templateKeys, home);
+export function extractSharedSubset(obj: Record<string, unknown>): Record<string, unknown> {
+  return pruneLocal(obj);
 }
 
 // 동등성 비교(구조적). 동시 변경 충돌 판정용.
@@ -241,10 +191,8 @@ export function threeWayMerge(
   local: Record<string, unknown>,
   remoteShared: Record<string, unknown>,
   baseShared: Record<string, unknown>,
-  localKeys: string[],
-  templateKeys: string[] = [],
 ): SettingsMergeResult {
-  const localShared = extractSharedSubset(local, localKeys, templateKeys);
+  const localShared = extractSharedSubset(local);
   const conflictKeys: string[] = [];
 
   const mergedShared = mergeRecursive(
@@ -255,7 +203,6 @@ export function threeWayMerge(
     conflictKeys,
   );
 
-  // 로컬고유키 보존: 로컬 전체에서 shared 영역(머지본)으로 덮어쓴다.
   const merged: Record<string, unknown> = structuredCloneSafe(local);
   applyShared(merged, mergedShared, localShared);
 
@@ -331,9 +278,7 @@ export function stripSelfMcpServers(
 // "변경 없음" 이 unchanged 로 판정된다(멱등성). 파싱 실패 시 원본 바이트 기준으로 폴백.
 export function normalizeSettingsForSync(
   rawText: string,
-  localKeys: string[],
   home = "",
-  templateKeys: string[] = [],
 ): { text: string; hash: string; size: number } {
   let parsed: unknown;
   try {
@@ -343,11 +288,7 @@ export function normalizeSettingsForSync(
     return { text: rawText, hash: sha256(buf), size: buf.byteLength };
   }
   const obj = isPlainObject(parsed) ? parsed : {};
-  // templateKeys 키는 extractSharedSubset 내부에서 tokenizeHome 후 포함된다.
-  // 나머지 shared 키는 이후 tokenizeHome 으로 다시 처리 — templateKeys 는 이미 토큰화됐으므로 이중 토큰화되지 않는다.
-  // (tokenizeHome 은 이미 토큰화된 문자열을 건드리지 않음: "${HOME}/..." 는 home prefix 아님)
-  const shared = extractSharedSubset(obj, localKeys, templateKeys, home);
-  // templateKeys 외 shared 키의 home 절대경로를 ${HOME} 토큰으로 치환(이식성).
+  const shared = extractSharedSubset(obj);
   const tokenized = home ? tokenizeHome(shared, home) : shared;
   const text = stableStringify(tokenized);
   const buf = Buffer.from(text, "utf-8");

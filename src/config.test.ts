@@ -10,7 +10,6 @@ import {
   loadDotEnvIntoProcess,
   DEFAULT_INCLUDE,
   DEFAULT_EXCLUDE,
-  DEFAULT_SETTINGS_LOCAL_KEYS,
 } from "./config.js";
 
 // ── env 격리 헬퍼 ──────────────────────────────────────────────
@@ -407,12 +406,11 @@ describe("tilde expansion + derived path defaults", () => {
 // ── 5. Zod defaults applied when omitted ──────────────────────
 
 describe("Zod schema defaults populate omitted fields", () => {
-  test("minimal config gets DEFAULT_INCLUDE / DEFAULT_EXCLUDE / DEFAULT_SETTINGS_LOCAL_KEYS", () => {
+  test("minimal config gets DEFAULT_INCLUDE / DEFAULT_EXCLUDE", () => {
     const cfg = resolveConfig({ remote: { url: "https://x.example.com/dav" } });
 
     assert.deepEqual(cfg.targets.include, DEFAULT_INCLUDE);
     assert.deepEqual(cfg.targets.exclude, DEFAULT_EXCLUDE);
-    assert.deepEqual(cfg.settingsJson.localOnlyKeys, DEFAULT_SETTINGS_LOCAL_KEYS);
   });
 
   test("other schema defaults: remote subfields, crypto KDF, selfMcp, conflictPolicy, lock", () => {
@@ -611,33 +609,9 @@ describe("loadConfig — flat .env profile applied to remote", () => {
 });
 
 
-// ── S1.1: settingsJson nested 필드 + homeRootTargets ────────────────
+// ── S1.1: homeRootTargets ────────────────
 
-describe("RawConfigSchema — settingsJson nested fields", () => {
-  test("(a) settingsJson.localOnlyKeys + forceSyncKeys 포함 객체 parse 성공 후 값 보존", () => {
-    const raw = {
-      remote: { url: "https://x.example.com/dav", username: "wormhole" },
-      settingsJson: {
-        localOnlyKeys: ["hooks", "permissions.*"],
-        forceSyncKeys: ["theme", "language"],
-      },
-    };
-
-    const cfg = resolveConfig(raw);
-
-    assert.deepEqual(cfg.settingsJson.localOnlyKeys, ["hooks", "permissions.*"]);
-    assert.deepEqual(cfg.settingsJson.forceSyncKeys, ["theme", "language"]);
-  });
-
-  test("(b) settingsJson 미지정 시 localOnlyKeys=DEFAULT, forceSyncKeys=undefined", () => {
-    const cfg = resolveConfig({
-      remote: { url: "https://x.example.com/dav", username: "wormhole" },
-    });
-
-    assert.deepEqual(cfg.settingsJson.localOnlyKeys, DEFAULT_SETTINGS_LOCAL_KEYS);
-    assert.equal(cfg.settingsJson.forceSyncKeys, undefined);
-  });
-
+describe("RawConfigSchema — homeRootTargets", () => {
   test("(c) homeRootTargets 포함 객체 parse 성공 후 값 보존", () => {
     const raw = {
       remote: { url: "https://x.example.com/dav", username: "wormhole" },
@@ -659,33 +633,6 @@ describe("RawConfigSchema — settingsJson nested fields", () => {
     });
 
     assert.equal(cfg.homeRootTargets, undefined);
-  });
-});
-
-// ── S1.2: 하위호환 — 옛 flat 필드 자동 마이그레이션 ───────────────
-
-describe("migrateLegacySettingsKeys — 하위호환 별칭", () => {
-  test("옛 settingsLocalKeys + templateSettingsKeys 평면 config → settingsJson 흡수", () => {
-    const cfg = resolveConfig({
-      remote: { url: "https://x.example.com/dav", username: "wormhole" },
-      settingsLocalKeys: ["hooks", "permissions.*"],
-      templateSettingsKeys: ["theme", "language"],
-    });
-
-    assert.deepEqual(cfg.settingsJson.localOnlyKeys, ["hooks", "permissions.*"]);
-    assert.deepEqual(cfg.settingsJson.forceSyncKeys, ["theme", "language"]);
-  });
-
-  test("settingsJson 과 평면 필드 동시 존재 시 settingsJson 우선, 평면 무시", () => {
-    const cfg = resolveConfig({
-      remote: { url: "https://x.example.com/dav", username: "wormhole" },
-      settingsJson: { localOnlyKeys: ["mcpServers.*"], forceSyncKeys: ["theme"] },
-      settingsLocalKeys: ["hooks"],
-      templateSettingsKeys: ["language"],
-    });
-
-    assert.deepEqual(cfg.settingsJson.localOnlyKeys, ["mcpServers.*"]);
-    assert.deepEqual(cfg.settingsJson.forceSyncKeys, ["theme"]);
   });
 });
 

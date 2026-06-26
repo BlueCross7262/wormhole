@@ -93,8 +93,6 @@ export interface Config {
   crypto: CryptoConfig;
   /** 동기화 대상 글로브. */
   targets: SyncTargets;
-  /** settings.json 동기화 관련 키 설정. */
-  settingsJson: { localOnlyKeys: string[]; forceSyncKeys?: string[] };
   /** 자기 자신(wormhole) mcp 서버 이름 목록. .mcp.json 동기화 시 자기참조 제외 기준. */
   selfMcpServerNames: string[];
   /** 충돌 기본 정책. */

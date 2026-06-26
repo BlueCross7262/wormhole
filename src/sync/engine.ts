@@ -324,7 +324,7 @@ export class SyncEngine {
           continue; // 스캔 후 삭제됨.
         }
         const norm = isSettingsKey(f.logicalKey)
-          ? normalizeSettingsForSync(raw, this.config.settingsJson.localOnlyKeys, this.config.home, this.config.settingsJson.forceSyncKeys ?? [])
+          ? normalizeSettingsForSync(raw, this.config.home)
           : normalizeClaudeJsonForSync(raw, this.config.selfMcpServerNames, this.config.home);
         contentHash = norm.hash;
         size = norm.size;
@@ -597,7 +597,7 @@ export class SyncEngine {
         continue;
       }
       const norm = isSettingsKey(key)
-        ? normalizeSettingsForSync(rawText, this.config.settingsJson.localOnlyKeys, this.config.home, this.config.settingsJson.forceSyncKeys ?? [])
+        ? normalizeSettingsForSync(rawText, this.config.home)
         : normalizeClaudeJsonForSync(rawText, this.config.selfMcpServerNames, this.config.home);
       const content = Buffer.from(norm.text, "utf-8");
       out.set(key, { content, contentHash: norm.hash, size: norm.size });
@@ -881,13 +881,7 @@ export class SyncEngine {
     // base 스냅샷은 토큰 공간으로 저장되어 있음.
     const baseShared = (await this.readBaseSnapshotJson(key)) ?? {};
 
-    const result = threeWayMerge(
-      localObj,
-      remoteShared,
-      baseShared,
-      this.config.settingsJson.localOnlyKeys,
-      this.config.settingsJson.forceSyncKeys ?? [],
-    );
+    const result = threeWayMerge(localObj, remoteShared, baseShared);
 
     // 사용자 파일은 실제 home 경로로 복원해서 쓴다.
     const mergedReal = home ? detokenizeHome(result.merged, home) : result.merged;
@@ -917,11 +911,8 @@ export class SyncEngine {
     const localObj = home
       ? (tokenizeHome(localReal, home) as Record<string, unknown>)
       : localReal;
-    const localKeys = this.config.settingsJson.localOnlyKeys;
-    const forceKeys = this.config.settingsJson.forceSyncKeys ?? [];
-    // base = 로컬 shared subset → 모든 shared 키에서 local==base 이므로 remote-wins.
-    const baseShared = extractSharedSubset(localObj, localKeys, forceKeys);
-    const result = threeWayMerge(localObj, remoteShared, baseShared, localKeys, forceKeys);
+    const baseShared = extractSharedSubset(localObj);
+    const result = threeWayMerge(localObj, remoteShared, baseShared);
     const mergedReal = home ? detokenizeHome(result.merged, home) : result.merged;
     await this.atomicWriteFile(absPath, JSON.stringify(mergedReal, null, 2));
     await this.writeBaseSnapshot(key, JSON.stringify(remoteShared, null, 2));

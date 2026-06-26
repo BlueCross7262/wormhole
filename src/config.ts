@@ -30,16 +30,6 @@ export const DEFAULT_EXCLUDE: string[] = [
   "**/cache/**",
 ];
 
-export const DEFAULT_SETTINGS_LOCAL_KEYS: string[] = [
-  "mcpServers.*.command",
-  "mcpServers.*.args",
-  "mcpServers.*.cwd",
-  "mcpServers.*.env",
-  "permissions.*",
-  "hooks",
-  "statusLine.command",
-];
-
 // ── zod 스키마 ────────────────────────────────────────────────
 
 const RemoteConfigSchema = z.object({
@@ -81,18 +71,12 @@ const HomeRootTargetSchema = z.object({
   preserveMode: z.literal("denylist"),
 });
 
-const SettingsJsonSchema = z.object({
-  localOnlyKeys: z.array(z.string()).default(DEFAULT_SETTINGS_LOCAL_KEYS),
-  forceSyncKeys: z.array(z.string()).optional(),
-}).default({});
-
 const RawConfigSchema = z.object({
   stateDir: z.string().optional(),
   home: z.string().optional(),
   remote: RemoteConfigSchema.partial().default({}),
   crypto: CryptoConfigSchema.partial().default({}),
   targets: SyncTargetsSchema.partial().default({}),
-  settingsJson: SettingsJsonSchema,
   // 자기 자신(wormhole) mcp 서버 이름 목록. .mcp.json 동기화 시 자기참조 제외 기준.
   selfMcpServerNames: z.array(z.string()).default(["wormhole"]),
   conflictPolicy: z.enum(["preserve-both", "latest-wins", "manual"]).default("preserve-both"),
@@ -108,7 +92,6 @@ const FullConfigSchema = z.object({
   remote: RemoteConfigSchema,
   crypto: CryptoConfigSchema,
   targets: SyncTargetsSchema,
-  settingsJson: z.object({ localOnlyKeys: z.array(z.string()), forceSyncKeys: z.array(z.string()).optional() }),
   conflictPolicy: z.enum(["preserve-both", "latest-wins", "manual"]),
   lock: LockConfigSchema,
 });
@@ -186,21 +169,6 @@ function applyEnvOverrides(raw: Record<string, unknown>): Record<string, unknown
   return result;
 }
 
-function migrateLegacySettingsKeys(raw: Record<string, unknown>): Record<string, unknown> {
-  const hasLegacy = "settingsLocalKeys" in raw || "templateSettingsKeys" in raw;
-  if (!hasLegacy) return raw;
-  const out = { ...raw };
-  if (out.settingsJson == null) {
-    const grp: Record<string, unknown> = {};
-    if (Array.isArray(out.settingsLocalKeys)) grp.localOnlyKeys = out.settingsLocalKeys;
-    if (Array.isArray(out.templateSettingsKeys)) grp.forceSyncKeys = out.templateSettingsKeys;
-    out.settingsJson = grp;
-    console.warn("[wormhole] config 의 settingsLocalKeys/templateSettingsKeys 는 deprecated — settingsJson.{localOnlyKeys,forceSyncKeys} 로 이전하라. 이번 실행은 자동 변환됨.");
-  }
-  delete out.settingsLocalKeys;
-  delete out.templateSettingsKeys;
-  return out;
-}
 
 
 // remoteBaseDir 정규화: 정확히 1개의 선행 슬래시, 후행 슬래시 제거.
@@ -266,7 +234,6 @@ function resolvePaths(parsed: z.infer<typeof RawConfigSchema>, home: string, sta
       kdfP: cryptoRaw.kdfP,
     },
     targets: SyncTargetsSchema.parse(parsed.targets),
-    settingsJson: parsed.settingsJson,
     selfMcpServerNames: parsed.selfMcpServerNames,
     conflictPolicy: parsed.conflictPolicy,
     lock: LockConfigSchema.parse(parsed.lock),
@@ -279,8 +246,7 @@ function resolvePaths(parsed: z.infer<typeof RawConfigSchema>, home: string, sta
 export function resolveConfig(raw: unknown): Config {
   const home = os.homedir();
   const withEnv = applyEnvOverrides(raw as Record<string, unknown>);
-  const migrated = migrateLegacySettingsKeys(withEnv);
-  const parsed = RawConfigSchema.parse(migrated);
+  const parsed = RawConfigSchema.parse(withEnv);
 
   const stateDir = parsed.stateDir
     ? path.resolve(expandTilde(parsed.stateDir, home))
@@ -316,11 +282,8 @@ function dedupe(values: string[]): string[] {
 export async function loadConfig(configPath?: string, dotEnvPath?: string): Promise<Config> {
   const home = os.homedir();
 
-  // 진입부에서 ~/.wormhole/.env(또는 테스트용 override 경로)를 process.env 로 주입.
-  // 기존 process.env 키는 보존(MCP 가 준 값 우선).
   loadDotEnvIntoProcess(dotEnvPath);
 
-  // 설정 파일 경로 결정
   const cfgPath = configPath
     ?? process.env["WORMHOLE_CONFIG"]
     ?? path.join(home, ".wormhole", "config.json");
@@ -339,11 +302,8 @@ export async function loadConfig(configPath?: string, dotEnvPath?: string): Prom
   }
 
   const withEnv = applyEnvOverrides(fileRaw);
-  const migrated = migrateLegacySettingsKeys(withEnv);
-  const parsed = RawConfigSchema.parse(migrated);
+  const parsed = RawConfigSchema.parse(withEnv);
 
-  // remoteBaseDir 가드: 명시적 remoteBaseDir 가 없고 username 도 비어 있으면 도출 불가 → 명확히 halt.
-  // (remoteBaseDir 는 username 에서 "/" + username 으로 도출되므로 username 이 필수다.)
   const remoteUsername = (parsed.remote?.username ?? "").trim();
   const remoteBaseDir = (parsed.remote?.remoteBaseDir ?? "").trim();
   if (!remoteBaseDir && !remoteUsername) {
@@ -352,11 +312,6 @@ export async function loadConfig(configPath?: string, dotEnvPath?: string): Prom
     );
   }
 
-  // .env(또는 process.env)의 WORMHOLE_SYNC_INCLUDE/EXCLUDE 는 동기화 대상에 대해
-  // "가산 union" 으로만 작동한다(절대 replace 아님). config.json 의 보안 기본 제외
-  // (*.key, *.token, .credentials.json, settings.local.json 등)는 항상 유지되며,
-  // env 로는 기본값을 줄일 수 없다 — 줄이려면 config.json 을 직접 수정해야 한다.
-  // SyncTargetsSchema.parse 로 Zod 기본값(DEFAULT_INCLUDE/EXCLUDE)을 먼저 실체화한 뒤 union.
   const baseTargets = SyncTargetsSchema.parse(parsed.targets);
   parsed.targets = {
     include: dedupe([

@@ -566,51 +566,6 @@ function writeConfigFull(
   return p;
 }
 
-describe("runDoctor — 이주완전성 체크 (1) settingsJson.localOnlyKeys 환경의존키 누락", () => {
-  before(() => { snapshotEnv(); });
-  after(() => { restoreEnv(); });
-
-  beforeEach(() => {
-    clearManagedEnv();
-    tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "cs-doctor-slk-"));
-    process.env["WEBDAV_USER"] = USERNAME;
-    process.env["WORMHOLE_PASSPHRASE"] = PASSPHRASE;
-  });
-
-  afterEach(() => {
-    fs.rmSync(tmpRoot, { recursive: true, force: true });
-  });
-
-  test("settingsJson.localOnlyKeys 비어 있음(환경의존키 0개) → warn", async () => {
-    const stateDir = path.join(tmpRoot, "state");
-    fs.mkdirSync(stateDir, { recursive: true });
-    process.env["WORMHOLE_CONFIG"] = writeConfigFull(stateDir, DEAD_URL, {
-      settingsJson: { localOnlyKeys: [] },
-    });
-    const result = await runDoctor(logger);
-    const c = findCheck(result, "settingsJson.localOnlyKeys");
-    assert.equal(c.status, "warn", `settingsJson.localOnlyKeys 비어 있으면 warn. detail: ${c.detail}`);
-  });
-
-  test("settingsJson.localOnlyKeys 에 환경의존키 포함(기본값) → ok", async () => {
-    const stateDir = path.join(tmpRoot, "state");
-    fs.mkdirSync(stateDir, { recursive: true });
-    process.env["WORMHOLE_CONFIG"] = writeConfigFull(stateDir, DEAD_URL, {
-      settingsJson: {
-        localOnlyKeys: [
-          "mcpServers.*.command",
-          "mcpServers.*.args",
-          "mcpServers.*.env",
-          "hooks",
-        ],
-      },
-    });
-    const result = await runDoctor(logger);
-    const c = findCheck(result, "settingsJson.localOnlyKeys");
-    assert.equal(c.status, "ok", `환경의존키 포함 시 ok. detail: ${c.detail}`);
-  });
-});
-
 describe("runDoctor — 이주완전성 체크 (2) include 글로브 절대경로 리터럴", () => {
   before(() => { snapshotEnv(); });
   after(() => { restoreEnv(); });
