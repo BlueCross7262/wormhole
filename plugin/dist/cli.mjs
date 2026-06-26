@@ -16801,10 +16801,19 @@ function dedupe(values) {
   }
   return out;
 }
+function resolveConfigPath(home, configPathArg, envValue, exists2 = fs.existsSync) {
+  if (configPathArg !== void 0) return configPathArg;
+  if (envValue !== void 0) return envValue;
+  const canonical = path2.join(home, ".claude", "wormhole-config.json");
+  const legacy = path2.join(home, ".wormhole", "config.json");
+  if (exists2(canonical)) return canonical;
+  if (exists2(legacy)) return legacy;
+  return canonical;
+}
 async function loadConfig(configPath, dotEnvPath) {
   const home = os2.homedir();
   loadDotEnvIntoProcess(dotEnvPath);
-  const cfgPath = configPath ?? process.env["WORMHOLE_CONFIG"] ?? path2.join(home, ".wormhole", "config.json");
+  const cfgPath = resolveConfigPath(home, configPath, process.env["WORMHOLE_CONFIG"]);
   let fileRaw = {};
   try {
     const content = await fs.promises.readFile(cfgPath, "utf-8");
@@ -31954,7 +31963,7 @@ async function readMachineIdIfExists(stateDir) {
 }
 
 // src/sync/engine.ts
-import { promises as fs7, readFileSync as readFileSync3, existsSync as existsSync2 } from "node:fs";
+import { promises as fs7, readFileSync as readFileSync3, existsSync as existsSync3 } from "node:fs";
 import * as path10 from "node:path";
 import { gzip, gunzip } from "node:zlib";
 import { promisify as promisify2 } from "node:util";
@@ -33008,7 +33017,7 @@ function checkInstallPrereqs(pulledSettings, pluginsDir) {
     if (atIdx > 0) {
       const marketplace = key.slice(atIdx + 1);
       const marketEntry = knownMarketplaces[marketplace];
-      if (!marketEntry || !marketEntry.installLocation || !existsSync2(marketEntry.installLocation)) {
+      if (!marketEntry || !marketEntry.installLocation || !existsSync3(marketEntry.installLocation)) {
         missing.push(key);
       }
     }

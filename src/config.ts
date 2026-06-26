@@ -280,14 +280,27 @@ function dedupe(values: string[]): string[] {
   return out;
 }
 
+export function resolveConfigPath(
+  home: string,
+  configPathArg: string | undefined,
+  envValue: string | undefined,
+  exists: (p: string) => boolean = fs.existsSync,
+): string {
+  if (configPathArg !== undefined) return configPathArg;
+  if (envValue !== undefined) return envValue;
+  const canonical = path.join(home, ".claude", "wormhole-config.json");
+  const legacy = path.join(home, ".wormhole", "config.json");
+  if (exists(canonical)) return canonical;
+  if (exists(legacy)) return legacy;
+  return canonical;
+}
+
 export async function loadConfig(configPath?: string, dotEnvPath?: string): Promise<Config> {
   const home = os.homedir();
 
   loadDotEnvIntoProcess(dotEnvPath);
 
-  const cfgPath = configPath
-    ?? process.env["WORMHOLE_CONFIG"]
-    ?? path.join(home, ".wormhole", "config.json");
+  const cfgPath = resolveConfigPath(home, configPath, process.env["WORMHOLE_CONFIG"]);
 
   let fileRaw: Record<string, unknown> = {};
   try {

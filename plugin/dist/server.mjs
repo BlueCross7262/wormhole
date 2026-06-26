@@ -33714,10 +33714,19 @@ function dedupe(values) {
   }
   return out;
 }
+function resolveConfigPath(home, configPathArg, envValue, exists2 = fs.existsSync) {
+  if (configPathArg !== void 0) return configPathArg;
+  if (envValue !== void 0) return envValue;
+  const canonical = path2.join(home, ".claude", "wormhole-config.json");
+  const legacy = path2.join(home, ".wormhole", "config.json");
+  if (exists2(canonical)) return canonical;
+  if (exists2(legacy)) return legacy;
+  return canonical;
+}
 async function loadConfig(configPath, dotEnvPath) {
   const home = os.homedir();
   loadDotEnvIntoProcess(dotEnvPath);
-  const cfgPath = configPath ?? process.env["WORMHOLE_CONFIG"] ?? path2.join(home, ".wormhole", "config.json");
+  const cfgPath = resolveConfigPath(home, configPath, process.env["WORMHOLE_CONFIG"]);
   let fileRaw = {};
   try {
     const content = await fs.promises.readFile(cfgPath, "utf-8");
@@ -49785,7 +49794,7 @@ function registerAllTools(server, engine) {
 import * as path8 from "node:path";
 import * as os2 from "node:os";
 import {
-  existsSync,
+  existsSync as existsSync2,
   mkdirSync,
   unlinkSync,
   readFileSync as readFileSync2,
@@ -49885,7 +49894,7 @@ async function atomicWriteBuffer(filePath, data) {
 async function upsertDotEnvKey(envPath, key, value) {
   const dir = path8.dirname(envPath);
   mkdirSync(dir, { recursive: true });
-  if (!existsSync(envPath)) {
+  if (!existsSync2(envPath)) {
     await atomicWriteUtf8(envPath, `${key}=${value}
 `);
     try {
@@ -49965,7 +49974,7 @@ async function maybeMigrateLegacyConfig(opts) {
   const NEW = path8.join(home, ".claude", "wormhole-config.json");
   const ENVPATH = path8.join(home, ".wormhole", ".env");
   const SELF_ENTRY = ".claude/wormhole-config.json";
-  if (!existsSync(LEGACY)) return { migrated: false, reason: "no-legacy" };
+  if (!existsSync2(LEGACY)) return { migrated: false, reason: "no-legacy" };
   let legacyObj;
   try {
     legacyObj = JSON.parse(readFileSync2(LEGACY, "utf-8"));
@@ -49979,7 +49988,7 @@ async function maybeMigrateLegacyConfig(opts) {
     return { migrated: false, reason: "portability-reject", detail: portCheck.detail };
   }
   let needsCopy = true;
-  if (existsSync(NEW)) {
+  if (existsSync2(NEW)) {
     let newObj;
     try {
       newObj = JSON.parse(readFileSync2(NEW, "utf-8"));
@@ -50031,7 +50040,7 @@ async function maybeMigrateLegacyConfig(opts) {
 }
 
 // src/sync/engine.ts
-import { promises as fs8, readFileSync as readFileSync3, existsSync as existsSync2 } from "node:fs";
+import { promises as fs8, readFileSync as readFileSync3, existsSync as existsSync3 } from "node:fs";
 import * as path11 from "node:path";
 import { gzip, gunzip } from "node:zlib";
 import { promisify as promisify3 } from "node:util";
@@ -50698,7 +50707,7 @@ function checkInstallPrereqs(pulledSettings, pluginsDir) {
     if (atIdx > 0) {
       const marketplace = key.slice(atIdx + 1);
       const marketEntry = knownMarketplaces[marketplace];
-      if (!marketEntry || !marketEntry.installLocation || !existsSync2(marketEntry.installLocation)) {
+      if (!marketEntry || !marketEntry.installLocation || !existsSync3(marketEntry.installLocation)) {
         missing.push(key);
       }
     }

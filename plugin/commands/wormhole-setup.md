@@ -3,7 +3,7 @@ description: wormhole 초기 설정 (env·config 생성)
 argument-hint: "[--reset-config]"
 ---
 
-`~/.wormhole/.env` 와 `~/.wormhole/config.json` 이 없으면 각각 템플릿을 생성한다. 이미 존재하면 덮어쓰지 않는다 (idempotent).
+`~/.wormhole/.env` 와 `~/.claude/wormhole-config.json` 이 없으면 각각 템플릿을 생성한다. 이미 존재하면 덮어쓰지 않는다 (idempotent).
 
 ```bash
 node ${CLAUDE_PLUGIN_ROOT}/scripts/setup.mjs
@@ -19,7 +19,7 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/setup.mjs
 - 원격 기본 디렉터리는 `WEBDAV_USER` 값에서 자동 파생된다 (URL 아래 `/<WEBDAV_USER>`). override 가 필요하면 `config.json` 의 `remote.remoteBaseDir` 를 직접 편집한다.
 - 패스프레이즈: `WORMHOLE_PASSPHRASE` (직접 입력) 또는 `WORMHOLE_PASSPHRASE_FILE` (파일 경로) 중 하나 선택
 
-**`~/.wormhole/config.json`** — 동기화 범위 및 동작 설정 (선택적으로 편집)
+**`~/.claude/wormhole-config.json`** — 동기화 범위 및 동작 설정 (선택적으로 편집)
 
 - `targets.include` / `targets.exclude` — 동기화할 glob 패턴 목록. 기본값은 `.claude/` 하위 주요 파일을 포함한다.
 - `settingsJson.localOnlyKeys` — 머신별로 유지할 settings.json 키 경로 목록 (동기화에서 제외).

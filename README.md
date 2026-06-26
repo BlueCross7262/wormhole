@@ -227,7 +227,7 @@ Claude Code 플러그인 마켓플레이스를 통해 빌드 없이 설치한다
 /wormhole-setup
 ```
 
-`~/.wormhole/.env` 와 `~/.wormhole/config.json` 두 파일을 자동 생성하고 필요한 값을 채워넣을 수 있도록 안내한다.
+`~/.wormhole/.env` 와 `~/.claude/wormhole-config.json` 두 파일을 자동 생성하고 필요한 값을 채워넣을 수 있도록 안내한다.
 두 파일 모두 이미 존재하면 덮어쓰지 않는다 (멱등).
 
 **4. `.env` 편집**
@@ -433,14 +433,14 @@ chmod 600 ~/.wormhole/.env
 
 ### config.json 설정
 
-`~/.wormhole/config.json` 은 **필수** 파일이다.
+`~/.claude/wormhole-config.json` 은 **필수** 파일이다.
 존재하지 않으면 어떤 wormhole 커맨드든 오류와 함께 중단되며, `/wormhole-setup` 실행을 안내하는 메시지가 출력된다.
 
 `/wormhole-setup` (또는 `setup.mjs`) 을 실행하면 코드 기본값 그대로 채워진 `config.json` 이 생성된다 (이미 있으면 건드리지 않음).
 직접 만들려면:
 
 ```bash
-cp config.example.json ~/.wormhole/config.json
+cp config.example.json ~/.claude/wormhole-config.json
 ```
 
 `config.json` 에는 **`remote` 섹션을 두지 않는다** — WebDAV 접속 정보(WEBDAV_URL/USER/PASS)는 `.env` 에만 기술한다. 원격 기본 디렉터리는 WEBDAV_USER 에서 자동 파생되며, 명시 override 가 필요한 경우에만 `remote.remoteBaseDir` 필드를 추가한다.

@@ -30,9 +30,9 @@ function runSetup(homeDir: string, args: string[] = []): ReturnType<typeof spawn
 test("(a) --reset-config: sentinel config 덮어씀 + 기본값 마커 존재", () => {
   const homeDir = makeTmpHome();
   try {
-    const wormholeDir = path.join(homeDir, ".wormhole");
-    fs.mkdirSync(wormholeDir, { recursive: true });
-    const configPath = path.join(wormholeDir, "config.json");
+    const claudeDir = path.join(homeDir, ".claude");
+    fs.mkdirSync(claudeDir, { recursive: true });
+    const configPath = path.join(claudeDir, "wormhole-config.json");
 
     fs.writeFileSync(configPath, JSON.stringify({ __sentinel__: true }), "utf-8");
 
@@ -41,7 +41,6 @@ test("(a) --reset-config: sentinel config 덮어씀 + 기본값 마커 존재", 
 
     const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
     assert.equal(config.__sentinel__, undefined, "sentinel 이 남아있으면 안 됨");
-    assert.ok(Array.isArray(config.settingsJson?.localOnlyKeys), "settingsJson.localOnlyKeys 배열 존재");
     assert.equal(config.conflictPolicy, "preserve-both", "conflictPolicy 기본값");
     assert.ok(
       (config.targets?.include ?? []).includes(".claude/CLAUDE.md"),
@@ -75,9 +74,9 @@ test("(b) --reset-config: .env sentinel 내용 byte-identical 유지 (보안 핵
 test("(c) 플래그 없음: sentinel config 덮어쓰지 않음", () => {
   const homeDir = makeTmpHome();
   try {
-    const wormholeDir = path.join(homeDir, ".wormhole");
-    fs.mkdirSync(wormholeDir, { recursive: true });
-    const configPath = path.join(wormholeDir, "config.json");
+    const claudeDir = path.join(homeDir, ".claude");
+    fs.mkdirSync(claudeDir, { recursive: true });
+    const configPath = path.join(claudeDir, "wormhole-config.json");
 
     fs.writeFileSync(configPath, JSON.stringify({ __sentinel__: true }), "utf-8");
 

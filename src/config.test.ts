@@ -6,6 +6,7 @@ import * as path from "node:path";
 
 import {
   loadConfig,
+  resolveConfigPath,
   resolveConfig,
   loadDotEnvIntoProcess,
   DEFAULT_INCLUDE,
@@ -729,5 +730,35 @@ describe("loadConfig — WORMHOLE_SYNC_INCLUDE/EXCLUDE additive union", () => {
     assert.deepEqual(cfg.targets.include, [...DEFAULT_INCLUDE, "from-dotenv/**", "another/**"]);
     // 기본 exclude 는 그대로.
     assert.deepEqual(cfg.targets.exclude, DEFAULT_EXCLUDE);
+  });
+});
+
+describe("resolveConfigPath — 경로 우선순위", () => {
+  const HOME = path.join("/fake", "home");
+  const canonical = path.join(HOME, ".claude", "wormhole-config.json");
+  const legacy = path.join(HOME, ".wormhole", "config.json");
+  const none = () => false;
+  const all = () => true;
+
+  test("명시 configPath 인자가 최우선", () => {
+    assert.equal(resolveConfigPath(HOME, "/explicit/cfg.json", "/env/cfg.json", all), "/explicit/cfg.json");
+  });
+  test("인자 부재 시 WORMHOLE_CONFIG env 사용", () => {
+    assert.equal(resolveConfigPath(HOME, undefined, "/env/cfg.json", all), "/env/cfg.json");
+  });
+  test("빈 문자열 env 도 그대로 반환", () => {
+    assert.equal(resolveConfigPath(HOME, undefined, "", none), "");
+  });
+  test("인자·env 부재 + 정규 존재 → 정규", () => {
+    assert.equal(resolveConfigPath(HOME, undefined, undefined, (p) => p === canonical), canonical);
+  });
+  test("정규 부재 + 레거시 존재 → 레거시", () => {
+    assert.equal(resolveConfigPath(HOME, undefined, undefined, (p) => p === legacy), legacy);
+  });
+  test("둘 다 존재 → 정규 우선", () => {
+    assert.equal(resolveConfigPath(HOME, undefined, undefined, all), canonical);
+  });
+  test("둘 다 부재 → 정규", () => {
+    assert.equal(resolveConfigPath(HOME, undefined, undefined, none), canonical);
   });
 });
