@@ -15,13 +15,18 @@
     "include": [
       ".claude/CLAUDE.md",
       ".claude/settings.json",
-      ".claude/wormhole-config.json",
       ".claude/agents/**",
       ".claude/commands/**",
       ".claude/hud/**",
       ".claude/rules/**",
       ".claude/scripts/**",
-      ".claude/skills/**"
+      ".claude/skills/autoloop/**",
+      ".claude/skills/gen-plan/**",
+      ".claude/skills/pick-run-skill/**",
+      ".claude/skills/plantuml-style/**",
+      ".claude/skills/verify-reinforce/**",
+      ".claude/hookify.*.global.md",
+      ".claude/wormhole-config.json"
     ],
     "exclude": [
       ".claude/.credentials.json",
