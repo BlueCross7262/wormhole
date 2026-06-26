@@ -240,39 +240,6 @@ function stableNormalize(value: unknown): unknown {
   return value;
 }
 
-/**
- * .mcp.json 텍스트에서 자기참조(wormhole 등) mcpServers 엔트리를 제거한다.
- * - JSON 파싱 실패 시 원본 텍스트를 그대로 반환(throw 금지)하되 hash/size 는 원본 기준으로 계산한다.
- * - 성공 시 mcpServers 객체에서 selfNames 키를 삭제하고 안정 직렬화한다.
- */
-export function stripSelfMcpServers(
-  jsonText: string,
-  selfNames: string[],
-  home = "",
-): { text: string; hash: string; size: number } {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(jsonText);
-  } catch {
-    const buf = Buffer.from(jsonText, "utf-8");
-    return { text: jsonText, hash: sha256(buf), size: buf.byteLength };
-  }
-
-  const root = isPlainObject(parsed) ? structuredCloneSafe(parsed) : {};
-  const servers = root.mcpServers;
-  if (isPlainObject(servers)) {
-    for (const name of selfNames) {
-      delete servers[name];
-    }
-  }
-
-  // home 절대경로를 ${HOME} 토큰으로 치환(타 머신 이식성).
-  const tokenized = home ? tokenizeHome(root, home) : root;
-  const text = stableStringify(tokenized);
-  const buf = Buffer.from(text, "utf-8");
-  return { text, hash: sha256(buf), size: buf.byteLength };
-}
-
 // settings.json 동기화용 정규화: 머신 고유키를 제거한 shared subset 을 결정적(stableStringify)으로
 // 직렬화하고 해시한다. scan 의 localHash 와 push 의 contentHash 가 동일 파이프라인을 통과해야
 // "변경 없음" 이 unchanged 로 판정된다(멱등성). 파싱 실패 시 원본 바이트 기준으로 폴백.
@@ -307,13 +274,13 @@ export function normalizeSettingsForSync(
 const SECRET_ENV_PATTERN = /_(PAT|TOKEN|SECRET)$/;
 
 /**
- * push/scan 공용 정규화: 로컬 .claude.json raw → mcpServers 서브트리만 추출 + home 토큰화.
- * stripSelfMcpServers 시그니처를 미러링한다.
- * JSON 파싱 실패 시 원본 텍스트/해시 반환(throw 금지).
+ * push/scan 공용 정규화: 로컬 .claude.json raw → allowlist mcpServers 서브트리만 추출 + home 토큰화.
+ * allowlist 에 등록된 서버만 포함. 미등록 서버(wormhole 등)는 제외.
+ * env 의 시크릿(*_PAT/*_TOKEN/*_SECRET) strip. JSON 파싱 실패 시 원본 텍스트/해시 반환(throw 금지).
  */
 export function normalizeClaudeJsonForSync(
   jsonText: string,
-  selfNames: string[],
+  allowlist: string[],
   home = "",
 ): { text: string; hash: string; size: number } {
   let parsed: unknown;
@@ -331,7 +298,7 @@ export function normalizeClaudeJsonForSync(
     if (isPlainObject(servers)) {
       const strippedServers: Record<string, unknown> = {};
       for (const [name, serverVal] of Object.entries(servers)) {
-        if (selfNames.includes(name)) continue;
+        if (!allowlist.includes(name)) continue;
         if (!isPlainObject(serverVal)) {
           strippedServers[name] = serverVal;
           continue;
@@ -347,7 +314,9 @@ export function normalizeClaudeJsonForSync(
         }
         strippedServers[name] = srv;
       }
-      out.mcpServers = strippedServers;
+      if (Object.keys(strippedServers).length > 0) {
+        out.mcpServers = strippedServers;
+      }
     } else {
       out.mcpServers = servers;
     }
@@ -361,16 +330,16 @@ export function normalizeClaudeJsonForSync(
 
 /**
  * pull 시 원격 mcpServers 를 로컬 .claude.json 에 머지한다.
- * - mcpServers 만 원격 기준으로 교체(원격 우선). env 의 시크릿(*_PAT/*_TOKEN/*_SECRET) strip.
- * - mcpServers 외 나머지 키(oauthAccount/userID/projects/numStartups/machineID/임의키)는
- *   byte-identical 보존(deep merge 로 중첩 projects 손실 금지).
- * - 로컬 파싱 실패/부재(null) 시 원격 mcpServers 기반으로 반환.
+ * - allowlist 에 등록된 서버만 원격 기준으로 overlay. 미등록 서버는 로컬 그대로.
+ * - overlay 후 로컬의 *_PAT/*_TOKEN/*_SECRET env 키를 re-graft(머신별 시크릿 보존).
+ * - mcpServers 외 나머지 키는 로컬 byte-identical 보존.
+ * - 로컬 파싱 실패/부재(null) 시 원격 allowlist 서버만 반환(시크릿 strip된 상태).
  * - 원격 content 는 ${HOME} 토큰 공간 → home 인자로 detokenize.
  */
 export function mergeClaudeJsonForPull(
   localRaw: string | null,
   remoteContent: string,
-  selfNames: string[],
+  allowlist: string[],
   home = "",
 ): string {
   let remote: Record<string, unknown> = {};
@@ -384,14 +353,7 @@ export function mergeClaudeJsonForPull(
   // 원격은 ${HOME} 토큰 공간 → 이 머신 home 절대경로로 복원.
   if (home) remote = detokenizeHome(remote, home) as Record<string, unknown>;
 
-  // 원격 mcpServers 에서 self 엔트리 방어적 strip(원격 오염 차단).
-  if (isPlainObject(remote.mcpServers)) {
-    for (const name of selfNames) {
-      delete (remote.mcpServers as Record<string, unknown>)[name];
-    }
-  }
-
-  // 원격 mcpServers env 의 시크릿 strip.
+  // 원격 mcpServers env 의 시크릿 방어적 strip(push 측에서 이미 strip됐지만 이중 방어).
   const remoteServers = remote.mcpServers;
   if (isPlainObject(remoteServers)) {
     for (const [, serverVal] of Object.entries(remoteServers)) {
@@ -416,40 +378,56 @@ export function mergeClaudeJsonForPull(
     }
   }
 
-  // 로컬 파싱 실패/부재: 원격 mcpServers 기반으로 반환.
+  // 로컬 파싱 실패/부재: 원격의 allowlist 서버만 반환.
   if (local === null) {
     const out: Record<string, unknown> = {};
-    if (Object.prototype.hasOwnProperty.call(remote, "mcpServers")) {
-      out.mcpServers = remote.mcpServers;
+    if (isPlainObject(remote.mcpServers) && allowlist.length > 0) {
+      const outServers: Record<string, unknown> = {};
+      for (const name of allowlist) {
+        if (Object.prototype.hasOwnProperty.call(remote.mcpServers, name)) {
+          outServers[name] = (remote.mcpServers as Record<string, unknown>)[name];
+        }
+      }
+      if (Object.keys(outServers).length > 0) out.mcpServers = outServers;
     }
     return stableStringify(out);
   }
 
-  // 로컬의 mcpServers 만 원격 기준으로 교체, 나머지는 로컬 그대로.
+  // 로컬 전체 clone → allowlist 서버만 원격 overlay + 로컬 시크릿 re-graft.
   const merged: Record<string, unknown> = structuredCloneSafe(local);
-  if (Object.prototype.hasOwnProperty.call(remote, "mcpServers")) {
-    merged.mcpServers = remote.mcpServers;
-  } else {
-    delete merged.mcpServers;
-  }
+  const mergedServers = isPlainObject(merged.mcpServers)
+    ? (merged.mcpServers as Record<string, unknown>)
+    : null;
 
-  // 로컬 self 엔트리 보존(로컬 실제 경로·설정 그대로).
-  // selfNames 중 실제 로컬에 존재하는 항목만 보존 — 빈 mcpServers 객체 생성 금지.
-  if (selfNames.length > 0) {
-    const localServers = local.mcpServers;
-    if (isPlainObject(localServers)) {
-      const selfEntries = selfNames.filter(name =>
-        Object.prototype.hasOwnProperty.call(localServers, name),
-      );
-      if (selfEntries.length > 0) {
-        const mergedServers = isPlainObject(merged.mcpServers)
-          ? (merged.mcpServers as Record<string, unknown>)
-          : ((merged.mcpServers = {}), merged.mcpServers as Record<string, unknown>);
-        for (const name of selfEntries) {
-          mergedServers[name] = (localServers as Record<string, unknown>)[name];
+  for (const name of allowlist) {
+    if (!isPlainObject(remote.mcpServers)) continue;
+    if (!Object.prototype.hasOwnProperty.call(remote.mcpServers, name)) continue;
+
+    const remoteServer = structuredCloneSafe(
+      (remote.mcpServers as Record<string, unknown>)[name] as Record<string, unknown>,
+    ) as Record<string, unknown>;
+
+    // 로컬 시크릿 re-graft: 원격(strip됨)에 로컬 *_PAT/*_TOKEN/*_SECRET 복원.
+    const localServer = mergedServers?.[name];
+    const localEnv = isPlainObject(localServer) ? (localServer as Record<string, unknown>).env : undefined;
+    if (isPlainObject(remoteServer.env) && isPlainObject(localEnv)) {
+      for (const k of Object.keys(localEnv as Record<string, unknown>)) {
+        if (SECRET_ENV_PATTERN.test(k)) {
+          (remoteServer.env as Record<string, unknown>)[k] = (localEnv as Record<string, unknown>)[k];
         }
       }
+    } else if (isPlainObject(localEnv)) {
+      const grafted: Record<string, unknown> = {};
+      for (const k of Object.keys(localEnv as Record<string, unknown>)) {
+        if (SECRET_ENV_PATTERN.test(k)) {
+          grafted[k] = (localEnv as Record<string, unknown>)[k];
+        }
+      }
+      if (Object.keys(grafted).length > 0) remoteServer.env = grafted;
     }
+
+    if (!isPlainObject(merged.mcpServers)) merged.mcpServers = {};
+    (merged.mcpServers as Record<string, unknown>)[name] = remoteServer;
   }
 
   return stableStringify(merged);

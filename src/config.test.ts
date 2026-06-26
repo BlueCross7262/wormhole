@@ -431,7 +431,7 @@ describe("Zod schema defaults populate omitted fields", () => {
     assert.equal(cfg.crypto.keychainService, undefined);
 
     // top-level defaults
-    assert.deepEqual(cfg.selfMcpServerNames, ["wormhole"]);
+    assert.deepEqual(cfg.syncMcpServers, []);
     assert.equal(cfg.conflictPolicy, "preserve-both");
 
     // lock defaults

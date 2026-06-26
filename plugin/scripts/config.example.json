@@ -38,7 +38,8 @@
       ".claude/skills/omc-reference/**"
     ]
   },
-  "selfMcpServerNames": ["wormhole"],
+  "_syncMcpServers_comment": "동기화할 mcpServer 이름만 등록. 미등록(wormhole 등)은 로컬. allowlist 서버의 *_PAT/_TOKEN/_SECRET env 는 동기화 안 되고 머신별 로컬 유지(pull 시 로컬 값 보존).",
+  "syncMcpServers": [],
   "conflictPolicy": "preserve-both",
   "homeRootTargets": {
     ".claude.json": { "subkeys": ["mcpServers"], "preserveMode": "denylist" }

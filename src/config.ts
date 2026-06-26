@@ -77,8 +77,9 @@ const RawConfigSchema = z.object({
   remote: RemoteConfigSchema.partial().default({}),
   crypto: CryptoConfigSchema.partial().default({}),
   targets: SyncTargetsSchema.partial().default({}),
-  // 자기 자신(wormhole) mcp 서버 이름 목록. .mcp.json 동기화 시 자기참조 제외 기준.
-  selfMcpServerNames: z.array(z.string()).default(["wormhole"]),
+  // 동기화할 mcpServer 이름 allowlist. 등록된 서버만 .claude.json mcpServers 에서 동기화.
+  // 미등록(wormhole 등)은 머신 로컬 보존. *_PAT/_TOKEN/_SECRET env 는 pull 시 로컬 값 re-graft.
+  syncMcpServers: z.array(z.string()).default([]),
   conflictPolicy: z.enum(["preserve-both", "latest-wins", "manual"]).default("preserve-both"),
   lock: LockConfigSchema.partial().default({}),
   // home-root 파일(예: .claude.json)의 머지 서브키와 보존모드 맵.
@@ -234,7 +235,7 @@ function resolvePaths(parsed: z.infer<typeof RawConfigSchema>, home: string, sta
       kdfP: cryptoRaw.kdfP,
     },
     targets: SyncTargetsSchema.parse(parsed.targets),
-    selfMcpServerNames: parsed.selfMcpServerNames,
+    syncMcpServers: parsed.syncMcpServers,
     conflictPolicy: parsed.conflictPolicy,
     lock: LockConfigSchema.parse(parsed.lock),
     homeRootTargets: parsed.homeRootTargets,

@@ -44,7 +44,7 @@ const FIXTURE_RAW = {
 describe("normalizeClaudeJsonForSync", () => {
   test("mcpServers만 추출하고 home 토큰화하여 안정 직렬화 반환", () => {
     const raw = JSON.stringify(FIXTURE_RAW);
-    const result = normalizeClaudeJsonForSync(raw, [], HOME);
+    const result = normalizeClaudeJsonForSync(raw, ["ky_jira", "context7"], HOME);
     const parsed = JSON.parse(result.text) as Record<string, unknown>;
 
     assert.ok(Object.prototype.hasOwnProperty.call(parsed, "mcpServers"), "mcpServers 키 존재");
@@ -82,7 +82,7 @@ describe("normalizeClaudeJsonForSync", () => {
     const raw = JSON.stringify({ mcpServers: {} });
     const result = normalizeClaudeJsonForSync(raw, [], HOME);
     const parsed = JSON.parse(result.text) as Record<string, unknown>;
-    assert.deepEqual(parsed, { mcpServers: {} });
+    assert.deepEqual(parsed, {});
   });
 
   test("JSON 파싱 실패 시 원본 반환(throw 금지)", () => {
@@ -102,7 +102,7 @@ describe("normalizeClaudeJsonForSync", () => {
         },
       },
     });
-    const result = normalizeClaudeJsonForSync(raw, [], HOME);
+    const result = normalizeClaudeJsonForSync(raw, ["local_tool"], HOME);
     assert.ok(result.text.includes("${HOME}"), "HOME 토큰 존재");
     assert.ok(!result.text.includes(HOME), "절대 home 경로 미포함");
   });
@@ -131,7 +131,7 @@ describe("mergeClaudeJsonForPull", () => {
     };
     const remoteContent = JSON.stringify({ mcpServers: remoteMcpServers });
 
-    const merged = mergeClaudeJsonForPull(localRaw, remoteContent, [], HOME);
+    const merged = mergeClaudeJsonForPull(localRaw, remoteContent, ["ky_jira", "new_server"], HOME);
     const result = JSON.parse(merged) as Record<string, unknown>;
 
     // mcpServers 는 원격 기준으로 머지됨
@@ -214,7 +214,7 @@ describe("mergeClaudeJsonForPull", () => {
       },
     });
 
-    const merged = mergeClaudeJsonForPull(localRaw, remoteContent, [], HOME);
+    const merged = mergeClaudeJsonForPull(localRaw, remoteContent, ["tool_with_secrets"], HOME);
     const result = JSON.parse(merged) as Record<string, unknown>;
     const env = (
       (result.mcpServers as Record<string, unknown>).tool_with_secrets as Record<string, unknown>
@@ -226,9 +226,8 @@ describe("mergeClaudeJsonForPull", () => {
     assert.equal(env.TOOL_URL, "keep-this", "TOOL_URL 보존됨");
   });
 
-  test("JIRA_PAT 은 원격에서 undefined (strip 확인)", () => {
+  test("JIRA_PAT 원격 유출값 아님 — 로컬값으로 graft 됨", () => {
     const localRaw = JSON.stringify(FIXTURE_RAW);
-    // 원격 push 정규화 후 JIRA_PAT이 유지된 상태로 왔다고 가정(방어 strip 검증)
     const remoteContent = JSON.stringify({
       mcpServers: {
         ky_jira: {
@@ -242,13 +241,14 @@ describe("mergeClaudeJsonForPull", () => {
       },
     });
 
-    const merged = mergeClaudeJsonForPull(localRaw, remoteContent, [], HOME);
+    const merged = mergeClaudeJsonForPull(localRaw, remoteContent, ["ky_jira"], HOME);
     const result = JSON.parse(merged) as Record<string, unknown>;
     const jiraEnv = (
       (result.mcpServers as Record<string, unknown>).ky_jira as Record<string, unknown>
     ).env as Record<string, unknown>;
 
-    assert.equal(jiraEnv.JIRA_PAT, undefined, "JIRA_PAT은 pull 결과에서 undefined");
+    assert.notEqual(jiraEnv.JIRA_PAT, "leaked-secret", "원격 유출값 미포함");
+    assert.equal(jiraEnv.JIRA_PAT, FIXTURE_RAW.mcpServers.ky_jira.env.JIRA_PAT, "로컬값으로 graft 됨");
   });
 
   test("로컬 부재(null) 시 원격 mcpServers 기반으로 반환", () => {
@@ -256,20 +256,23 @@ describe("mergeClaudeJsonForPull", () => {
       mcpServers: { tool_a: { command: "cmd" } },
     });
 
-    const merged = mergeClaudeJsonForPull(null, remoteContent, [], HOME);
+    const merged = mergeClaudeJsonForPull(null, remoteContent, ["tool_a"], HOME);
     const result = JSON.parse(merged) as Record<string, unknown>;
     const servers = result.mcpServers as Record<string, unknown>;
     assert.ok(Object.prototype.hasOwnProperty.call(servers, "tool_a"), "tool_a 존재");
   });
 
-  test("빈 mcpServers인 원격 — 로컬 보존키 유지", () => {
+  test("빈 mcpServers인 원격 — allowlist=[] 이면 로컬 mcpServers 보존", () => {
     const localRaw = JSON.stringify(FIXTURE_RAW);
     const remoteContent = JSON.stringify({ mcpServers: {} });
 
     const merged = mergeClaudeJsonForPull(localRaw, remoteContent, [], HOME);
     const result = JSON.parse(merged) as Record<string, unknown>;
 
-    assert.deepEqual(result.mcpServers, {}, "원격 빈 mcpServers 적용");
+    assert.ok(
+      Object.prototype.hasOwnProperty.call(result.mcpServers as Record<string, unknown>, "ky_jira"),
+      "로컬 ky_jira 보존됨 (allowlist=[], overlay 없음)",
+    );
     assert.equal(result.userID, FIXTURE_RAW.userID, "userID 보존");
   });
 
@@ -283,7 +286,7 @@ describe("mergeClaudeJsonForPull", () => {
       },
     });
 
-    const merged = mergeClaudeJsonForPull(localRaw, remoteContent, [], HOME);
+    const merged = mergeClaudeJsonForPull(localRaw, remoteContent, ["local_tool"], HOME);
     const result = JSON.parse(merged) as Record<string, unknown>;
     const tool = (result.mcpServers as Record<string, unknown>).local_tool as Record<
       string,
@@ -311,7 +314,7 @@ describe("mergeClaudeJsonForPull", () => {
       },
     });
 
-    const merged = mergeClaudeJsonForPull(null, remoteContent, [], HOME);
+    const merged = mergeClaudeJsonForPull(null, remoteContent, ["srv"], HOME);
     const result = JSON.parse(merged) as Record<string, unknown>;
     const env = (
       (result.mcpServers as Record<string, { env: Record<string, unknown> }>).srv
@@ -323,8 +326,8 @@ describe("mergeClaudeJsonForPull", () => {
     assert.equal(env.SAFE_URL, "https://ok", "SAFE_URL 보존됨");
   });
 
-  // A2 [E2 Minor] remote 에 mcpServers 키 부재 시 merged 에서도 delete, 로컬 sibling 보존
-  test("remote mcpServers 키 부재 시 merged 에서 delete, 로컬 sibling(userID/projects) 보존", () => {
+  // A2 [E2 Minor] remote 에 mcpServers 키 부재 시 로컬 mcpServers 보존, sibling 보존
+  test("remote mcpServers 키 부재 시 로컬 mcpServers 보존, sibling(userID/projects) 보존", () => {
     const localRaw = JSON.stringify({
       mcpServers: { old: {} },
       userID: "u",
@@ -335,10 +338,13 @@ describe("mergeClaudeJsonForPull", () => {
     const merged = mergeClaudeJsonForPull(localRaw, remoteContent, [], HOME);
     const result = JSON.parse(merged) as Record<string, unknown>;
 
-    assert.equal(
+    assert.ok(
       Object.prototype.hasOwnProperty.call(result, "mcpServers"),
-      false,
-      "remote 에 mcpServers 키 없으면 merged 에서 delete",
+      "로컬 mcpServers 보존됨 (remote 에 mcpServers 없음)",
+    );
+    assert.ok(
+      Object.prototype.hasOwnProperty.call(result.mcpServers as Record<string, unknown>, "old"),
+      "local old 서버 보존됨",
     );
     assert.equal(result.userID, "u", "로컬 userID 보존");
     assert.deepEqual(result.projects, { p: { x: 1 } }, "로컬 projects 보존");
@@ -360,7 +366,7 @@ describe("mergeClaudeJsonForPull", () => {
       userID: "u",
     });
 
-    const result = normalizeClaudeJsonForSync(raw, [], HOME);
+    const result = normalizeClaudeJsonForSync(raw, ["srv"], HOME);
     const parsed = JSON.parse(result.text) as Record<string, unknown>;
 
     assert.equal(Object.keys(parsed).length, 1, "mcpServers 외 키 제외");
@@ -374,77 +380,90 @@ describe("mergeClaudeJsonForPull", () => {
   });
 });
 
-describe("normalizeClaudeJsonForSync — selfNames egress strip (Phase 1.1)", () => {
-  test("push egress: selfNames 서버를 mcpServers 에서 제거, non-self 보존", () => {
+describe("normalizeClaudeJsonForSync — allowlist push egress", () => {
+  test("push allowlist: allowlist 에 등록된 서버만 포함, 미등록(wormhole 포함) 제외", () => {
     const raw = JSON.stringify({
       mcpServers: {
+        A: { command: "a-cmd" },
+        B: { command: "b-cmd" },
         wormhole: { command: "wormhole-cmd" },
-        other: { command: "x" },
       },
     });
-    const result = normalizeClaudeJsonForSync(raw, ["wormhole"], HOME);
+    const result = normalizeClaudeJsonForSync(raw, ["A"], HOME);
     const parsed = JSON.parse(result.text) as Record<string, unknown>;
     const servers = parsed.mcpServers as Record<string, unknown>;
-    assert.equal(Object.prototype.hasOwnProperty.call(servers, "wormhole"), false, "wormhole 제거됨");
-    assert.ok(Object.prototype.hasOwnProperty.call(servers, "other"), "other 보존됨");
-    assert.deepEqual((servers.other as Record<string, unknown>).command, "x");
+    assert.ok(Object.prototype.hasOwnProperty.call(servers, "A"), "A 포함됨");
+    assert.equal(Object.prototype.hasOwnProperty.call(servers, "B"), false, "B 제외됨");
+    assert.equal(Object.prototype.hasOwnProperty.call(servers, "wormhole"), false, "wormhole 제외됨");
   });
 
-  test("scan hash === push hash (selfNames 동일 적용 시 멱등)", () => {
-    const raw = JSON.stringify({
-      mcpServers: {
-        wormhole: { command: "wormhole-cmd" },
-        other: { command: "x" },
-      },
-    });
-    const scan = normalizeClaudeJsonForSync(raw, ["wormhole"], HOME);
-    const push = normalizeClaudeJsonForSync(raw, ["wormhole"], HOME);
-    assert.equal(scan.hash, push.hash, "scan hash === push hash");
-  });
-
-  test("selfNames 미전달(빈 배열) 시 self 제거 안 됨", () => {
+  test("push self 제외: wormhole 미등록이면 shared 에 없음", () => {
     const raw = JSON.stringify({
       mcpServers: { wormhole: { command: "wormhole-cmd" } },
     });
     const result = normalizeClaudeJsonForSync(raw, [], HOME);
     const parsed = JSON.parse(result.text) as Record<string, unknown>;
-    const servers = parsed.mcpServers as Record<string, unknown>;
-    assert.ok(Object.prototype.hasOwnProperty.call(servers, "wormhole"), "selfNames 없으면 보존");
+    const servers = (parsed.mcpServers ?? {}) as Record<string, unknown>;
+    assert.equal(Object.prototype.hasOwnProperty.call(servers, "wormhole"), false, "빈 allowlist 시 wormhole 없음");
   });
 });
 
-describe("mergeClaudeJsonForPull — selfNames guard (Phase 1.1)", () => {
-  test("pull: 원격에 wormhole 포함돼도 로컬 wormhole 보존, 원격 값 미주입", () => {
-    const localWormhole = { command: "local-wormhole" };
+describe("mergeClaudeJsonForPull — allowlist overlay + secret graft", () => {
+  test("pull overlay 미등록 보존: allowlist 외 서버(B, wormhole)는 로컬 그대로", () => {
     const localRaw = JSON.stringify({
       mcpServers: {
-        wormhole: localWormhole,
-        other: { command: "stale-local" },
+        A: { command: "a-local", env: { URL: "u1" } },
+        B: { command: "b-local" },
+        wormhole: { command: "local-wormhole" },
       },
     });
     const remoteContent = JSON.stringify({
       mcpServers: {
-        wormhole: { command: "remote-leaked-wormhole" },
-        other: { command: "remote-other" },
+        A: { command: "a-remote-changed", env: { URL: "u2" } },
       },
     });
-    const merged = JSON.parse(mergeClaudeJsonForPull(localRaw, remoteContent, ["wormhole"], HOME)) as Record<string, unknown>;
+    const merged = JSON.parse(
+      mergeClaudeJsonForPull(localRaw, remoteContent, ["A"], HOME),
+    ) as Record<string, unknown>;
     const servers = merged.mcpServers as Record<string, unknown>;
-    assert.deepEqual(servers.wormhole, localWormhole, "로컬 wormhole deep-equal 보존");
-    assert.notDeepEqual(servers.wormhole, { command: "remote-leaked-wormhole" }, "원격 wormhole 미주입");
-    assert.deepEqual((servers.other as Record<string, unknown>).command, "remote-other", "non-self 원격 값 적용");
+    assert.deepEqual((servers.A as Record<string, unknown>).command, "a-remote-changed", "A 원격 구조 반영됨");
+    assert.deepEqual((servers.B as Record<string, unknown>).command, "b-local", "B 로컬 그대로");
+    assert.deepEqual((servers.wormhole as Record<string, unknown>).command, "local-wormhole", "wormhole 로컬 그대로");
   });
 
-  test("pull null local: 원격 wormhole 미주입, 원격 other 적용", () => {
-    const remoteContent = JSON.stringify({
+  test("pull secret graft(BLOCKER 회귀): X_PAT 로컬값 보존 + 원격 구조변경 반영", () => {
+    const localRaw = JSON.stringify({
       mcpServers: {
-        wormhole: { command: "remote-leaked" },
-        other: { command: "R" },
+        A: { command: "a-cmd", env: { URL: "old-url", X_PAT: "local-pat" } },
       },
     });
-    const merged = JSON.parse(mergeClaudeJsonForPull(null, remoteContent, ["wormhole"], HOME)) as Record<string, unknown>;
-    const servers = merged.mcpServers as Record<string, unknown>;
-    assert.equal(Object.prototype.hasOwnProperty.call(servers, "wormhole"), false, "원격 wormhole 미주입");
-    assert.deepEqual((servers.other as Record<string, unknown>).command, "R");
+    const remoteContent = JSON.stringify({
+      mcpServers: {
+        A: { command: "a-cmd", env: { URL: "new-url" } },
+      },
+    });
+    const merged = JSON.parse(
+      mergeClaudeJsonForPull(localRaw, remoteContent, ["A"], HOME),
+    ) as Record<string, unknown>;
+    const env = (merged.mcpServers as Record<string, unknown>).A as Record<string, unknown>;
+    assert.equal((env.env as Record<string, unknown>).X_PAT, "local-pat", "로컬 X_PAT 보존됨");
+    assert.equal((env.env as Record<string, unknown>).URL, "new-url", "원격 URL 변경 반영됨");
+  });
+
+  test("graft hash 안정: graft 결과 normalizeClaudeJsonForSync 해시 === strip된 원격 해시", () => {
+    const remoteStripped = JSON.stringify({
+      mcpServers: {
+        A: { command: "a-cmd", env: { URL: "url" } },
+      },
+    });
+    const localRaw = JSON.stringify({
+      mcpServers: {
+        A: { command: "a-cmd", env: { URL: "url", X_PAT: "local-pat" } },
+      },
+    });
+    const merged = mergeClaudeJsonForPull(localRaw, remoteStripped, ["A"], "");
+    const mergedHash = normalizeClaudeJsonForSync(merged, ["A"], "").hash;
+    const remoteHash = normalizeClaudeJsonForSync(remoteStripped, ["A"], "").hash;
+    assert.equal(mergedHash, remoteHash, "graft 후 push 해시 === 원격 해시(churn 없음)");
   });
 });

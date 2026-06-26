@@ -458,7 +458,7 @@ cp config.example.json ~/.wormhole/config.json
 | `crypto.kdfP` | scrypt p | `1` |
 | `targets.include` | 동기화 포함 glob | 6번 참고 |
 | `targets.exclude` | 동기화 제외 glob | 자격증명·캐시·로컬 오버라이드 |
-| `selfMcpServerNames` | `.mcp.json` 동기화 시 자기참조 제외 기준 | `["wormhole"]` |
+| `syncMcpServers` | `.claude.json` mcpServers allowlist. 등록된 서버만 동기화. 미등록은 로컬. *_PAT/_TOKEN/_SECRET env 는 pull 시 로컬 값 보존. | `[]` |
 | `conflictPolicy` | 충돌 기본 정책 | `preserve-both` |
 
 ### .env 동기화 대상 추가 지정 (선택)

@@ -5,7 +5,6 @@ import {
   detokenizeHome,
   extractSharedSubset,
   threeWayMerge,
-  stripSelfMcpServers,
   normalizeSettingsForSync,
 } from "./settings-merge.js";
 import { sha256 } from "./hash.js";
@@ -367,68 +366,6 @@ describe("threeWayMerge", () => {
     assert.equal(local.mcpServers.foo.command, "c");
   });
 });
-
-describe("stripSelfMcpServers", () => {
-  test("removes named self server, keeps others", () => {
-    const json = JSON.stringify({
-      mcpServers: {
-        "wormhole": { command: "self" },
-        other: { command: "keep" },
-      },
-    });
-    const r = stripSelfMcpServers(json, ["wormhole"]);
-    const parsed = JSON.parse(r.text);
-    assert.equal(
-      Object.prototype.hasOwnProperty.call(parsed.mcpServers, "wormhole"),
-      false,
-    );
-    assert.deepEqual(parsed.mcpServers.other, { command: "keep" });
-  });
-
-  test("removes multiple self servers", () => {
-    const json = JSON.stringify({
-      mcpServers: { a: {}, b: {}, c: {} },
-    });
-    const r = stripSelfMcpServers(json, ["a", "c"]);
-    const parsed = JSON.parse(r.text);
-    assert.deepEqual(Object.keys(parsed.mcpServers), ["b"]);
-  });
-
-  test("output is stable-stringified and hash/size match the text", () => {
-    const json = JSON.stringify({ mcpServers: { b: {}, a: {} }, z: 1 });
-    const r = stripSelfMcpServers(json, []);
-    // keys sorted by stableStringify
-    assert.match(r.text, /^\{\n {2}"mcpServers"/);
-    assert.equal(r.hash, sha256(Buffer.from(r.text, "utf-8")));
-    assert.equal(r.size, Buffer.from(r.text, "utf-8").byteLength);
-  });
-
-  test("invalid JSON returns original text with original-byte hash (no throw)", () => {
-    const raw = "{ broken";
-    const r = stripSelfMcpServers(raw, ["x"]);
-    assert.equal(r.text, raw);
-    assert.equal(r.hash, sha256(Buffer.from(raw, "utf-8")));
-    assert.equal(r.size, Buffer.from(raw, "utf-8").byteLength);
-  });
-
-  test("home tokenization applied to non-self server paths when home given", () => {
-    const json = JSON.stringify({
-      mcpServers: {
-        "wormhole": { command: `${FAKE_HOME}/self` },
-        other: { command: `${FAKE_HOME}/bin/other` },
-      },
-    });
-    const r = stripSelfMcpServers(json, ["wormhole"], FAKE_HOME);
-    const parsed = JSON.parse(r.text);
-    assert.equal(parsed.mcpServers.other.command, `${HOME_TOKEN}/bin/other`);
-  });
-
-  test("non-object top-level JSON yields empty stable object", () => {
-    const r = stripSelfMcpServers("[1,2]", ["x"]);
-    assert.equal(r.text, "{}\n");
-  });
-});
-
 
 describe("threeWayMerge — 양측이 동일하게 삭제한 키 (lines 92-93 both-deleted branch)", () => {
   // 두 sides 가 base 에 있던 키를 동일하게 삭제: localChanged=true, remoteChanged=true,

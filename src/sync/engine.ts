@@ -40,7 +40,6 @@ import { AsyncMutex, RemoteLock, withLock } from "./lock.js";
 import {
   threeWayMerge,
   normalizeSettingsForSync,
-  stripSelfMcpServers,
   normalizeClaudeJsonForSync,
   mergeClaudeJsonForPull,
   tokenizeHome,
@@ -325,7 +324,7 @@ export class SyncEngine {
         }
         const norm = isSettingsKey(f.logicalKey)
           ? normalizeSettingsForSync(raw, this.config.home)
-          : normalizeClaudeJsonForSync(raw, this.config.selfMcpServerNames, this.config.home);
+          : normalizeClaudeJsonForSync(raw, this.config.syncMcpServers, this.config.home);
         contentHash = norm.hash;
         size = norm.size;
       } else {
@@ -598,7 +597,7 @@ export class SyncEngine {
       }
       const norm = isSettingsKey(key)
         ? normalizeSettingsForSync(rawText, this.config.home)
-        : normalizeClaudeJsonForSync(rawText, this.config.selfMcpServerNames, this.config.home);
+        : normalizeClaudeJsonForSync(rawText, this.config.syncMcpServers, this.config.home);
       const content = Buffer.from(norm.text, "utf-8");
       out.set(key, { content, contentHash: norm.hash, size: norm.size });
     }
@@ -935,7 +934,7 @@ export class SyncEngine {
     } catch {
       localRaw = null;
     }
-    const mergedText = mergeClaudeJsonForPull(localRaw, remoteContent, this.config.selfMcpServerNames, this.config.home);
+    const mergedText = mergeClaudeJsonForPull(localRaw, remoteContent, this.config.syncMcpServers, this.config.home);
     await this.atomicWriteFile(absPath, mergedText);
     // base 스냅샷은 원격 반영분(mcpServers-only 정규화)을 보관해 다음 scan 의 base 로 사용.
     await this.writeBaseSnapshot(key, remoteContent);

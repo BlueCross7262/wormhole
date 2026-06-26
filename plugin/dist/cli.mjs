@@ -16671,8 +16671,9 @@ var RawConfigSchema = external_exports.object({
   remote: RemoteConfigSchema.partial().default({}),
   crypto: CryptoConfigSchema.partial().default({}),
   targets: SyncTargetsSchema.partial().default({}),
-  // 자기 자신(wormhole) mcp 서버 이름 목록. .mcp.json 동기화 시 자기참조 제외 기준.
-  selfMcpServerNames: external_exports.array(external_exports.string()).default(["wormhole"]),
+  // 동기화할 mcpServer 이름 allowlist. 등록된 서버만 .claude.json mcpServers 에서 동기화.
+  // 미등록(wormhole 등)은 머신 로컬 보존. *_PAT/_TOKEN/_SECRET env 는 pull 시 로컬 값 re-graft.
+  syncMcpServers: external_exports.array(external_exports.string()).default([]),
   conflictPolicy: external_exports.enum(["preserve-both", "latest-wins", "manual"]).default("preserve-both"),
   lock: LockConfigSchema.partial().default({}),
   // home-root 파일(예: .claude.json)의 머지 서브키와 보존모드 맵.
@@ -16781,7 +16782,7 @@ function resolvePaths(parsed, home, stateDir) {
       kdfP: cryptoRaw.kdfP
     },
     targets: SyncTargetsSchema.parse(parsed.targets),
-    selfMcpServerNames: parsed.selfMcpServerNames,
+    syncMcpServers: parsed.syncMcpServers,
     conflictPolicy: parsed.conflictPolicy,
     lock: LockConfigSchema.parse(parsed.lock),
     homeRootTargets: parsed.homeRootTargets
@@ -32830,7 +32831,7 @@ function normalizeSettingsForSync(rawText, home = "") {
   return { text, hash: sha2563(buf), size: buf.byteLength };
 }
 var SECRET_ENV_PATTERN = /_(PAT|TOKEN|SECRET)$/;
-function normalizeClaudeJsonForSync(jsonText, selfNames, home = "") {
+function normalizeClaudeJsonForSync(jsonText, allowlist, home = "") {
   let parsed;
   try {
     parsed = JSON.parse(jsonText);
@@ -32845,7 +32846,7 @@ function normalizeClaudeJsonForSync(jsonText, selfNames, home = "") {
     if (isPlainObject2(servers)) {
       const strippedServers = {};
       for (const [name, serverVal] of Object.entries(servers)) {
-        if (selfNames.includes(name)) continue;
+        if (!allowlist.includes(name)) continue;
         if (!isPlainObject2(serverVal)) {
           strippedServers[name] = serverVal;
           continue;
@@ -32861,7 +32862,9 @@ function normalizeClaudeJsonForSync(jsonText, selfNames, home = "") {
         }
         strippedServers[name] = srv;
       }
-      out.mcpServers = strippedServers;
+      if (Object.keys(strippedServers).length > 0) {
+        out.mcpServers = strippedServers;
+      }
     } else {
       out.mcpServers = servers;
     }
@@ -32871,7 +32874,7 @@ function normalizeClaudeJsonForSync(jsonText, selfNames, home = "") {
   const buf = Buffer.from(text, "utf-8");
   return { text, hash: sha2563(buf), size: buf.byteLength };
 }
-function mergeClaudeJsonForPull(localRaw, remoteContent, selfNames, home = "") {
+function mergeClaudeJsonForPull(localRaw, remoteContent, allowlist, home = "") {
   let remote = {};
   try {
     const parsed = JSON.parse(remoteContent);
@@ -32880,11 +32883,6 @@ function mergeClaudeJsonForPull(localRaw, remoteContent, selfNames, home = "") {
     remote = {};
   }
   if (home) remote = detokenizeHome(remote, home);
-  if (isPlainObject2(remote.mcpServers)) {
-    for (const name of selfNames) {
-      delete remote.mcpServers[name];
-    }
-  }
   const remoteServers = remote.mcpServers;
   if (isPlainObject2(remoteServers)) {
     for (const [, serverVal] of Object.entries(remoteServers)) {
@@ -32909,30 +32907,44 @@ function mergeClaudeJsonForPull(localRaw, remoteContent, selfNames, home = "") {
   }
   if (local === null) {
     const out = {};
-    if (Object.prototype.hasOwnProperty.call(remote, "mcpServers")) {
-      out.mcpServers = remote.mcpServers;
+    if (isPlainObject2(remote.mcpServers) && allowlist.length > 0) {
+      const outServers = {};
+      for (const name of allowlist) {
+        if (Object.prototype.hasOwnProperty.call(remote.mcpServers, name)) {
+          outServers[name] = remote.mcpServers[name];
+        }
+      }
+      if (Object.keys(outServers).length > 0) out.mcpServers = outServers;
     }
     return stableStringify(out);
   }
   const merged = structuredCloneSafe(local);
-  if (Object.prototype.hasOwnProperty.call(remote, "mcpServers")) {
-    merged.mcpServers = remote.mcpServers;
-  } else {
-    delete merged.mcpServers;
-  }
-  if (selfNames.length > 0) {
-    const localServers = local.mcpServers;
-    if (isPlainObject2(localServers)) {
-      const selfEntries = selfNames.filter(
-        (name) => Object.prototype.hasOwnProperty.call(localServers, name)
-      );
-      if (selfEntries.length > 0) {
-        const mergedServers = isPlainObject2(merged.mcpServers) ? merged.mcpServers : (merged.mcpServers = {}, merged.mcpServers);
-        for (const name of selfEntries) {
-          mergedServers[name] = localServers[name];
+  const mergedServers = isPlainObject2(merged.mcpServers) ? merged.mcpServers : null;
+  for (const name of allowlist) {
+    if (!isPlainObject2(remote.mcpServers)) continue;
+    if (!Object.prototype.hasOwnProperty.call(remote.mcpServers, name)) continue;
+    const remoteServer = structuredCloneSafe(
+      remote.mcpServers[name]
+    );
+    const localServer = mergedServers?.[name];
+    const localEnv = isPlainObject2(localServer) ? localServer.env : void 0;
+    if (isPlainObject2(remoteServer.env) && isPlainObject2(localEnv)) {
+      for (const k of Object.keys(localEnv)) {
+        if (SECRET_ENV_PATTERN.test(k)) {
+          remoteServer.env[k] = localEnv[k];
         }
       }
+    } else if (isPlainObject2(localEnv)) {
+      const grafted = {};
+      for (const k of Object.keys(localEnv)) {
+        if (SECRET_ENV_PATTERN.test(k)) {
+          grafted[k] = localEnv[k];
+        }
+      }
+      if (Object.keys(grafted).length > 0) remoteServer.env = grafted;
     }
+    if (!isPlainObject2(merged.mcpServers)) merged.mcpServers = {};
+    merged.mcpServers[name] = remoteServer;
   }
   return stableStringify(merged);
 }
@@ -33148,7 +33160,7 @@ var SyncEngine = class {
         } catch {
           continue;
         }
-        const norm = isSettingsKey(f3.logicalKey) ? normalizeSettingsForSync(raw, this.config.home) : normalizeClaudeJsonForSync(raw, this.config.selfMcpServerNames, this.config.home);
+        const norm = isSettingsKey(f3.logicalKey) ? normalizeSettingsForSync(raw, this.config.home) : normalizeClaudeJsonForSync(raw, this.config.syncMcpServers, this.config.home);
         contentHash = norm.hash;
         size = norm.size;
       } else {
@@ -33373,7 +33385,7 @@ var SyncEngine = class {
       } catch {
         continue;
       }
-      const norm = isSettingsKey(key) ? normalizeSettingsForSync(rawText, this.config.home) : normalizeClaudeJsonForSync(rawText, this.config.selfMcpServerNames, this.config.home);
+      const norm = isSettingsKey(key) ? normalizeSettingsForSync(rawText, this.config.home) : normalizeClaudeJsonForSync(rawText, this.config.syncMcpServers, this.config.home);
       const content = Buffer.from(norm.text, "utf-8");
       out.set(key, { content, contentHash: norm.hash, size: norm.size });
     }
@@ -33631,7 +33643,7 @@ var SyncEngine = class {
     } catch {
       localRaw = null;
     }
-    const mergedText = mergeClaudeJsonForPull(localRaw, remoteContent, this.config.selfMcpServerNames, this.config.home);
+    const mergedText = mergeClaudeJsonForPull(localRaw, remoteContent, this.config.syncMcpServers, this.config.home);
     await this.atomicWriteFile(absPath, mergedText);
     await this.writeBaseSnapshot(key, remoteContent);
     nextState[key] = {

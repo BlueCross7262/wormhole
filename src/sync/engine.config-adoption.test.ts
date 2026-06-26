@@ -66,7 +66,7 @@ function buildConfig(home: string, stateDir: string): Config {
       include: [".claude/**"],
       exclude: [],
     },
-    selfMcpServerNames: [],
+    syncMcpServers: [],
     conflictPolicy: "preserve-both",
     lock: { ttlMs: 60_000, acquireRetries: 2, acquireRetryDelayMs: 1 },
   };
