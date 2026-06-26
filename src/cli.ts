@@ -3,6 +3,7 @@
 // 서버/기동-pull/jobManager 없음 — 각 서브커맨드는 일회성(one-shot)으로 엔진을 조립·실행한다.
 
 import { logger } from "./logger.js";
+import { maybeMigrateLegacyConfig } from "./migrate-config.js";
 import { buildEngine } from "./bootstrap.js";
 import { runDoctor } from "./doctor.js";
 import type { ResolvePolicy } from "./types.js";
@@ -83,6 +84,8 @@ async function run(): Promise<void> {
   }
 
   const dryRunFlag = flags["dry-run"] === true;
+
+  await maybeMigrateLegacyConfig({ logger });
 
   switch (command) {
     case "status": {

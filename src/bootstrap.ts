@@ -5,6 +5,7 @@
 //             resolvePassphrase 가 ensureCryptoReady 보다 먼저 와야 한다.
 
 import { loadConfig } from "./config.js";
+import { maybeMigrateLegacyConfig } from "./migrate-config.js";
 import { AgeCrypto } from "./crypto/age.js";
 import { RemoteStore } from "./webdav/client.js";
 import { loadOrCreateMachineId } from "./sync/machine.js";
@@ -20,6 +21,8 @@ export async function buildEngine(logger: Logger): Promise<{
   crypto: AgeCrypto;
   remote: RemoteStore;
 }> {
+  await maybeMigrateLegacyConfig({ logger });
+
   // 1) config 로드.
   const config = await loadConfig();
 

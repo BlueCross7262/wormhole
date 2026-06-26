@@ -35,7 +35,7 @@ import { ManifestStore, ManifestConflictError, MANIFEST_FILE } from "./manifest.
 import { computeStatus } from "./diff.js";
 import { scanLocal, isKeyInScope } from "./scanner.js";
 import { hashFile, sha256, blobName } from "./hash.js";
-import { toOS, isSettingsKey, isClaudeJsonKey, isValidLogicalKey, isWithinHome } from "./paths.js";
+import { toOS, isSettingsKey, isClaudeJsonKey, isConfigJsonKey, isValidLogicalKey, isWithinHome } from "./paths.js";
 import { AsyncMutex, RemoteLock, withLock } from "./lock.js";
 import {
   threeWayMerge,
@@ -1006,6 +1006,7 @@ export class SyncEngine {
     const conflictCopies: ConflictCopy[] = [];
     const nextState: SyncState = { ...state };
     let hadBackup = false;
+    let anyAdopted = false;
 
     for (const conflict of targets) {
       const key = conflict.logicalKey;
@@ -1016,7 +1017,9 @@ export class SyncEngine {
       const absPath = this.safeAbsPath(key);
       if (absPath === null) continue;
 
-      if (policy === "preserve-both") {
+      const effectivePolicy = isConfigJsonKey(key) ? "latest-wins" : policy;
+
+      if (effectivePolicy === "preserve-both") {
         // 양쪽 보존: 로컬 유지 + 원격 의도를 사본/마커로 기록(멱등 — 동일 사본 있으면 재기록 생략).
         // 원격 유래 machineId/generation 은 파일명 접미사로 쓰기 전 반드시 정제(경로 탈출 방어).
         const mid = sanitizeToken(conflict.remoteMachineId);
@@ -1055,7 +1058,7 @@ export class SyncEngine {
         continue;
       }
 
-      // latest-wins: 원격 generation 이 더 높으므로 원격을 채택(원격이 최신).
+      // latest-wins: 충돌 시 원격을 무조건 채택.
       const backupPath = await this.backupFile(absPath, key, backupRoot);
       if (backupPath !== null) hadBackup = true;
 
@@ -1077,9 +1080,10 @@ export class SyncEngine {
         };
       }
       resolved.push(key);
+      if (isConfigJsonKey(key)) anyAdopted = true;
     }
 
-    if (policy === "latest-wins") {
+    if (policy === "latest-wins" || anyAdopted) {
       await this.writeState(nextState);
     }
 

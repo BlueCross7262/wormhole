@@ -8,6 +8,7 @@ import {
   isValidLogicalKey,
   isWithinHome,
   isSettingsKey,
+  isConfigJsonKey,
 } from "./paths.js";
 
 const FAKE_HOME_POSIX = "/fake/home";
@@ -152,5 +153,27 @@ describe("isSettingsKey", () => {
 
   test("false for partial match", () => {
     assert.equal(isSettingsKey(".claude/settings.json.bak"), false);
+  });
+});
+
+describe("isConfigJsonKey", () => {
+  test("true for exact config key", () => {
+    assert.equal(isConfigJsonKey(".claude/wormhole-config.json"), true);
+  });
+
+  test("false for arbitrary key", () => {
+    assert.equal(isConfigJsonKey(".claude/CLAUDE.md"), false);
+  });
+
+  test("false for settings.json", () => {
+    assert.equal(isConfigJsonKey(".claude/settings.json"), false);
+  });
+
+  test("false for .claude.json home-root key", () => {
+    assert.equal(isConfigJsonKey(".claude.json"), false);
+  });
+
+  test("false for partial match", () => {
+    assert.equal(isConfigJsonKey(".claude/wormhole-config.json.bak"), false);
   });
 });

@@ -61,3 +61,9 @@ export function isSettingsKey(logicalKey: LogicalKey): boolean {
 export function isClaudeJsonKey(logicalKey: LogicalKey): boolean {
   return logicalKey === CLAUDE_JSON_LOGICAL_KEY;
 }
+
+export const CONFIG_JSON_LOGICAL_KEY: LogicalKey = ".claude/wormhole-config.json";
+
+export function isConfigJsonKey(logicalKey: LogicalKey): boolean {
+  return logicalKey === CONFIG_JSON_LOGICAL_KEY;
+}

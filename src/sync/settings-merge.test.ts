@@ -818,3 +818,34 @@ describe("threeWayMerge — templateKeys pull 동작", () => {
     );
   });
 });
+
+describe("enabledPlugins — forceSyncKeys 미포함 시 localOnlyKeys 로 플러그인 단위 제외", () => {
+  test("push 추출: 제외 플러그인만 shared 에서 빠지고 나머지는 유지", () => {
+    const local = { enabledPlugins: { "a@m": true, "b@m": true, "x@m": true } };
+    const out = extractSharedSubset(local, ["enabledPlugins.x@m"], []);
+    const shared = out.enabledPlugins as Record<string, unknown>;
+    assert.ok(!("x@m" in shared), "x@m 은 localOnlyKeys 로 제외 → shared 에서 빠짐");
+    assert.equal(shared["a@m"], true, "a@m 유지");
+    assert.equal(shared["b@m"], true, "b@m 유지");
+  });
+
+  test("pull merge: 제외 플러그인은 로컬 보존 + sharedSubset 미포함, 원격 신규는 수신", () => {
+    const local = { enabledPlugins: { "a@m": true, "x@m": true } };
+    const remoteShared = { enabledPlugins: { "a@m": true, "b@m": true } };
+    const baseShared = { enabledPlugins: { "a@m": true } };
+    const res = threeWayMerge(local, remoteShared, baseShared, ["enabledPlugins.x@m"], []);
+    const merged = res.merged.enabledPlugins as Record<string, unknown>;
+    assert.equal(merged["x@m"], true, "x@m 로컬 보존(push 안 했어도 로컬엔 남음)");
+    assert.equal(merged["b@m"], true, "원격 신규 b@m 수신");
+    assert.equal(merged["a@m"], true, "a@m 유지");
+    const sub = res.sharedSubset.enabledPlugins as Record<string, unknown>;
+    assert.ok(!("x@m" in sub), "x@m 은 push 대상(sharedSubset)에서 빠짐");
+  });
+
+  test("대조: forceSyncKeys 에 enabledPlugins(부모) 포함 시 자식 localOnlyKeys 무시되고 x@m 이 샌다", () => {
+    const local = { enabledPlugins: { "a@m": true, "x@m": true } };
+    const out = extractSharedSubset(local, ["enabledPlugins.x@m"], ["enabledPlugins"], "");
+    const shared = out.enabledPlugins as Record<string, unknown>;
+    assert.equal(shared["x@m"], true, "부모 강제 → 자식 예외 불가(x@m 누출) — 제거가 정당한 이유");
+  });
+});
