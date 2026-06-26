@@ -33487,10 +33487,13 @@ function registerSyncTool(server, engine) {
         const pluginsDir = path.join(engineCfg.home, ".claude", "plugins");
         const result = await engine.syncAtomic({ pluginsDir, policy });
         if (result.aborted) {
+          const installCommands = result.missing.map((key) => `/plugin install ${key}`);
           const payload2 = {
             aborted: true,
             missing: result.missing,
-            note: "\uBBF8\uC124\uCE58 \uD50C\uB7EC\uADF8\uC778\uC774 \uC788\uC5B4 \uB3D9\uAE30\uD654 \uC911\uB2E8\uB428. \uD50C\uB7EC\uADF8\uC778 \uC124\uCE58 \uD6C4 \uC7AC\uC2DC\uB3C4\uD558\uC138\uC694."
+            installCommands,
+            note: `\uBBF8\uC124\uCE58 \uD50C\uB7EC\uADF8\uC778 ${result.missing.length}\uAC1C\uB85C \uB3D9\uAE30\uD654 \uC911\uB2E8\uB428. \uC544\uB798 \uBA85\uB839\uC73C\uB85C \uC124\uCE58 \uD6C4 \uC7AC\uC2DC\uB3C4\uD558\uC138\uC694:
+${installCommands.join("\n")}`
           };
           return {
             content: [{ type: "text", text: JSON.stringify(payload2) }],

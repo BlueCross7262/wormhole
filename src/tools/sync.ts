@@ -48,10 +48,12 @@ export function registerSyncTool(server: McpServer, engine: SyncEngine): void {
         const pluginsDir = path.join(engineCfg.home, ".claude", "plugins");
         const result = await engine.syncAtomic({ pluginsDir, policy });
         if (result.aborted) {
+          const installCommands = result.missing.map((key) => `/plugin install ${key}`);
           const payload: Record<string, unknown> = {
             aborted: true,
             missing: result.missing,
-            note: "미설치 플러그인이 있어 동기화 중단됨. 플러그인 설치 후 재시도하세요.",
+            installCommands,
+            note: `미설치 플러그인 ${result.missing.length}개로 동기화 중단됨. 아래 명령으로 설치 후 재시도하세요:\n${installCommands.join("\n")}`,
           };
           return {
             content: [{ type: "text", text: JSON.stringify(payload) }],
