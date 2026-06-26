@@ -45,6 +45,7 @@ import {
   mergeClaudeJsonForPull,
   tokenizeHome,
   detokenizeHome,
+  extractSharedSubset,
 } from "./settings-merge.js";
 
 /** 의존성 주입 묶음. */
@@ -813,13 +814,20 @@ export class SyncEngine {
           }
           const backupPath = await this.backupFile(absPath, key as LogicalKey, backupRoot);
           backedUp.push({ key: key as LogicalKey, absPath, backupPath });
-          // 서버 무조건 적용: settings/.mcp.json 도 머지 없이 원격 raw 로 덮어쓴다.
-          await this.atomicWriteFile(absPath, plain);
-          await this.writeBaseSnapshot(key as LogicalKey, plain);
-          nextState[key as LogicalKey] = {
-            syncedHash: entry.contentHash,
-            syncedGeneration: entry.generation,
-          };
+          // .claude.json·settings.json 은 로컬 전용 키(로그인 identity·머신고유 설정) 보존 머지.
+          // 그 외 파일은 원격 raw 로 덮어쓴다.
+          if (isClaudeJsonKey(key as LogicalKey)) {
+            await this.applyPullClaudeJson(key as LogicalKey, absPath, plain, entry, nextState);
+          } else if (isSettingsKey(key as LogicalKey)) {
+            await this.applyForceDownSettings(key as LogicalKey, absPath, plain, entry, nextState);
+          } else {
+            await this.atomicWriteFile(absPath, plain);
+            await this.writeBaseSnapshot(key as LogicalKey, plain);
+            nextState[key as LogicalKey] = {
+              syncedHash: entry.contentHash,
+              syncedGeneration: entry.generation,
+            };
+          }
           applied.push(key as LogicalKey);
         });
       }
@@ -894,6 +902,30 @@ export class SyncEngine {
       syncedHash: entry.contentHash,
       syncedGeneration: entry.generation,
     };
+  }
+
+  private async applyForceDownSettings(
+    key: LogicalKey,
+    absPath: string,
+    remotePlain: Buffer,
+    entry: FileEntry,
+    nextState: SyncState,
+  ): Promise<void> {
+    const home = this.config.home;
+    const remoteShared = this.parseJson(remotePlain.toString("utf-8")) ?? {};
+    const localReal = (await this.readJsonFile(absPath)) ?? {};
+    const localObj = home
+      ? (tokenizeHome(localReal, home) as Record<string, unknown>)
+      : localReal;
+    const localKeys = this.config.settingsJson.localOnlyKeys;
+    const forceKeys = this.config.settingsJson.forceSyncKeys ?? [];
+    // base = 로컬 shared subset → 모든 shared 키에서 local==base 이므로 remote-wins.
+    const baseShared = extractSharedSubset(localObj, localKeys, forceKeys);
+    const result = threeWayMerge(localObj, remoteShared, baseShared, localKeys, forceKeys);
+    const mergedReal = home ? detokenizeHome(result.merged, home) : result.merged;
+    await this.atomicWriteFile(absPath, JSON.stringify(mergedReal, null, 2));
+    await this.writeBaseSnapshot(key, JSON.stringify(remoteShared, null, 2));
+    nextState[key] = { syncedHash: entry.contentHash, syncedGeneration: entry.generation };
   }
 
 

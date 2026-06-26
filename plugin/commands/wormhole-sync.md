@@ -33,7 +33,7 @@ node ${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs sync --force-up
 node ${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs sync --force-down
 ```
 
-- 원격 manifest 의 모든 항목을 로컬에 raw 덮어쓰기한다 (settings/.mcp.json 도 3-way 머지 없이 원격 그대로).
+- 원격 manifest 의 모든 항목을 로컬에 적용한다. 단, `.claude.json`(로그인 identity: oauthAccount·userID 등)·`settings.json`(localOnlyKeys 머신고유 설정: permissions·mcp 머신경로 등)은 raw 덮어쓰기에서 제외하고 로컬 전용 키를 보존 머지한다. 그 외 파일은 원격 raw 로 덮어쓴다.
 - 원격에 없는 로컬 관리 파일은 삭제된다 (미러 삭제).
 - **경고**: 로컬 전용 변경이 모두 사라진다. 덮어쓰기/삭제 전 자동 백업을 생성한다.
 - `--dry-run` 을 붙이면 변경 없이 적용 예정 목록만 반환한다.
