@@ -1,6 +1,6 @@
 {
   "name": "wormhole",
-  "version": "0.5.10",
+  "version": "0.5.11",
   "description": "Claude Code 전역 설정을 머신 간 동기화하는 CLI / 플러그인 커맨드",
   "type": "module",
   "main": "dist/cli.js",
