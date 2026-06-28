@@ -26,6 +26,7 @@ import type {
   FileEntry,
   ConflictItem,
   ConflictCopy,
+  ConflictDetail,
   LogicalKey,
   Sha256Hex,
 } from "../types.js";
@@ -1080,6 +1081,26 @@ export class SyncEngine {
         continue;
       }
 
+      if (effectivePolicy === "ours") {
+        if (entry.deleted) {
+          delete nextState[key];
+          await this.removeBaseSnapshot(key);
+        } else {
+          const remotePlain = await this.downloadBlob(key);
+          if (remotePlain === null) {
+            this.logger?.warn(`[engine] resolve(ours): blob 부재 ${key}`);
+            continue;
+          }
+          await this.writeBaseSnapshot(key, remotePlain);
+          nextState[key] = {
+            syncedHash: entry.contentHash,
+            syncedGeneration: entry.generation,
+          };
+        }
+        resolved.push(key);
+        continue;
+      }
+
       // latest-wins: 충돌 시 원격을 무조건 채택.
       const backupPath = await this.backupFile(absPath, key, backupRoot);
       if (backupPath !== null) hadBackup = true;
@@ -1105,7 +1126,7 @@ export class SyncEngine {
       if (isConfigJsonKey(key)) anyAdopted = true;
     }
 
-    if (policy === "latest-wins" || anyAdopted) {
+    if (policy === "latest-wins" || policy === "ours" || anyAdopted) {
       await this.writeState(nextState);
     }
 
@@ -1345,7 +1366,8 @@ export class SyncEngine {
     pluginsDir: string;
     policy?: ResolvePolicy;
   }): Promise<
-    | { aborted: true; missing: string[] }
+    | { aborted: true; reason: "missing-plugins"; missing: string[] }
+    | { aborted: true; reason: "conflicts"; conflicts: ConflictDetail[] }
     | { aborted: false; pull: PullResult; push: PushResult }
   > {
     const { pluginsDir, policy } = opts;
@@ -1354,7 +1376,7 @@ export class SyncEngine {
 
     const prereq = checkInstallPrereqs(pulledSettings, pluginsDir);
     if (!prereq.ok) {
-      return { aborted: true, missing: prereq.missing };
+      return { aborted: true, reason: "missing-plugins", missing: prereq.missing };
     }
 
     return this.mutex.runExclusive(async () =>
@@ -1362,14 +1384,32 @@ export class SyncEngine {
         const { pulledSettings: freshSettings } = await this.fetchRemote();
         const recheck = checkInstallPrereqs(freshSettings, pluginsDir);
         if (!recheck.ok) {
-          return { aborted: true as const, missing: recheck.missing };
+          return { aborted: true as const, reason: "missing-plugins" as const, missing: recheck.missing };
         }
 
         const pull = await this.runPull();
+        let resolveResult: ResolveResult | null = null;
         if (pull.conflicts.length > 0) {
           const effective = policy ?? this.config.conflictPolicy;
-          await this.runResolve(effective);
+          resolveResult = await this.runResolve(effective);
         }
+
+        const afterStatus = await this.status();
+        if (afterStatus.conflicts.length > 0) {
+          const copyMap = new Map(
+            (resolveResult?.conflictCopies ?? []).map((c) => [c.logicalKey, c.copyPath]),
+          );
+          const conflicts: ConflictDetail[] = afterStatus.conflicts.map((c) => ({
+            logicalKey: c.logicalKey,
+            localHash: c.localHash,
+            remoteHash: c.remoteHash,
+            remoteMachineId: c.remoteMachineId,
+            remoteGeneration: c.remoteGeneration,
+            copyPath: copyMap.get(c.logicalKey) ?? null,
+          }));
+          return { aborted: true as const, reason: "conflicts" as const, conflicts };
+        }
+
         const push = await this.runPushWithRetry();
         return { aborted: false as const, pull, push };
       }),

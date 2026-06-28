@@ -16629,7 +16629,8 @@ var DEFAULT_EXCLUDE = [
   ".claude/statsig/**",
   ".claude/history/**",
   "**/*.log",
-  "**/cache/**"
+  "**/cache/**",
+  "**/*.conflict-*"
 ];
 var RemoteConfigSchema = external_exports.object({
   url: external_exports.string().min(1),
@@ -32374,6 +32375,7 @@ function isConfigJsonKey(logicalKey) {
 
 // src/sync/scanner.ts
 function isKeyInScope(logicalKey, targets) {
+  if (import_micromatch.default.isMatch(logicalKey, ["**/*.conflict-*"], { dot: true })) return false;
   const inInclude = import_micromatch.default.isMatch(logicalKey, targets.include, { dot: true });
   if (!inInclude) return false;
   if (targets.exclude.length === 0) return true;
@@ -32381,7 +32383,7 @@ function isKeyInScope(logicalKey, targets) {
 }
 async function scanLocal(config) {
   const { home, targets, stateDir } = config;
-  const ignore = [...targets.exclude];
+  const ignore = [...targets.exclude, "**/*.conflict-*"];
   const relState = path9.relative(home, stateDir);
   if (relState !== "" && !relState.startsWith("..") && !path9.isAbsolute(relState)) {
     ignore.push(`${relState.split(path9.sep).join("/")}/**`);
@@ -33767,6 +33769,25 @@ var SyncEngine = class {
         resolved.push(key);
         continue;
       }
+      if (effectivePolicy === "ours") {
+        if (entry.deleted) {
+          delete nextState[key];
+          await this.removeBaseSnapshot(key);
+        } else {
+          const remotePlain = await this.downloadBlob(key);
+          if (remotePlain === null) {
+            this.logger?.warn(`[engine] resolve(ours): blob \uBD80\uC7AC ${key}`);
+            continue;
+          }
+          await this.writeBaseSnapshot(key, remotePlain);
+          nextState[key] = {
+            syncedHash: entry.contentHash,
+            syncedGeneration: entry.generation
+          };
+        }
+        resolved.push(key);
+        continue;
+      }
       const backupPath = await this.backupFile(absPath, key, backupRoot);
       if (backupPath !== null) hadBackup = true;
       if (entry.deleted) {
@@ -33789,7 +33810,7 @@ var SyncEngine = class {
       resolved.push(key);
       if (isConfigJsonKey(key)) anyAdopted = true;
     }
-    if (policy === "latest-wins" || anyAdopted) {
+    if (policy === "latest-wins" || policy === "ours" || anyAdopted) {
       await this.writeState(nextState);
     }
     return {
@@ -33988,19 +34009,35 @@ var SyncEngine = class {
     const { pulledSettings } = await this.fetchRemote();
     const prereq = checkInstallPrereqs(pulledSettings, pluginsDir);
     if (!prereq.ok) {
-      return { aborted: true, missing: prereq.missing };
+      return { aborted: true, reason: "missing-plugins", missing: prereq.missing };
     }
     return this.mutex.runExclusive(
       async () => withLock(this.lock, async () => {
         const { pulledSettings: freshSettings } = await this.fetchRemote();
         const recheck = checkInstallPrereqs(freshSettings, pluginsDir);
         if (!recheck.ok) {
-          return { aborted: true, missing: recheck.missing };
+          return { aborted: true, reason: "missing-plugins", missing: recheck.missing };
         }
         const pull = await this.runPull();
+        let resolveResult = null;
         if (pull.conflicts.length > 0) {
           const effective = policy ?? this.config.conflictPolicy;
-          await this.runResolve(effective);
+          resolveResult = await this.runResolve(effective);
+        }
+        const afterStatus = await this.status();
+        if (afterStatus.conflicts.length > 0) {
+          const copyMap = new Map(
+            (resolveResult?.conflictCopies ?? []).map((c) => [c.logicalKey, c.copyPath])
+          );
+          const conflicts = afterStatus.conflicts.map((c) => ({
+            logicalKey: c.logicalKey,
+            localHash: c.localHash,
+            remoteHash: c.remoteHash,
+            remoteMachineId: c.remoteMachineId,
+            remoteGeneration: c.remoteGeneration,
+            copyPath: copyMap.get(c.logicalKey) ?? null
+          }));
+          return { aborted: true, reason: "conflicts", conflicts };
         }
         const push = await this.runPushWithRetry();
         return { aborted: false, pull, push };
@@ -34550,7 +34587,7 @@ var USAGE = `wormhole \u2014 Claude Code \uC804\uC5ED \uC124\uC815 \uB3D9\uAE30\
 Usage:
   wormhole status                                  \uC6D0\uACA9/\uB85C\uCEEC diff \uC0C1\uD0DC\uB97C JSON \uC73C\uB85C \uCD9C\uB825
   wormhole resolve [--policy P] [--keys k1,k2] [--dry-run]
-                                                    \uCDA9\uB3CC \uD574\uC18C (P = preserve-both|latest-wins|manual)
+                                                    \uCDA9\uB3CC \uD574\uC18C (P = preserve-both|latest-wins|ours|manual)
   wormhole sync  [--policy preserve-both|latest-wins]
                                                     \uBCF5\uD569: pull \u2192 (\uCDA9\uB3CC \uC2DC) resolve \u2192 push
   wormhole sync  --force-up  [--dry-run]            \uC6D0\uACA9 \uCD08\uAE30\uD654 \uD6C4 \uB85C\uCEEC \uC804\uCCB4 \uC5C5\uB85C\uB4DC (\uD30C\uAD34\uC801)
@@ -34585,11 +34622,11 @@ function emit(result) {
 }
 function parsePolicy(value) {
   if (value === void 0 || value === true) return void 0;
-  if (value === "preserve-both" || value === "latest-wins" || value === "manual") {
+  if (value === "preserve-both" || value === "latest-wins" || value === "ours" || value === "manual") {
     return value;
   }
   throw new Error(
-    `\uC54C \uC218 \uC5C6\uB294 \uC815\uCC45: ${String(value)} (preserve-both|latest-wins|manual \uC911 \uD558\uB098)`
+    `\uC54C \uC218 \uC5C6\uB294 \uC815\uCC45: ${String(value)} (preserve-both|latest-wins|ours|manual \uC911 \uD558\uB098)`
   );
 }
 function parseKeys(value) {
@@ -34637,8 +34674,8 @@ async function run() {
         return;
       }
       const policy = parsePolicy(flags.policy) ?? "preserve-both";
-      if (policy === "manual") {
-        throw new Error("manual not allowed for sync; run /wormhole-resolve");
+      if (policy === "manual" || policy === "ours") {
+        throw new Error(`${policy} not allowed for sync; run /wormhole-resolve`);
       }
       const pull = await engine.pull();
       const combined = { pull };

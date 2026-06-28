@@ -13,6 +13,7 @@ type Targets = Config["targets"];
  * scanLocal 과 동일한 dot:true 옵션 사용.
  */
 export function isKeyInScope(logicalKey: string, targets: Targets): boolean {
+  if (mm.isMatch(logicalKey, ["**/*.conflict-*"], { dot: true })) return false;
   const inInclude = mm.isMatch(logicalKey, targets.include, { dot: true });
   if (!inInclude) return false;
   if (targets.exclude.length === 0) return true;
@@ -22,7 +23,7 @@ export function isKeyInScope(logicalKey: string, targets: Targets): boolean {
 export async function scanLocal(config: Config): Promise<ScannedFile[]> {
   const { home, targets, stateDir } = config;
 
-  const ignore = [...targets.exclude];
+  const ignore = [...targets.exclude, "**/*.conflict-*"];
   // stateDir(~/.wormhole: 백업/base 스냅샷/age-key.txt/passphrase 등)가 home 하위면
   // 무조건 스캔 제외 — 동기화 상태 파일/비밀이 절대 sync 대상이 되지 않게 한다.
   const relState = path.relative(home, stateDir);

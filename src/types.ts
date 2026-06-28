@@ -19,7 +19,7 @@ export type EpochMs = number;
 // ── 설정 (config.ts) ──────────────────────────────────────
 
 /** 충돌 해소 정책. 기본 preserve-both. */
-export type ResolvePolicy = "preserve-both" | "latest-wins" | "manual";
+export type ResolvePolicy = "preserve-both" | "latest-wins" | "ours" | "manual";
 
 /** 동기화 대상 include/exclude 글로브 (home 기준 posix). */
 export interface SyncTargets {
@@ -350,6 +350,15 @@ export interface ConflictCopy {
   logicalKey: LogicalKey;
   /** 기록된 사본 OS 절대경로. "<path>.conflict-<remoteMachine>-<gen>". */
   copyPath: string;
+}
+
+export interface ConflictDetail {
+  logicalKey: LogicalKey;
+  localHash: Sha256Hex | null;
+  remoteHash: Sha256Hex | null;
+  remoteMachineId: MachineId;
+  remoteGeneration: number;
+  copyPath: string | null;
 }
 
 // ── 로깅 (logger.ts) ──────────────────────────────────────

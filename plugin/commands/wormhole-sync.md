@@ -14,6 +14,12 @@ JSON 결과를 읽고 사용자에게 한국어로 요약한다.
 - `manual` 정책은 sync 에서 사용 불가 — 충돌 수동 해소는 `/wormhole-resolve` 를 실행한다.
 - pull 또는 resolve 단계에서 오류 발생 시 push 없이 중단된다.
 
+## 충돌 차단 및 해소 안내
+
+충돌이 자동 해소되지 않으면(`preserve-both` 또는 `manual` 정책) push 가 전면 차단되고, 충돌별 상세와 함께 해소 안내가 반환된다.
+`/wormhole-resolve` 로 키별 theirs(`--policy latest-wins`) 또는 ours(`--policy ours`) 를 선택한 뒤 재 sync 한다.
+`--policy latest-wins` sync 는 충돌을 자동 해소하므로 차단되지 않는다.
+
 ## Force 모드 (파괴적 — 주의)
 
 ### `--force-up` (원격 초기화 후 로컬 전체 업로드)

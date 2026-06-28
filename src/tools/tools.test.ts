@@ -18,6 +18,7 @@ import type {
   ResolvePolicy,
   SyncRunOptions,
   ConflictItem,
+  ConflictDetail,
 } from "../types.js";
 
 // ----------------------------------------------------------------------------
@@ -83,7 +84,8 @@ interface FakeEngineOpts {
     o?: SyncRunOptions,
   ) => Promise<ResolveResult>;
   syncAtomic?: (opts: { pluginsDir: string; policy?: ResolvePolicy }) => Promise<
-    | { aborted: true; missing: string[] }
+    | { aborted: true; reason: "missing-plugins"; missing: string[] }
+    | { aborted: true; reason: "conflicts"; conflicts: ConflictDetail[] }
     | { aborted: false; pull: PullResult; push: PushResult }
   >;
 }
@@ -502,22 +504,40 @@ describe("wormhole_sync — handler confirm-gate", () => {
     assert.equal(out.resolve, undefined);
   });
 
-  test("confirm:true with conflicts → pull, resolve(policy), push; policy defaults to preserve-both", async () => {
+  test("H10-adjacent: confirm:true + preserve-both + conflicts → tool returns aborted:true reason:conflicts", async () => {
     const server = new FakeServer();
-    const conflict = { logicalKey: "c.txt" } as unknown as ConflictItem;
-    const { engine, calls } = makeFakeEngine({
-      pull: () => Promise.resolve(fixturePull(false, [conflict])),
+    const fakeConflict: ConflictDetail = {
+      logicalKey: "c.txt" as ConflictDetail["logicalKey"],
+      localHash: "aabbcc" as ConflictDetail["localHash"],
+      remoteHash: "ddeeff" as ConflictDetail["remoteHash"],
+      remoteMachineId: "remote-M" as ConflictDetail["remoteMachineId"],
+      remoteGeneration: 2,
+      copyPath: null,
+    };
+    const { engine } = makeFakeEngine({
+      syncAtomic: () =>
+        Promise.resolve({
+          aborted: true as const,
+          reason: "conflicts" as const,
+          conflicts: [fakeConflict],
+        }),
     });
     registerSyncTool(server as unknown as McpServer, engine);
 
     const res = await server.call("wormhole_sync", { confirm: true });
-    assert.deepEqual(calls.pull, [{}]);
-    assert.equal(calls.resolve.length, 1);
-    assert.equal(calls.resolve[0].policy, "preserve-both");
-    assert.deepEqual(calls.push, [{}]);
-    const out = parseStructured<{ pull: PullResult; push: PushResult }>(res);
-    assert.equal(out.pull.dryRun, false);
-    assert.equal(out.push.dryRun, false);
+    assert.notEqual(res.isError, true, "blocked response must not be a tool error");
+    const out = parseStructured<{
+      aborted: boolean;
+      reason: string;
+      conflicts: ConflictDetail[];
+      note: string;
+    }>(res);
+    assert.equal(out.aborted, true, "tool output aborted must be true");
+    assert.equal(out.reason, "conflicts", "tool output reason must be 'conflicts'");
+    assert.equal(out.conflicts.length, 1, "conflicts array length must be 1");
+    assert.equal(out.conflicts[0].logicalKey, "c.txt", "conflict logicalKey must match");
+    assert.equal(out.conflicts[0].remoteGeneration, 2, "conflict remoteGeneration must match");
+    assert.ok(out.note && out.note.length > 0, "note must be present");
   });
 
   test("confirm:true with conflicts and explicit policy=latest-wins", async () => {
@@ -546,5 +566,64 @@ describe("wormhole_sync — handler confirm-gate", () => {
     assert.equal(block.text, "sync pull failed");
     // push never reached.
     assert.deepEqual(calls.push, []);
+  });
+});
+
+describe("H10: dry-run wouldBlock 연산", () => {
+  test("H10a: preserve-both + conflicts → wouldBlock===true", async () => {
+    const server = new FakeServer();
+    const conflict = { logicalKey: "c.txt" } as unknown as ConflictItem;
+    const { engine } = makeFakeEngine({
+      pull: () => Promise.resolve(fixturePull(true, [conflict])),
+    });
+    registerSyncTool(server as unknown as McpServer, engine);
+
+    const res = await server.call("wormhole_sync", { policy: "preserve-both" });
+    const out = parseStructured<{ wouldBlock: boolean; conflicts: ConflictItem[] }>(res);
+    assert.equal(out.wouldBlock, true, "wouldBlock must be true for preserve-both + conflicts");
+    assert.equal(out.conflicts.length, 1, "conflicts must be populated when wouldBlock=true");
+  });
+
+  test("H10b: latest-wins + conflicts → wouldBlock===false", async () => {
+    const server = new FakeServer();
+    const conflict = { logicalKey: "c.txt" } as unknown as ConflictItem;
+    const { engine } = makeFakeEngine({
+      pull: () => Promise.resolve(fixturePull(true, [conflict])),
+    });
+    registerSyncTool(server as unknown as McpServer, engine);
+
+    const res = await server.call("wormhole_sync", { policy: "latest-wins" });
+    const out = parseStructured<{ wouldBlock: boolean }>(res);
+    assert.equal(out.wouldBlock, false, "wouldBlock must be false for latest-wins even with conflicts");
+  });
+
+  test("H10c: wouldBlock===true → payload 에 push 없음(깨끗한 업로드 계획 미노출) [sync.ts 수정 전 RED 예상]", async () => {
+    const server = new FakeServer();
+    const conflict = { logicalKey: "c.txt" } as unknown as ConflictItem;
+    const { engine } = makeFakeEngine({
+      pull: () => Promise.resolve(fixturePull(true, [conflict])),
+    });
+    registerSyncTool(server as unknown as McpServer, engine);
+
+    const res = await server.call("wormhole_sync", {});
+    const out = parseStructured<{ wouldBlock: boolean; push?: unknown; pull: unknown; conflicts: unknown[] }>(res);
+    assert.equal(out.wouldBlock, true, "wouldBlock must be true for preserve-both + conflicts");
+    assert.ok(out.push == null, "push must be absent or null when wouldBlock===true");
+    assert.ok(out.pull !== undefined, "pull must be retained when wouldBlock===true");
+    assert.ok(Array.isArray(out.conflicts), "conflicts array must be retained when wouldBlock===true");
+  });
+
+  test("H10d: wouldBlock===false → payload 에 push 존재(업로드 계획 제공)", async () => {
+    const server = new FakeServer();
+    const conflict = { logicalKey: "c.txt" } as unknown as ConflictItem;
+    const { engine } = makeFakeEngine({
+      pull: () => Promise.resolve(fixturePull(true, [conflict])),
+    });
+    registerSyncTool(server as unknown as McpServer, engine);
+
+    const res = await server.call("wormhole_sync", { policy: "latest-wins" });
+    const out = parseStructured<{ wouldBlock: boolean; push: unknown }>(res);
+    assert.equal(out.wouldBlock, false, "wouldBlock must be false for latest-wins");
+    assert.ok(out.push !== undefined && out.push !== null, "push must be present when wouldBlock===false");
   });
 });

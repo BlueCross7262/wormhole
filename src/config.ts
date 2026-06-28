@@ -28,6 +28,7 @@ export const DEFAULT_EXCLUDE: string[] = [
   ".claude/history/**",
   "**/*.log",
   "**/cache/**",
+  "**/*.conflict-*",
 ];
 
 // ── zod 스키마 ────────────────────────────────────────────────

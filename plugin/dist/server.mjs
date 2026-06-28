@@ -33417,8 +33417,8 @@ function registerResolveTool(server, engine) {
       title: "Wormhole Resolve",
       description: "\uCDA9\uB3CC \uD56D\uBAA9\uC744 \uC9C0\uC815\uD55C \uC815\uCC45\uC73C\uB85C \uD574\uC18C\uD55C\uB2E4. keys \uC0DD\uB7B5 \uC2DC \uC804\uCCB4 \uCDA9\uB3CC \uCC98\uB9AC. \uC548\uC804 \uAE30\uBCF8\uAC12: confirm \uC5C6\uC774 \uD638\uCD9C\uD558\uBA74 \uC2E4\uC81C \uBCC0\uACBD \uC5C6\uC774 \uBBF8\uB9AC\uBCF4\uAE30(dry-run)\uB9CC \uBC18\uD658\uD55C\uB2E4. \uC2E4\uC81C \uC801\uC6A9\uC740 confirm:true \uAC00 \uD544\uC694\uD558\uBA70, \uC774\uB294 \uC0AC\uC6A9\uC790\uC758 \uBA85\uC2DC\uC801 \uD655\uC778\uC774 \uC788\uC744 \uB54C\uB9CC \uC804\uB2EC\uD55C\uB2E4 \u2014 \uC808\uB300 \uC790\uC728\uC801\uC73C\uB85C confirm:true \uB97C \uB118\uAE30\uC9C0 \uC54A\uB294\uB2E4.",
       inputSchema: {
-        policy: external_exports.enum(["preserve-both", "latest-wins", "manual"]).describe(
-          "\uCDA9\uB3CC \uD574\uC18C \uC815\uCC45. preserve-both(\uAE30\uBCF8): \uB85C\uCEEC \uC720\uC9C0 + \uC6D0\uACA9\uBCF8\uC744 .conflict \uC0AC\uBCF8\uC73C\uB85C \uBCF4\uC874(\uBB34\uC190\uC2E4). latest-wins: \uC6D0\uACA9 \uCD5C\uC2E0\uBCF8(\uB9E4\uB2C8\uD398\uC2A4\uD2B8 generation = \uB9C8\uC9C0\uB9C9\uC73C\uB85C push \uB41C \uCABD \uAE30\uC900, \uD30C\uC77C mtime/\uBCBD\uC2DC\uACC4 \uC2DC\uAC01 \uC544\uB2D8)\uC73C\uB85C \uB36E\uC5B4\uC4F0\uAE30 + \uB36E\uC5B4\uC4F0\uAE30 \uC804 \uB85C\uCEEC \uBC31\uC5C5. manual: \uCDA9\uB3CC \uBAA9\uB85D\uB9CC \uBC18\uD658\uD558\uACE0 \uC790\uB3D9 \uCC98\uB9AC\uD558\uC9C0 \uC54A\uC74C. \uC0DD\uB7B5 \uC2DC config \uC758 conflictPolicy \uB97C \uB530\uB978\uB2E4."
+        policy: external_exports.enum(["preserve-both", "latest-wins", "ours", "manual"]).describe(
+          "\uCDA9\uB3CC \uD574\uC18C \uC815\uCC45. preserve-both(\uAE30\uBCF8): \uB85C\uCEEC \uC720\uC9C0 + \uC6D0\uACA9\uBCF8\uC744 .conflict \uC0AC\uBCF8\uC73C\uB85C \uBCF4\uC874(\uBB34\uC190\uC2E4). latest-wins: \uC6D0\uACA9 \uCD5C\uC2E0\uBCF8(\uB9E4\uB2C8\uD398\uC2A4\uD2B8 generation = \uB9C8\uC9C0\uB9C9\uC73C\uB85C push \uB41C \uCABD \uAE30\uC900, \uD30C\uC77C mtime/\uBCBD\uC2DC\uACC4 \uC2DC\uAC01 \uC544\uB2D8)\uC73C\uB85C \uB36E\uC5B4\uC4F0\uAE30 + \uB36E\uC5B4\uC4F0\uAE30 \uC804 \uB85C\uCEEC \uBC31\uC5C5. ours: \uB85C\uCEEC \uCF58\uD150\uCE20\uB97C \uCC44\uD0DD\uD558\uACE0 \uC6D0\uACA9\uC5D0 \uC5C5\uB85C\uB4DC(\uC6D0\uACA9\uC744 \uB85C\uCEEC\uB85C \uB36E\uC5B4\uC500). \uB85C\uCEEC \uC218\uC815 \uBCF4\uC874\uC774 \uBAA9\uC801. \uC218\uB3D9 \uBCD1\uD569 \uD6C4 ours \uB85C \uBCD1\uD569\uBCF8 \uCC44\uD0DD \uAC00\uB2A5. manual: \uCDA9\uB3CC \uBAA9\uB85D\uB9CC \uBC18\uD658\uD558\uACE0 \uC790\uB3D9 \uCC98\uB9AC\uD558\uC9C0 \uC54A\uC74C. \uC0DD\uB7B5 \uC2DC config \uC758 conflictPolicy \uB97C \uB530\uB978\uB2E4."
         ).optional(),
         keys: external_exports.array(external_exports.string()).optional(),
         confirm: external_exports.boolean().optional().default(false)
@@ -33471,12 +33471,20 @@ function registerSyncTool(server, engine) {
       try {
         if (args.confirm !== true) {
           const pull = await engine.pull({ dryRun: true });
-          const push = await engine.push({ dryRun: true });
+          const policy2 = args.policy ?? "preserve-both";
+          const wouldBlock = pull.conflicts.length > 0 && policy2 !== "latest-wins";
           const payload2 = {
             pull,
-            push,
+            wouldBlock,
             note: "\uBBF8\uB9AC\uBCF4\uAE30 \u2014 \uC2E4\uC81C \uC801\uC6A9\uD558\uB824\uBA74 confirm:true (\uC0AC\uC6A9\uC790 \uD655\uC778 \uD6C4)"
           };
+          if (wouldBlock) {
+            payload2.conflicts = pull.conflicts;
+            payload2.conflictsNote = "\uCDA9\uB3CC \uC794\uC874 \uC2DC push \uCC28\uB2E8\uB428. /wormhole-resolve \uB85C \uD0A4\uBCC4 theirs(latest-wins)/ours \uC120\uD0DD \uD6C4 \uC7AC sync \uD558\uC138\uC694.";
+          } else {
+            const push = await engine.push({ dryRun: true });
+            payload2.push = push;
+          }
           return {
             content: [{ type: "text", text: JSON.stringify(payload2) }],
             structuredContent: payload2
@@ -33487,9 +33495,28 @@ function registerSyncTool(server, engine) {
         const pluginsDir = path.join(engineCfg.home, ".claude", "plugins");
         const result = await engine.syncAtomic({ pluginsDir, policy });
         if (result.aborted) {
+          if (result.reason === "conflicts") {
+            const conflictLines = result.conflicts.map(
+              (c) => `- ${c.logicalKey}: remoteMachineId=${c.remoteMachineId}, remoteGeneration=${c.remoteGeneration}${c.copyPath ? `, \uC0AC\uBCF8=${c.copyPath}` : ""}`
+            ).join("\n");
+            const payload3 = {
+              aborted: true,
+              reason: "conflicts",
+              conflicts: result.conflicts,
+              note: `\uCDA9\uB3CC ${result.conflicts.length}\uAC74\uC73C\uB85C push \uCC28\uB2E8\uB428. /wormhole-resolve \uB85C \uD0A4\uBCC4 theirs(latest-wins)/ours \uC120\uD0DD \uD6C4 \uC7AC sync \uD558\uC138\uC694.
+
+\uCDA9\uB3CC \uBAA9\uB85D:
+${conflictLines}`
+            };
+            return {
+              content: [{ type: "text", text: JSON.stringify(payload3) }],
+              structuredContent: payload3
+            };
+          }
           const installCommands = result.missing.map((key) => `/plugin install ${key}`);
           const payload2 = {
             aborted: true,
+            reason: "missing-plugins",
             missing: result.missing,
             installCommands,
             note: `\uBBF8\uC124\uCE58 \uD50C\uB7EC\uADF8\uC778 ${result.missing.length}\uAC1C\uB85C \uB3D9\uAE30\uD654 \uC911\uB2E8\uB428. \uC544\uB798 \uBA85\uB839\uC73C\uB85C \uC124\uCE58 \uD6C4 \uC7AC\uC2DC\uB3C4\uD558\uC138\uC694:
@@ -33542,7 +33569,8 @@ var DEFAULT_EXCLUDE = [
   ".claude/statsig/**",
   ".claude/history/**",
   "**/*.log",
-  "**/cache/**"
+  "**/cache/**",
+  "**/*.conflict-*"
 ];
 var RemoteConfigSchema = external_exports.object({
   url: external_exports.string().min(1),
@@ -50256,6 +50284,7 @@ function isConfigJsonKey(logicalKey) {
 
 // src/sync/scanner.ts
 function isKeyInScope(logicalKey, targets) {
+  if (import_micromatch.default.isMatch(logicalKey, ["**/*.conflict-*"], { dot: true })) return false;
   const inInclude = import_micromatch.default.isMatch(logicalKey, targets.include, { dot: true });
   if (!inInclude) return false;
   if (targets.exclude.length === 0) return true;
@@ -50263,7 +50292,7 @@ function isKeyInScope(logicalKey, targets) {
 }
 async function scanLocal(config2) {
   const { home, targets, stateDir } = config2;
-  const ignore = [...targets.exclude];
+  const ignore = [...targets.exclude, "**/*.conflict-*"];
   const relState = path10.relative(home, stateDir);
   if (relState !== "" && !relState.startsWith("..") && !path10.isAbsolute(relState)) {
     ignore.push(`${relState.split(path10.sep).join("/")}/**`);
@@ -51457,6 +51486,25 @@ var SyncEngine = class {
         resolved.push(key);
         continue;
       }
+      if (effectivePolicy === "ours") {
+        if (entry.deleted) {
+          delete nextState[key];
+          await this.removeBaseSnapshot(key);
+        } else {
+          const remotePlain = await this.downloadBlob(key);
+          if (remotePlain === null) {
+            this.logger?.warn(`[engine] resolve(ours): blob \uBD80\uC7AC ${key}`);
+            continue;
+          }
+          await this.writeBaseSnapshot(key, remotePlain);
+          nextState[key] = {
+            syncedHash: entry.contentHash,
+            syncedGeneration: entry.generation
+          };
+        }
+        resolved.push(key);
+        continue;
+      }
       const backupPath = await this.backupFile(absPath, key, backupRoot);
       if (backupPath !== null) hadBackup = true;
       if (entry.deleted) {
@@ -51479,7 +51527,7 @@ var SyncEngine = class {
       resolved.push(key);
       if (isConfigJsonKey(key)) anyAdopted = true;
     }
-    if (policy === "latest-wins" || anyAdopted) {
+    if (policy === "latest-wins" || policy === "ours" || anyAdopted) {
       await this.writeState(nextState);
     }
     return {
@@ -51678,19 +51726,35 @@ var SyncEngine = class {
     const { pulledSettings } = await this.fetchRemote();
     const prereq = checkInstallPrereqs(pulledSettings, pluginsDir);
     if (!prereq.ok) {
-      return { aborted: true, missing: prereq.missing };
+      return { aborted: true, reason: "missing-plugins", missing: prereq.missing };
     }
     return this.mutex.runExclusive(
       async () => withLock(this.lock, async () => {
         const { pulledSettings: freshSettings } = await this.fetchRemote();
         const recheck = checkInstallPrereqs(freshSettings, pluginsDir);
         if (!recheck.ok) {
-          return { aborted: true, missing: recheck.missing };
+          return { aborted: true, reason: "missing-plugins", missing: recheck.missing };
         }
         const pull = await this.runPull();
+        let resolveResult = null;
         if (pull.conflicts.length > 0) {
           const effective = policy ?? this.config.conflictPolicy;
-          await this.runResolve(effective);
+          resolveResult = await this.runResolve(effective);
+        }
+        const afterStatus = await this.status();
+        if (afterStatus.conflicts.length > 0) {
+          const copyMap = new Map(
+            (resolveResult?.conflictCopies ?? []).map((c) => [c.logicalKey, c.copyPath])
+          );
+          const conflicts = afterStatus.conflicts.map((c) => ({
+            logicalKey: c.logicalKey,
+            localHash: c.localHash,
+            remoteHash: c.remoteHash,
+            remoteMachineId: c.remoteMachineId,
+            remoteGeneration: c.remoteGeneration,
+            copyPath: copyMap.get(c.logicalKey) ?? null
+          }));
+          return { aborted: true, reason: "conflicts", conflicts };
         }
         const push = await this.runPushWithRetry();
         return { aborted: false, pull, push };

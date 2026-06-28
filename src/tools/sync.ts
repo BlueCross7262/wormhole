@@ -28,29 +28,57 @@ export function registerSyncTool(server: McpServer, engine: SyncEngine): void {
     async (args, _extra) => {
       try {
         if (args.confirm !== true) {
-          // 미리보기: pull/push 계획만 계산(변경 없음).
           const pull = await engine.pull({ dryRun: true });
-          const push = await engine.push({ dryRun: true });
+          const policy: ResolvePolicy = args.policy ?? "preserve-both";
+          const wouldBlock = pull.conflicts.length > 0 && policy !== "latest-wins";
           const payload: Record<string, unknown> = {
             pull,
-            push,
+            wouldBlock,
             note: "미리보기 — 실제 적용하려면 confirm:true (사용자 확인 후)",
           };
+          if (wouldBlock) {
+            payload.conflicts = pull.conflicts;
+            payload.conflictsNote =
+              "충돌 잔존 시 push 차단됨. /wormhole-resolve 로 키별 theirs(latest-wins)/ours 선택 후 재 sync 하세요.";
+          } else {
+            const push = await engine.push({ dryRun: true });
+            payload.push = push;
+          }
           return {
             content: [{ type: "text", text: JSON.stringify(payload) }],
             structuredContent: payload,
           } as CallToolResult;
         }
 
-        // 복합 실행: 단일 락 파이프라인 (fetch → install-check → pull → resolve → push).
         const policy: ResolvePolicy = args.policy ?? "preserve-both";
         const engineCfg = (engine as unknown as { config: { home: string } }).config;
         const pluginsDir = path.join(engineCfg.home, ".claude", "plugins");
         const result = await engine.syncAtomic({ pluginsDir, policy });
+
         if (result.aborted) {
+          if (result.reason === "conflicts") {
+            const conflictLines = result.conflicts
+              .map(
+                (c) =>
+                  `- ${c.logicalKey}: remoteMachineId=${c.remoteMachineId}, remoteGeneration=${c.remoteGeneration}${c.copyPath ? `, 사본=${c.copyPath}` : ""}`,
+              )
+              .join("\n");
+            const payload: Record<string, unknown> = {
+              aborted: true,
+              reason: "conflicts",
+              conflicts: result.conflicts,
+              note: `충돌 ${result.conflicts.length}건으로 push 차단됨. /wormhole-resolve 로 키별 theirs(latest-wins)/ours 선택 후 재 sync 하세요.\n\n충돌 목록:\n${conflictLines}`,
+            };
+            return {
+              content: [{ type: "text", text: JSON.stringify(payload) }],
+              structuredContent: payload,
+            } as CallToolResult;
+          }
+
           const installCommands = result.missing.map((key) => `/plugin install ${key}`);
           const payload: Record<string, unknown> = {
             aborted: true,
+            reason: "missing-plugins",
             missing: result.missing,
             installCommands,
             note: `미설치 플러그인 ${result.missing.length}개로 동기화 중단됨. 아래 명령으로 설치 후 재시도하세요:\n${installCommands.join("\n")}`,
@@ -60,6 +88,7 @@ export function registerSyncTool(server: McpServer, engine: SyncEngine): void {
             structuredContent: payload,
           } as CallToolResult;
         }
+
         const payload: Record<string, unknown> = { pull: result.pull, push: result.push };
         return {
           content: [{ type: "text", text: JSON.stringify(payload) }],
