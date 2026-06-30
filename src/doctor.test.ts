@@ -155,7 +155,8 @@ describe("runDoctor — 정상 환경(부트스트랩된 vault)", () => {
       [],
       `fail 이 없어야 함. 실제: ${JSON.stringify(result.checks, null, 2)}`,
     );
-    assert.equal(result.ok, true);
+        assert.equal(result.ok, true);
+    assert.match(result.version, /^\d+\.\d+\.\d+/);
     assert.ok(result.checks.length >= 9, `최소 9 체크 기대, 실제 ${result.checks.length}`);
     assert.equal(findCheck(result, "ETag").status, "ok");
     assert.equal(findCheck(result, "락").status, "ok");
@@ -249,7 +250,8 @@ describe("runDoctor — 실패 환경", () => {
     // 빈 vault 는 keyparams/manifest 가 없으므로 정합/상태가 warn 이지만 fail 은 아님.
     const fails = result.checks.filter((c) => c.status === "fail");
     assert.deepEqual(fails, [], `빈 vault 에서 fail 발생: ${JSON.stringify(fails)}`);
-    assert.equal(result.ok, true);
+        assert.equal(result.ok, true);
+    assert.match(result.version, /^\d+\.\d+\.\d+/);
     const integrity = findCheck(result, "정합");
     assert.equal(integrity.status, "warn");
   });

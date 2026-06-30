@@ -19,6 +19,7 @@ import { fileURLToPath } from "node:url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "..");
+const PKG_VERSION = JSON.parse(fs.readFileSync(path.join(repoRoot, "package.json"), "utf-8")).version;
 
 const CLI_OUTFILE = path.join(repoRoot, "plugin", "dist", "cli.mjs");
 const SERVER_OUTFILE = path.join(repoRoot, "plugin", "dist", "server.mjs");
@@ -92,6 +93,7 @@ const ESBUILD_COMMON = {
     js: "import { createRequire as __wormholeCreateRequire } from 'node:module'; const require = __wormholeCreateRequire(import.meta.url);",
   },
   logLevel: "info",
+  define: { __WORMHOLE_VERSION__: JSON.stringify(PKG_VERSION) },
 };
 
 // ── 2) Bundle CLI: src/cli.ts → plugin/dist/cli.mjs ─────────

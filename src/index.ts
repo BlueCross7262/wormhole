@@ -3,6 +3,7 @@
 // stdout 은 MCP 전송 전용 — 모든 로깅은 stderr(logger) 경유.
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { VERSION } from "./version.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 
 import { logger } from "./logger.js";
@@ -15,7 +16,7 @@ async function main(): Promise<void> {
   const { engine } = await buildEngine(logger);
 
   // 7) MCP 서버 + 툴 등록.
-  const server = new McpServer({ name: "wormhole", version: "0.5.0" });
+  const server = new McpServer({ name: "wormhole", version: VERSION });
   registerAllTools(server, engine);
 
   // 8) graceful shutdown — 진행 작업 정리 후 종료.

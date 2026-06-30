@@ -24,6 +24,7 @@ import { ManifestStore } from "./sync/manifest.js";
 import { classifyLock } from "./sync/lock.js";
 import { readMachineIdIfExists } from "./sync/machine.js";
 import type { Config, MachineId, Logger } from "./types.js";
+import { VERSION } from "./version.js";
 
 export type DoctorStatus = "ok" | "fail" | "warn";
 
@@ -35,6 +36,7 @@ export interface DoctorCheck {
 
 export interface DoctorResult {
   ok: boolean;
+  version: string;
   checks: DoctorCheck[];
 }
 
@@ -421,5 +423,5 @@ export async function runDoctor(logger: Logger): Promise<DoctorResult> {
   }
 
   const ok = checks.every((c) => c.status !== "fail");
-  return { ok, checks };
+  return { ok, version: VERSION, checks };
 }
