@@ -1,8 +1,6 @@
 {
-  "_comment": "WebDAV 접속 정보(URL/username/password)는 ~/.wormhole/.env 의 플랫 변수 WEBDAV_URL/USER/PASS 로 지정한다. 원격 기본 디렉터리는 WEBDAV_USER 값에서 자동 파생된다(WEBDAV_URL 내 공유 경로 아래 /<username>). 명시적 override 가 필요하면 remote.remoteBaseDir 필드를 추가한다. passphrase 원문은 절대 이 파일에 넣지 않는다(~/.wormhole/.env 또는 0600 파일 / keychain 사용).",
   "stateDir": "~/.wormhole",
   "crypto": {
-    "_comment": "passphraseEnv: passphrase 를 읽을 환경변수 이름. passphraseFile/derivedKeyPath 는 빈 문자열이면 stateDir 기본값을 쓴다(passphraseFile=<stateDir>/passphrase, derivedKeyPath=<stateDir>/age-key.txt). kdfN 이 클수록 강하다(메모리 사용량 증가). N=65536=2^16 ≈ 64MB.",
     "passphraseEnv": "WORMHOLE_PASSPHRASE",
     "passphraseFile": "",
     "derivedKeyPath": "",
@@ -11,7 +9,6 @@
     "kdfP": 1
   },
   "targets": {
-    "_comment": "include/exclude 는 동기화 업로드 대상 glob 목록이다.",
     "include": [
       ".claude/CLAUDE.md",
       ".claude/settings.json",
@@ -20,11 +17,6 @@
       ".claude/hud/**",
       ".claude/rules/**",
       ".claude/scripts/**",
-      ".claude/skills/autoloop/**",
-      ".claude/skills/gen-plan/**",
-      ".claude/skills/pick-run-skill/**",
-      ".claude/skills/plantuml-style/**",
-      ".claude/skills/verify-reinforce/**",
       ".claude/hookify.*.global.md",
       ".claude/wormhole-config.json"
     ],
@@ -38,16 +30,23 @@
       ".claude/statsig/**",
       ".claude/history/**",
       "**/*.log",
-      "**/cache/**",
-      ".claude/skills/graphify/**",
-      ".claude/skills/omc-reference/**"
+      "**/cache/**"
     ]
   },
-  "_syncMcpServers_comment": "동기화할 mcpServer 이름만 등록. 미등록(wormhole 등)은 로컬. allowlist 서버의 *_PAT/_TOKEN/_SECRET env 는 동기화 안 되고 머신별 로컬 유지(pull 시 로컬 값 보존).",
-  "syncMcpServers": [],
+  "skills_keyword": "wormhole-sync",
+  "syncMcpServers": [
+    "whimsical-desktop",
+    "microsoft.docs.mcp",
+    "serena"
+  ],
   "conflictPolicy": "preserve-both",
   "homeRootTargets": {
-    ".claude.json": { "subkeys": ["mcpServers"], "preserveMode": "denylist" }
+    ".claude.json": {
+      "subkeys": [
+        "mcpServers"
+      ],
+      "preserveMode": "denylist"
+    }
   },
   "lock": {
     "ttlMs": 30000,
