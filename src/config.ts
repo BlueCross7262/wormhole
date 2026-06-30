@@ -85,6 +85,7 @@ const RawConfigSchema = z.object({
   lock: LockConfigSchema.partial().default({}),
   // home-root 파일(예: .claude.json)의 머지 서브키와 보존모드 맵.
   homeRootTargets: z.record(HomeRootTargetSchema).optional(),
+  skills_keyword: z.string().optional(),
 });
 
 // 완전한 Config zod 타입 (런타임 검증용)
@@ -188,6 +189,62 @@ function deriveRemoteBaseDir(remoteBaseDir: string | undefined, username: string
   if (explicit) return normalizeBaseDir(explicit);
   return normalizeBaseDir(username);
 }
+type FsReader = {
+  readdirSync(p: string): string[];
+  readFileSync(p: string, enc: BufferEncoding): string;
+};
+
+function frontmatterHasMarker(content: string, keyword: string): boolean {
+  const lines = content.split(/\r?\n/);
+  if (lines.length === 0 || lines[0].trim() !== "---") return false;
+  for (let i = 1; i < lines.length; i++) {
+    if (lines[i].trim() === "---") break;
+    if (/^\s/.test(lines[i])) continue;
+    const colon = lines[i].indexOf(":");
+    if (colon === -1) continue;
+    if (lines[i].slice(0, colon).trim() !== keyword) continue;
+    let val = lines[i].slice(colon + 1).trim();
+    if (val.length >= 2) {
+      const f = val[0];
+      const l = val[val.length - 1];
+      if ((f === '"' && l === '"') || (f === "'" && l === "'")) val = val.slice(1, -1).trim();
+    }
+    const lower = val.toLowerCase();
+    return !(lower === "false" || lower === "no" || lower === "0" || lower === "" || lower === "null");
+  }
+  return false;
+}
+
+export function resolveSkillsInclude(
+  home: string,
+  keyword: string,
+  fsImpl: FsReader = {
+    readdirSync: (p) => fs.readdirSync(p) as string[],
+    readFileSync: (p, enc) => fs.readFileSync(p, enc) as string,
+  },
+): string[] {
+  const skillsDir = path.join(home, ".claude", "skills");
+  let entries: string[];
+  try {
+    entries = fsImpl.readdirSync(skillsDir);
+  } catch {
+    return [];
+  }
+  const result: string[] = [];
+  for (const entry of entries) {
+    const skillMd = path.join(skillsDir, entry, "SKILL.md");
+    let content: string;
+    try {
+      content = fsImpl.readFileSync(skillMd, "utf-8");
+    } catch {
+      continue;
+    }
+    if (frontmatterHasMarker(content, keyword)) {
+      result.push(`.claude/skills/${entry}/**`);
+    }
+  }
+  return result;
+}
 // ── 경로 확장 (~ + stateDir 기준 상대경로) ───────────────────
 
 function resolvePaths(parsed: z.infer<typeof RawConfigSchema>, home: string, stateDir: string): Config {
@@ -235,7 +292,19 @@ function resolvePaths(parsed: z.infer<typeof RawConfigSchema>, home: string, sta
       kdfR: cryptoRaw.kdfR,
       kdfP: cryptoRaw.kdfP,
     },
-    targets: SyncTargetsSchema.parse(parsed.targets),
+    targets: (() => {
+        const t = SyncTargetsSchema.parse(parsed.targets);
+        if (!parsed.skills_keyword) return t;
+        const matched = resolveSkillsInclude(home, parsed.skills_keyword);
+        return {
+          ...t,
+          include: dedupe([
+            ...t.include.filter((p: string) => p !== ".claude/skills/**"),
+            ...matched,
+          ]),
+        };
+      })(),
+      skills_keyword: parsed.skills_keyword,
     syncMcpServers: parsed.syncMcpServers,
     conflictPolicy: parsed.conflictPolicy,
     lock: LockConfigSchema.parse(parsed.lock),

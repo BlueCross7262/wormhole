@@ -93,6 +93,7 @@ export interface Config {
   crypto: CryptoConfig;
   /** 동기화 대상 글로브. */
   targets: SyncTargets;
+  skills_keyword?: string;
   /** 동기화할 mcpServer 이름 allowlist. 등록된 서버만 .claude.json mcpServers 에서 동기화. */
   syncMcpServers: string[];
   /** 충돌 기본 정책. */

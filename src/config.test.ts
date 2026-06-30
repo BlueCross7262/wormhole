@@ -11,6 +11,7 @@ import {
   loadDotEnvIntoProcess,
   DEFAULT_INCLUDE,
   DEFAULT_EXCLUDE,
+  resolveSkillsInclude,
 } from "./config.js";
 
 // ── env 격리 헬퍼 ──────────────────────────────────────────────
@@ -760,5 +761,82 @@ describe("resolveConfigPath — 경로 우선순위", () => {
   });
   test("둘 다 부재 → 정규", () => {
     assert.equal(resolveConfigPath(HOME, undefined, undefined, none), canonical);
+  });
+});
+
+// ── 9. skills_keyword 마커 기반 스킬 include 해석 ─────────────
+
+describe("resolveSkillsInclude", () => {
+  function mkSkill(name: string, frontmatter: string) {
+    const dir = path.join(tmpRoot, ".claude", "skills", name);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "SKILL.md"), `---\n${frontmatter}---\n`, "utf-8");
+  }
+
+  test("마커 truthy 스킬은 글롭 반환", () => {
+    mkSkill("skill-a", "wormhole-sync: true\n");
+    assert.deepEqual(resolveSkillsInclude(tmpRoot, "wormhole-sync"), [".claude/skills/skill-a/**"]);
+  });
+
+  test("마커 없는 스킬은 미포함", () => {
+    mkSkill("skill-b", "name: skill-b\n");
+    assert.deepEqual(resolveSkillsInclude(tmpRoot, "wormhole-sync"), []);
+  });
+
+  test("마커 값 false 스킬은 미포함", () => {
+    mkSkill("skill-c", "wormhole-sync: false\n");
+    assert.deepEqual(resolveSkillsInclude(tmpRoot, "wormhole-sync"), []);
+  });
+
+  test("SKILL.md 없는 스킬 디렉토리는 skip", () => {
+    fs.mkdirSync(path.join(tmpRoot, ".claude", "skills", "no-md"), { recursive: true });
+    assert.deepEqual(resolveSkillsInclude(tmpRoot, "wormhole-sync"), []);
+  });
+
+  test(".claude/skills 디렉토리 없으면 빈 배열", () => {
+    assert.deepEqual(resolveSkillsInclude(tmpRoot, "wormhole-sync"), []);
+  });
+
+  test("여러 스킬 중 마커 매치만 반환", () => {
+    mkSkill("matched", "wormhole-sync: true\n");
+    mkSkill("unmatched", "name: other\n");
+    mkSkill("also-matched", "wormhole-sync: yes\n");
+    const globs = resolveSkillsInclude(tmpRoot, "wormhole-sync");
+    assert.ok(globs.includes(".claude/skills/matched/**"), "matched 포함");
+    assert.ok(!globs.includes(".claude/skills/unmatched/**"), "unmatched 미포함");
+    assert.ok(globs.includes(".claude/skills/also-matched/**"), "also-matched 포함");
+  });
+});
+
+describe("resolveConfig — skills_keyword 통합", () => {
+  function mkSkill(name: string, frontmatter: string) {
+    const dir = path.join(tmpRoot, ".claude", "skills", name);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "SKILL.md"), `---\n${frontmatter}---\n`, "utf-8");
+  }
+
+  test("skills_keyword 미설정 시 include 에 .claude/skills/** 유지", () => {
+    const cfg = resolveConfig(minimalRaw({ home: tmpRoot }));
+    assert.ok(cfg.targets.include.includes(".claude/skills/**"));
+  });
+
+  test("skills_keyword 설정 시 .claude/skills/** 제거 + 매치 글롭 포함", () => {
+    mkSkill("skill-a", "wormhole-sync: true\n");
+    mkSkill("skill-b", "name: other\n");
+    const cfg = resolveConfig(minimalRaw({ home: tmpRoot, skills_keyword: "wormhole-sync" }));
+    assert.ok(!cfg.targets.include.includes(".claude/skills/**"), ".claude/skills/** 제거됨");
+    assert.ok(cfg.targets.include.includes(".claude/skills/skill-a/**"), "매치 스킬 포함");
+    assert.ok(!cfg.targets.include.includes(".claude/skills/skill-b/**"), "비매치 스킬 미포함");
+  });
+
+  test("skills_keyword 설정 + 매치 없으면 .claude/skills/** 없음", () => {
+    const cfg = resolveConfig(minimalRaw({ home: tmpRoot, skills_keyword: "wormhole-sync" }));
+    assert.ok(!cfg.targets.include.includes(".claude/skills/**"));
+    assert.equal(cfg.targets.include.filter((g: string) => g.startsWith(".claude/skills/")).length, 0);
+  });
+
+  test("skills_keyword 가 Config 에 전달됨", () => {
+    const cfg = resolveConfig(minimalRaw({ home: tmpRoot, skills_keyword: "wormhole-sync" }));
+    assert.equal(cfg.skills_keyword, "wormhole-sync");
   });
 });
