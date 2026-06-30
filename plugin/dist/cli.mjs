@@ -16678,7 +16678,8 @@ var RawConfigSchema = external_exports.object({
   conflictPolicy: external_exports.enum(["preserve-both", "latest-wins", "manual"]).default("preserve-both"),
   lock: LockConfigSchema.partial().default({}),
   // home-root 파일(예: .claude.json)의 머지 서브키와 보존모드 맵.
-  homeRootTargets: external_exports.record(HomeRootTargetSchema).optional()
+  homeRootTargets: external_exports.record(HomeRootTargetSchema).optional(),
+  skills_keyword: external_exports.string().optional()
 });
 var FullConfigSchema = external_exports.object({
   stateDir: external_exports.string(),
@@ -16742,6 +16743,52 @@ function deriveRemoteBaseDir(remoteBaseDir, username) {
   if (explicit) return normalizeBaseDir(explicit);
   return normalizeBaseDir(username);
 }
+function frontmatterHasMarker(content, keyword) {
+  const lines = content.split(/\r?\n/);
+  if (lines.length === 0 || lines[0].trim() !== "---") return false;
+  for (let i2 = 1; i2 < lines.length; i2++) {
+    if (lines[i2].trim() === "---") break;
+    if (/^\s/.test(lines[i2])) continue;
+    const colon = lines[i2].indexOf(":");
+    if (colon === -1) continue;
+    if (lines[i2].slice(0, colon).trim() !== keyword) continue;
+    let val = lines[i2].slice(colon + 1).trim();
+    if (val.length >= 2) {
+      const f3 = val[0];
+      const l = val[val.length - 1];
+      if (f3 === '"' && l === '"' || f3 === "'" && l === "'") val = val.slice(1, -1).trim();
+    }
+    const lower2 = val.toLowerCase();
+    return !(lower2 === "false" || lower2 === "no" || lower2 === "0" || lower2 === "" || lower2 === "null");
+  }
+  return false;
+}
+function resolveSkillsInclude(home, keyword, fsImpl = {
+  readdirSync: (p) => fs.readdirSync(p),
+  readFileSync: (p, enc) => fs.readFileSync(p, enc)
+}) {
+  const skillsDir = path2.join(home, ".claude", "skills");
+  let entries;
+  try {
+    entries = fsImpl.readdirSync(skillsDir);
+  } catch {
+    return [];
+  }
+  const result = [];
+  for (const entry of entries) {
+    const skillMd = path2.join(skillsDir, entry, "SKILL.md");
+    let content;
+    try {
+      content = fsImpl.readFileSync(skillMd, "utf-8");
+    } catch {
+      continue;
+    }
+    if (frontmatterHasMarker(content, keyword)) {
+      result.push(`.claude/skills/${entry}/**`);
+    }
+  }
+  return result;
+}
 function resolvePaths(parsed, home, stateDir) {
   const remoteRaw = RemoteConfigSchema.parse(parsed.remote);
   const remote = {
@@ -16782,7 +16829,19 @@ function resolvePaths(parsed, home, stateDir) {
       kdfR: cryptoRaw.kdfR,
       kdfP: cryptoRaw.kdfP
     },
-    targets: SyncTargetsSchema.parse(parsed.targets),
+    targets: (() => {
+      const t2 = SyncTargetsSchema.parse(parsed.targets);
+      if (!parsed.skills_keyword) return t2;
+      const matched = resolveSkillsInclude(home, parsed.skills_keyword);
+      return {
+        ...t2,
+        include: dedupe([
+          ...t2.include.filter((p) => p !== ".claude/skills/**"),
+          ...matched
+        ])
+      };
+    })(),
+    skills_keyword: parsed.skills_keyword,
     syncMcpServers: parsed.syncMcpServers,
     conflictPolicy: parsed.conflictPolicy,
     lock: LockConfigSchema.parse(parsed.lock),
@@ -34264,6 +34323,23 @@ async function buildEngine(logger2) {
 
 // src/doctor.ts
 import * as nodePath from "node:path";
+
+// src/version.ts
+import { readFileSync as readFileSync4 } from "node:fs";
+import { fileURLToPath } from "node:url";
+function resolveVersion() {
+  if (true) return "0.5.13";
+  try {
+    const pkgPath = fileURLToPath(new URL("../package.json", import.meta.url));
+    const pkg = JSON.parse(readFileSync4(pkgPath, "utf-8"));
+    return pkg.version ?? "unknown";
+  } catch {
+    return "unknown";
+  }
+}
+var VERSION = resolveVersion();
+
+// src/doctor.ts
 function statusOf(err) {
   const e2 = err;
   return e2?.status ?? e2?.response?.status;
@@ -34601,7 +34677,7 @@ async function runDoctor(logger2) {
     });
   }
   const ok = checks.every((c) => c.status !== "fail");
-  return { ok, checks };
+  return { ok, version: VERSION, checks };
 }
 
 // src/cli.ts

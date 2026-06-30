@@ -33266,6 +33266,21 @@ var EMPTY_COMPLETION_RESULT = {
   }
 };
 
+// src/version.ts
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+function resolveVersion() {
+  if (true) return "0.5.13";
+  try {
+    const pkgPath = fileURLToPath(new URL("../package.json", import.meta.url));
+    const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
+    return pkg.version ?? "unknown";
+  } catch {
+    return "unknown";
+  }
+}
+var VERSION = resolveVersion();
+
 // node_modules/@modelcontextprotocol/sdk/dist/esm/server/stdio.js
 import process2 from "node:process";
 
@@ -33618,7 +33633,8 @@ var RawConfigSchema = external_exports.object({
   conflictPolicy: external_exports.enum(["preserve-both", "latest-wins", "manual"]).default("preserve-both"),
   lock: LockConfigSchema.partial().default({}),
   // home-root 파일(예: .claude.json)의 머지 서브키와 보존모드 맵.
-  homeRootTargets: external_exports.record(HomeRootTargetSchema).optional()
+  homeRootTargets: external_exports.record(HomeRootTargetSchema).optional(),
+  skills_keyword: external_exports.string().optional()
 });
 var FullConfigSchema = external_exports.object({
   stateDir: external_exports.string(),
@@ -33682,6 +33698,52 @@ function deriveRemoteBaseDir(remoteBaseDir, username) {
   if (explicit) return normalizeBaseDir(explicit);
   return normalizeBaseDir(username);
 }
+function frontmatterHasMarker(content, keyword) {
+  const lines = content.split(/\r?\n/);
+  if (lines.length === 0 || lines[0].trim() !== "---") return false;
+  for (let i2 = 1; i2 < lines.length; i2++) {
+    if (lines[i2].trim() === "---") break;
+    if (/^\s/.test(lines[i2])) continue;
+    const colon = lines[i2].indexOf(":");
+    if (colon === -1) continue;
+    if (lines[i2].slice(0, colon).trim() !== keyword) continue;
+    let val = lines[i2].slice(colon + 1).trim();
+    if (val.length >= 2) {
+      const f3 = val[0];
+      const l = val[val.length - 1];
+      if (f3 === '"' && l === '"' || f3 === "'" && l === "'") val = val.slice(1, -1).trim();
+    }
+    const lower2 = val.toLowerCase();
+    return !(lower2 === "false" || lower2 === "no" || lower2 === "0" || lower2 === "" || lower2 === "null");
+  }
+  return false;
+}
+function resolveSkillsInclude(home, keyword, fsImpl = {
+  readdirSync: (p) => fs.readdirSync(p),
+  readFileSync: (p, enc) => fs.readFileSync(p, enc)
+}) {
+  const skillsDir = path2.join(home, ".claude", "skills");
+  let entries;
+  try {
+    entries = fsImpl.readdirSync(skillsDir);
+  } catch {
+    return [];
+  }
+  const result = [];
+  for (const entry of entries) {
+    const skillMd = path2.join(skillsDir, entry, "SKILL.md");
+    let content;
+    try {
+      content = fsImpl.readFileSync(skillMd, "utf-8");
+    } catch {
+      continue;
+    }
+    if (frontmatterHasMarker(content, keyword)) {
+      result.push(`.claude/skills/${entry}/**`);
+    }
+  }
+  return result;
+}
 function resolvePaths(parsed, home, stateDir) {
   const remoteRaw = RemoteConfigSchema.parse(parsed.remote);
   const remote = {
@@ -33722,7 +33784,19 @@ function resolvePaths(parsed, home, stateDir) {
       kdfR: cryptoRaw.kdfR,
       kdfP: cryptoRaw.kdfP
     },
-    targets: SyncTargetsSchema.parse(parsed.targets),
+    targets: (() => {
+      const t2 = SyncTargetsSchema.parse(parsed.targets);
+      if (!parsed.skills_keyword) return t2;
+      const matched = resolveSkillsInclude(home, parsed.skills_keyword);
+      return {
+        ...t2,
+        include: dedupe([
+          ...t2.include.filter((p) => p !== ".claude/skills/**"),
+          ...matched
+        ])
+      };
+    })(),
+    skills_keyword: parsed.skills_keyword,
     syncMcpServers: parsed.syncMcpServers,
     conflictPolicy: parsed.conflictPolicy,
     lock: LockConfigSchema.parse(parsed.lock),
@@ -49781,7 +49855,7 @@ async function runDoctor(logger2) {
     });
   }
   const ok = checks.every((c) => c.status !== "fail");
-  return { ok, checks };
+  return { ok, version: VERSION, checks };
 }
 
 // src/tools/doctor.ts
@@ -49825,7 +49899,7 @@ import {
   existsSync as existsSync2,
   mkdirSync,
   unlinkSync,
-  readFileSync as readFileSync2,
+  readFileSync as readFileSync3,
   chmodSync
 } from "node:fs";
 import { open as fsOpen, rename as fsRename } from "node:fs/promises";
@@ -49931,7 +50005,7 @@ async function upsertDotEnvKey(envPath, key, value) {
     }
     return;
   }
-  let raw = readFileSync2(envPath, "utf-8");
+  let raw = readFileSync3(envPath, "utf-8");
   if (raw.startsWith("\uFEFF")) raw = raw.slice(1);
   const lines = raw.split(/\r?\n/);
   function parseKeyLine(line) {
@@ -50005,7 +50079,7 @@ async function maybeMigrateLegacyConfig(opts) {
   if (!existsSync2(LEGACY)) return { migrated: false, reason: "no-legacy" };
   let legacyObj;
   try {
-    legacyObj = JSON.parse(readFileSync2(LEGACY, "utf-8"));
+    legacyObj = JSON.parse(readFileSync3(LEGACY, "utf-8"));
   } catch {
     log?.warn("[wormhole] \uB808\uAC70\uC2DC config.json \uD30C\uC2F1 \uC2E4\uD328 \u2014 \uB9C8\uC774\uADF8\uB808\uC774\uC158 \uAC74\uB108\uB700");
     return { migrated: false, reason: "legacy-parse-failed" };
@@ -50019,7 +50093,7 @@ async function maybeMigrateLegacyConfig(opts) {
   if (existsSync2(NEW)) {
     let newObj;
     try {
-      newObj = JSON.parse(readFileSync2(NEW, "utf-8"));
+      newObj = JSON.parse(readFileSync3(NEW, "utf-8"));
     } catch {
       log?.warn("[wormhole] ~/.claude/wormhole-config.json \uD30C\uC2F1 \uC2E4\uD328 \u2014 \uC218\uB3D9 \uC870\uC815 \uD544\uC694");
       return { migrated: false, reason: "target-exists-divergent" };
@@ -50036,9 +50110,9 @@ async function maybeMigrateLegacyConfig(opts) {
   try {
     mkdirSync(path8.join(home, ".claude"), { recursive: true });
     if (needsCopy) {
-      await atomicWriteBuffer(NEW, readFileSync2(LEGACY));
+      await atomicWriteBuffer(NEW, readFileSync3(LEGACY));
     }
-    let newObj = JSON.parse(readFileSync2(NEW, "utf-8"));
+    let newObj = JSON.parse(readFileSync3(NEW, "utf-8"));
     const targets = typeof newObj.targets === "object" && newObj.targets !== null ? newObj.targets : {};
     const include = Array.isArray(targets.include) ? targets.include : [];
     if (!include.includes(SELF_ENTRY)) {
@@ -50048,10 +50122,10 @@ async function maybeMigrateLegacyConfig(opts) {
     }
     const newFwd = NEW.replace(/\\/g, "/");
     await upsertDotEnvKey(ENVPATH, "WORMHOLE_CONFIG", newFwd);
-    const verifyObj = JSON.parse(readFileSync2(NEW, "utf-8"));
+    const verifyObj = JSON.parse(readFileSync3(NEW, "utf-8"));
     const vt = typeof verifyObj.targets === "object" && verifyObj.targets !== null ? verifyObj.targets : {};
     const vInc = Array.isArray(vt.include) ? vt.include : [];
-    const envContent = readFileSync2(ENVPATH, "utf-8");
+    const envContent = readFileSync3(ENVPATH, "utf-8");
     const envOk = envContent.split(/\r?\n/).some((l) => l.trim() === `WORMHOLE_CONFIG=${newFwd}`);
     if (!vInc.includes(SELF_ENTRY) || !envOk) {
       log?.warn("[wormhole] \uB9C8\uC774\uADF8\uB808\uC774\uC158 \uAC80\uC99D \uC2E4\uD328 \u2014 \uB808\uAC70\uC2DC \uBCF4\uC874");
@@ -50068,7 +50142,7 @@ async function maybeMigrateLegacyConfig(opts) {
 }
 
 // src/sync/engine.ts
-import { promises as fs8, readFileSync as readFileSync3, existsSync as existsSync3 } from "node:fs";
+import { promises as fs8, readFileSync as readFileSync4, existsSync as existsSync3 } from "node:fs";
 import * as path11 from "node:path";
 import { gzip, gunzip } from "node:zlib";
 import { promisify as promisify3 } from "node:util";
@@ -50713,7 +50787,7 @@ function checkInstallPrereqs(pulledSettings, pluginsDir) {
   if (required2.length === 0) return { ok: true, missing: [] };
   let installedPlugins = {};
   try {
-    const raw = readFileSync3(path11.join(pluginsDir, "installed_plugins.json"), "utf-8");
+    const raw = readFileSync4(path11.join(pluginsDir, "installed_plugins.json"), "utf-8");
     const parsed = JSON.parse(raw);
     installedPlugins = parsed.plugins ?? {};
   } catch {
@@ -50721,7 +50795,7 @@ function checkInstallPrereqs(pulledSettings, pluginsDir) {
   }
   let knownMarketplaces = {};
   try {
-    const raw = readFileSync3(path11.join(pluginsDir, "known_marketplaces.json"), "utf-8");
+    const raw = readFileSync4(path11.join(pluginsDir, "known_marketplaces.json"), "utf-8");
     knownMarketplaces = JSON.parse(raw);
   } catch {
   }
@@ -51829,7 +51903,7 @@ async function buildEngine(logger2) {
 // src/index.ts
 async function main() {
   const { engine } = await buildEngine(logger);
-  const server = new McpServer({ name: "wormhole", version: "0.5.0" });
+  const server = new McpServer({ name: "wormhole", version: VERSION });
   registerAllTools(server, engine);
   let shuttingDown = false;
   const shutdown = async (signal) => {
