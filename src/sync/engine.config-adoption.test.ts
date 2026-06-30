@@ -72,7 +72,7 @@ function buildConfig(home: string, stateDir: string): Config {
   };
 }
 
-function makeReplica(remote: MockWebdavRemote, label: string, machineId: MachineId): Replica {
+function makeReplica(remote: MockWebdavRemote, label: string, machineId: MachineId, withReload = false): Replica {
   const home = mkTmp(`${label}-home`);
   const stateDir = path.join(home, ".claude-sync");
   const config = buildConfig(home, stateDir);
@@ -81,6 +81,15 @@ function makeReplica(remote: MockWebdavRemote, label: string, machineId: Machine
     crypto: sharedCrypto,
     remote: remote.asRemoteStore(),
     machineId,
+    ...(withReload
+      ? {
+          reloadConfig: async () => {
+            const abs = path.join(home, ".claude", "wormhole-config.json");
+            const raw = JSON.parse(await fs.readFile(abs, "utf-8"));
+            return { ...config, targets: raw.targets };
+          },
+        }
+      : {}),
   };
   const engine = new SyncEngine(deps);
   return { engine, home, stateDir, machineId, config };
@@ -213,5 +222,26 @@ describe("config key adoption — per-key latest-wins override", () => {
       !status2.conflicts.some((c) => c.logicalKey === CONFIG_KEY),
       "second sync: still converged, no infinite conflict loop",
     );
+  });
+
+  test("same-cycle: config 가 새 include 를 추가하면 그 파일이 같은 pull 로 내려온다", async () => {
+    const remote = new MockWebdavRemote();
+    const a = makeReplica(remote, "sc-a", "machine-a");
+    const b = makeReplica(remote, "sc-b", "machine-b", true);
+
+    const wideConfig = JSON.stringify({ targets: { include: [".claude/wormhole-config.json", ".claude/skills/**"], exclude: [] } });
+    await writeHomeFile(a, CONFIG_KEY, wideConfig);
+    await writeHomeFile(a, ".claude/skills/new-skill/SKILL.md", "new skill body\n");
+    await a.engine.push();
+
+    b.config.targets = { include: [".claude/wormhole-config.json"], exclude: [] };
+
+    await b.engine.pull();
+
+    assert.ok(
+      await homeFileExists(b, ".claude/skills/new-skill/SKILL.md"),
+      "new-skill 은 same-cycle 에 내려와야 한다(2-pass). 1-pass 면 부재(버그).",
+    );
+    assert.equal(await readHomeFile(b, ".claude/skills/new-skill/SKILL.md"), "new skill body\n");
   });
 });

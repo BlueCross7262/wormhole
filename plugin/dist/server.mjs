@@ -50789,6 +50789,7 @@ var SyncEngine = class {
   remote;
   machineId;
   logger;
+  reloadConfig;
   manifestStore;
   lock;
   mutex;
@@ -50804,6 +50805,7 @@ var SyncEngine = class {
     this.remote = deps.remote;
     this.machineId = deps.machineId;
     this.logger = deps.logger;
+    this.reloadConfig = deps.reloadConfig;
     this.manifestStore = new ManifestStore(
       this.remote,
       this.crypto,
@@ -51155,7 +51157,7 @@ var SyncEngine = class {
     };
   }
   /** pull 1회 — fast-forward 적용 + tombstone 삭제 + 충돌 정책. 백업/롤백. */
-  async runPull() {
+  async runPull(secondPass = false) {
     const remoteManifest = await this.manifestStore.read();
     if (remoteManifest === null) {
       return { dryRun: false, applied: [], removed: [], conflicts: [], backupDir: null };
@@ -51241,13 +51243,34 @@ var SyncEngine = class {
       throw err;
     }
     const hadBackup = backedUp.some((b) => b.backupPath !== null);
-    return {
+    const result = {
       dryRun: false,
       applied,
       removed,
       conflicts: status.conflicts,
       backupDir: hadBackup ? backupRoot : null
     };
+    if (!secondPass && this.reloadConfig && applied.some((k) => isConfigJsonKey(k))) {
+      let reloadedTargets;
+      try {
+        reloadedTargets = (await this.reloadConfig()).targets;
+      } catch (err) {
+        this.logger?.warn(
+          `[engine] config reload \uC2E4\uD328 \u2014 same-cycle adoption \uAC74\uB108\uB700(\uB2E4\uC74C sync \uC5D0\uC11C \uBC18\uC601): ${String(err.message)}`
+        );
+        return result;
+      }
+      this.config = { ...this.config, targets: reloadedTargets };
+      const second = await this.runPull(true);
+      return {
+        dryRun: false,
+        applied: [...result.applied, ...second.applied],
+        removed: [...result.removed, ...second.removed],
+        conflicts: second.conflicts,
+        backupDir: result.backupDir ?? second.backupDir
+      };
+    }
+    return result;
   }
   async wipeRemoteData() {
     const manifestFullPath = `${this.config.remote.remoteBaseDir.replace(/\/+$/, "")}/${MANIFEST_FILE}`;
@@ -51799,7 +51822,7 @@ async function buildEngine(logger2) {
   logger2.info(
     `age \uD0A4 \uC900\uBE44 \uC644\uB8CC(${keyResult.created ? "\uC2E0\uADDC vault" : "\uAE30\uC874 vault"}) recipient=${keyResult.recipient}`
   );
-  const engine = new SyncEngine({ config: config2, crypto: crypto5, remote, machineId, logger: logger2 });
+  const engine = new SyncEngine({ config: config2, crypto: crypto5, remote, machineId, logger: logger2, reloadConfig: () => loadConfig() });
   return { engine, config: config2, machineId, crypto: crypto5, remote };
 }
 

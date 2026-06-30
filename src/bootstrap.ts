@@ -73,7 +73,7 @@ export async function buildEngine(logger: Logger): Promise<{
   );
 
   // 6) 동기화 엔진 조립(ManifestStore/경로매핑 등은 엔진 내부 책임).
-  const engine = new SyncEngine({ config, crypto, remote, machineId, logger });
+  const engine = new SyncEngine({ config, crypto, remote, machineId, logger, reloadConfig: () => loadConfig() });
 
   return { engine, config, machineId, crypto, remote };
 }

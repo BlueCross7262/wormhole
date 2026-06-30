@@ -57,6 +57,8 @@ export interface EngineDeps {
   logger?: Logger;
   /** 매니페스트 갱신 CAS 의 weak-ETag 재시도 백오프(ms). 생략 시 production 기본값. 테스트 주입용. */
   casRetryBackoffMs?: readonly number[];
+  /** config 디스크 재로드 콜백. runPull 이 config 키를 적용한 직후 호출해 in-memory config 를 갱신(same-cycle config adoption). 미주입 시 2-pass 스킵(하위호환). */
+  reloadConfig?: () => Promise<Config>;
 }
 
 
@@ -198,11 +200,12 @@ function sanitizeToken(s: unknown): string {
 }
 
 export class SyncEngine {
-  private readonly config: Config;
+  private config: Config;
   private readonly crypto: AgeCrypto;
   private readonly remote: RemoteStore;
   private readonly machineId: MachineId;
   private readonly logger?: Logger;
+  private readonly reloadConfig?: () => Promise<Config>;
 
   private readonly manifestStore: ManifestStore;
   private readonly lock: RemoteLock;
@@ -221,6 +224,7 @@ export class SyncEngine {
     this.remote = deps.remote;
     this.machineId = deps.machineId;
     this.logger = deps.logger;
+    this.reloadConfig = deps.reloadConfig;
 
     this.manifestStore = new ManifestStore(
       this.remote,
@@ -650,7 +654,7 @@ export class SyncEngine {
   }
 
   /** pull 1회 — fast-forward 적용 + tombstone 삭제 + 충돌 정책. 백업/롤백. */
-  private async runPull(): Promise<PullResult> {
+  private async runPull(secondPass = false): Promise<PullResult> {
     const remoteManifest = await this.manifestStore.read();
     if (remoteManifest === null) {
       // 원격 매니페스트 부재 → 적용할 것 없음.
@@ -760,13 +764,40 @@ export class SyncEngine {
     }
 
     const hadBackup = backedUp.some((b) => b.backupPath !== null);
-    return {
+    const result: PullResult = {
       dryRun: false,
       applied,
       removed,
       conflicts: status.conflicts,
       backupDir: hadBackup ? backupRoot : null,
     };
+
+    if (!secondPass && this.reloadConfig && applied.some((k) => isConfigJsonKey(k))) {
+      let reloadedTargets: Config["targets"];
+      try {
+        reloadedTargets = (await this.reloadConfig()).targets;
+      } catch (err) {
+        // 방금 pull 한 config 가 malformed(JSON/스키마 위반)면 reload 가 throw 한다.
+        // pass1 은 이미 커밋됐으므로 throw 로 전체를 실패시키지 말고, 2-pass 를 건너뛰고
+        // pass1 결과를 반환한다(새 include 는 다음 sync 에서 반영 — 1-cycle 지연 폴백).
+        this.logger?.warn(
+          `[engine] config reload 실패 — same-cycle adoption 건너뜀(다음 sync 에서 반영): ${String((err as Error).message)}`,
+        );
+        return result;
+      }
+      // targets 만 채택한다. home/stateDir/remote 등 머신 로컬·생성자 baked 경로는 그대로 두어
+      // pass2 가 옛 remote/경로와 일관되게 동작하도록 한다(full-replace 시 baked-path 발산 위험 회피).
+      this.config = { ...this.config, targets: reloadedTargets };
+      const second = await this.runPull(true);
+      return {
+        dryRun: false,
+        applied: [...result.applied, ...second.applied],
+        removed: [...result.removed, ...second.removed],
+        conflicts: second.conflicts,
+        backupDir: result.backupDir ?? second.backupDir,
+      };
+    }
+    return result;
   }
 
   private async wipeRemoteData(): Promise<void> {
