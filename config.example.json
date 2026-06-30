@@ -30,7 +30,8 @@
       ".claude/statsig/**",
       ".claude/history/**",
       "**/*.log",
-      "**/cache/**"
+      "**/cache/**",
+      "**/__pycache__/**"
     ]
   },
   "skills_keyword": "wormhole-sync",
