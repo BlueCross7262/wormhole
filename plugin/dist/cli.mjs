@@ -32228,7 +32228,7 @@ function classifyKey(logicalKey, localHash, baseHash, remoteEntry, syncedGenerat
   if (remoteEntry?.scopeExcluded) {
     return {
       logicalKey,
-      kind: "unchanged",
+      kind: localHash === null ? "unchanged" : "modified",
       localHash,
       baseHash,
       remoteHash: remoteEntry.contentHash,
@@ -33281,7 +33281,7 @@ var SyncEngine = class {
     const manifest = remoteManifest ?? ManifestStore.empty(this.machineId);
     const local = await this.scanWithHashes();
     const state = await this.readState();
-    await this.purgeDescopedKeys(local, state, manifest);
+    this.purgeDescopedKeys(local, state, manifest);
     const status = computeStatus({ local, manifest: remoteManifest, state, machineId: this.machineId });
     const pushed = [
       ...status.summary.added,
@@ -33325,7 +33325,7 @@ var SyncEngine = class {
     const expectedGeneration = remoteManifest ? remoteManifest.manifestGeneration : null;
     const local = await this.scanWithHashes();
     const state = await this.readState();
-    await this.purgeDescopedKeys(local, state, manifest);
+    const descoped = this.purgeDescopedKeys(local, state, manifest);
     const status = computeStatus({
       local,
       manifest: remoteManifest,
@@ -33407,7 +33407,13 @@ var SyncEngine = class {
       }
       deleted.push(key);
     }
-    if (pushed.length === 0 && deleted.length === 0 && convergedItems.length === 0) {
+    for (const key of descoped) {
+      postCommit.push(async () => {
+        await this.removeBaseSnapshot(key);
+      });
+      stateUpdates.push({ key, remove: true, syncedHash: "", syncedGeneration: 0 });
+    }
+    if (pushed.length === 0 && deleted.length === 0 && convergedItems.length === 0 && descoped.length === 0) {
       return {
         dryRun: false,
         pushed,
@@ -33418,7 +33424,7 @@ var SyncEngine = class {
       };
     }
     let writtenGeneration = manifest.manifestGeneration;
-    if (pushed.length > 0 || deleted.length > 0) {
+    if (pushed.length > 0 || deleted.length > 0 || descoped.length > 0) {
       const written = await this.manifestStore.write(
         manifest,
         expectedGeneration,
@@ -33746,28 +33752,26 @@ var SyncEngine = class {
   }
   // ── de-scope purge ─────────────────────────────────────────
   /**
-   * de-scope 키 처리: base 스냅샷·state 엔트리 제거 + manifest 엔트리에 scopeExcluded:true 마킹.
-   * 이렇게 해야 classifyKey 가 localHash=null, baseHash=null 로 평가해 "deleted" 분류 안 함.
-   * local 스캔에 없고 base/state 에 잔존하는 키 = de-scope 대상.
+   * de-scope 키를 in-memory manifest 에 scopeExcluded:true 로 마킹만 하고 마킹된 키 목록을 반환한다.
+   * classifyKey 가 이 플래그로 단락해 out-of-scope 키를 "deleted"(tombstone) 로 오분류하지 않게 한다.
+   * base 스냅샷·state 엔트리 제거는 커밋-지점 원자성을 위해 caller(runPush)의 post-commit 으로 지연한다
+   * — 부작용이 없어 planPush(dry-run)에서도 로컬 상태를 파괴하지 않는다.
+   * local 스캔에 없고 state 에 잔존하는 키 = de-scope 대상.
    */
-  async purgeDescopedKeys(local, state, manifest) {
+  purgeDescopedKeys(local, state, manifest) {
     const localKeys = new Set(local.map((f3) => f3.logicalKey));
     const homeRootKeys = new Set(Object.keys(this.config.homeRootTargets ?? {}));
-    let purged = false;
+    const descoped = [];
     for (const key of Object.keys(state)) {
       if (localKeys.has(key)) continue;
       if (homeRootKeys.has(key)) continue;
       if (isKeyInScope(key, this.config.targets)) continue;
-      await this.removeBaseSnapshot(key);
-      delete state[key];
-      purged = true;
       if (manifest.entries[key] && !manifest.entries[key].deleted) {
         manifest.entries[key] = { ...manifest.entries[key], scopeExcluded: true };
+        descoped.push(key);
       }
     }
-    if (purged) {
-      await this.writeState(state);
-    }
+    return descoped;
   }
   // ── resolve ─────────────────────────────────────────────────
   /** dryRun resolve 계획. */
@@ -34328,7 +34332,7 @@ import * as nodePath from "node:path";
 import { readFileSync as readFileSync4 } from "node:fs";
 import { fileURLToPath } from "node:url";
 function resolveVersion() {
-  if (true) return "0.5.13";
+  if (true) return "0.5.14";
   try {
     const pkgPath = fileURLToPath(new URL("../package.json", import.meta.url));
     const pkg = JSON.parse(readFileSync4(pkgPath, "utf-8"));
