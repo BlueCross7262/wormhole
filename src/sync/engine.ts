@@ -385,7 +385,7 @@ export class SyncEngine {
     const local = await this.scanWithHashes();
     const state = await this.readState();
 
-    await this.purgeDescopedKeys(local, state, manifest);
+    this.purgeDescopedKeys(local, state, manifest);
 
     const status = computeStatus({ local, manifest: remoteManifest, state, machineId: this.machineId });
     const pushed: LogicalKey[] = [
@@ -438,7 +438,7 @@ export class SyncEngine {
     const local = await this.scanWithHashes();
     const state = await this.readState();
 
-    await this.purgeDescopedKeys(local, state, manifest);
+    const descoped = this.purgeDescopedKeys(local, state, manifest);
 
     const status = computeStatus({
       local,
@@ -535,8 +535,17 @@ export class SyncEngine {
       deleted.push(key);
     }
 
+    // de-scope 키: manifest 는 위 purge 가 in-memory 로 이미 scopeExcluded 마킹함.
+    // base 스냅샷·state 엔트리 제거는 커밋(CAS 쓰기) 성공 후로 지연한다(원자성 — 재시도·dry-run 무해).
+    for (const key of descoped) {
+      postCommit.push(async () => {
+        await this.removeBaseSnapshot(key);
+      });
+      stateUpdates.push({ key, remove: true, syncedHash: "", syncedGeneration: 0 });
+    }
+
     // 변경/삭제/수렴 모두 없으면 매니페스트 쓰기 생략(멱등).
-    if (pushed.length === 0 && deleted.length === 0 && convergedItems.length === 0) {
+    if (pushed.length === 0 && deleted.length === 0 && convergedItems.length === 0 && descoped.length === 0) {
       return {
         dryRun: false,
         pushed,
@@ -549,7 +558,7 @@ export class SyncEngine {
 
     // 커밋 지점: 매니페스트 CAS 쓰기. push/delete 가 있을 때만 원격 반영.
     let writtenGeneration = manifest.manifestGeneration;
-    if (pushed.length > 0 || deleted.length > 0) {
+    if (pushed.length > 0 || deleted.length > 0 || descoped.length > 0) {
       const written = await this.manifestStore.write(
         manifest,
         expectedGeneration,
@@ -979,36 +988,33 @@ export class SyncEngine {
   // ── de-scope purge ─────────────────────────────────────────
 
   /**
-   * de-scope 키 처리: base 스냅샷·state 엔트리 제거 + manifest 엔트리에 scopeExcluded:true 마킹.
-   * 이렇게 해야 classifyKey 가 localHash=null, baseHash=null 로 평가해 "deleted" 분류 안 함.
-   * local 스캔에 없고 base/state 에 잔존하는 키 = de-scope 대상.
+   * de-scope 키를 in-memory manifest 에 scopeExcluded:true 로 마킹만 하고 마킹된 키 목록을 반환한다.
+   * classifyKey 가 이 플래그로 단락해 out-of-scope 키를 "deleted"(tombstone) 로 오분류하지 않게 한다.
+   * base 스냅샷·state 엔트리 제거는 커밋-지점 원자성을 위해 caller(runPush)의 post-commit 으로 지연한다
+   * — 부작용이 없어 planPush(dry-run)에서도 로컬 상태를 파괴하지 않는다.
+   * local 스캔에 없고 state 에 잔존하는 키 = de-scope 대상.
    */
-  private async purgeDescopedKeys(
+  private purgeDescopedKeys(
     local: LocalFileState[],
     state: SyncState,
     manifest: Manifest,
-  ): Promise<void> {
+  ): LogicalKey[] {
     const localKeys = new Set(local.map((f) => f.logicalKey));
     const homeRootKeys = new Set(Object.keys(this.config.homeRootTargets ?? {}));
-    let purged = false;
+    const descoped: LogicalKey[] = [];
 
     for (const key of Object.keys(state) as LogicalKey[]) {
       if (localKeys.has(key)) continue;
       if (homeRootKeys.has(key)) continue;
       if (isKeyInScope(key, this.config.targets)) continue;
 
-      await this.removeBaseSnapshot(key);
-      delete state[key];
-      purged = true;
-
       if (manifest.entries[key] && !manifest.entries[key].deleted) {
         manifest.entries[key] = { ...manifest.entries[key], scopeExcluded: true };
+        descoped.push(key);
       }
     }
 
-    if (purged) {
-      await this.writeState(state);
-    }
+    return descoped;
   }
 
   // ── resolve ─────────────────────────────────────────────────

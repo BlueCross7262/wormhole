@@ -24,11 +24,13 @@ export function classifyKey(
   remoteEntry: FileEntry | undefined,
   syncedGeneration: number | undefined,
 ): DiffItem {
-  // scopeExcluded 엔트리는 이 머신의 동기화 범위 밖 — unchanged 로 단락(tombstone 방지).
+  // scopeExcluded 엔트리: 로컬 스캔에 없으면(범위 밖) unchanged 로 단락(tombstone 방지).
+  // 로컬에 있으면 마커 재추가로 범위 복귀 — modified 로 재push 해 scopeExcluded 를 해제한다
+  // (purge 가 state 를 지워 base=null 이므로 일반 3-way 는 converged/conflict 로 새 → 강제 modified).
   if (remoteEntry?.scopeExcluded) {
     return {
       logicalKey,
-      kind: "unchanged",
+      kind: localHash === null ? "unchanged" : "modified",
       localHash,
       baseHash,
       remoteHash: remoteEntry.contentHash,
