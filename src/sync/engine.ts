@@ -34,7 +34,7 @@ import type { AgeCrypto } from "../crypto/age.js";
 import type { RemoteStore } from "../webdav/client.js";
 import { ManifestStore, ManifestConflictError, MANIFEST_FILE } from "./manifest.js";
 import { computeStatus } from "./diff.js";
-import { scanLocal, isKeyInScope } from "./scanner.js";
+import { scanLocal, isKeyInScope, isSkillSubscribeKey } from "./scanner.js";
 import { hashFile, sha256, blobName } from "./hash.js";
 import { toOS, isSettingsKey, isClaudeJsonKey, isConfigJsonKey, isValidLogicalKey, isWithinHome } from "./paths.js";
 import { AsyncMutex, RemoteLock, withLock } from "./lock.js";
@@ -684,7 +684,10 @@ export class SyncEngine {
       (i) =>
         (i.kind === "remoteAdded" || i.kind === "remoteModified") &&
         !(remoteManifest?.entries[i.logicalKey]?.scopeExcluded) &&
-        (homeRootKeys.has(i.logicalKey) || isKeyInScope(i.logicalKey, this.config.targets)),
+        (homeRootKeys.has(i.logicalKey) ||
+          isKeyInScope(i.logicalKey, this.config.targets) ||
+          (Boolean(this.config.skills_keyword) &&
+            isSkillSubscribeKey(i.logicalKey, this.config.targets))),
     );
     const toRemove = status.items.filter((i) => i.kind === "remoteDeleted");
     const convergedItems = status.items.filter((i) => i.kind === "converged");
@@ -781,7 +784,15 @@ export class SyncEngine {
       backupDir: hadBackup ? backupRoot : null,
     };
 
-    if (!secondPass && this.reloadConfig && applied.some((k) => isConfigJsonKey(k))) {
+    if (
+      !secondPass &&
+      this.reloadConfig &&
+      applied.some(
+        (k) =>
+          isConfigJsonKey(k) ||
+          (Boolean(this.config.skills_keyword) && k.startsWith(".claude/skills/")),
+      )
+    ) {
       let reloadedTargets: Config["targets"];
       try {
         reloadedTargets = (await this.reloadConfig()).targets;
@@ -841,7 +852,12 @@ export class SyncEngine {
       if (remoteManifest) {
         const homeRootKeysForce = new Set(Object.keys(this.config.homeRootTargets ?? {}));
         const entries = Object.entries(remoteManifest.entries).filter(
-          ([k, e]) => !e.deleted && !e.scopeExcluded && (homeRootKeysForce.has(k) || isKeyInScope(k, this.config.targets)),
+          ([k, e]) =>
+            !e.deleted &&
+            !e.scopeExcluded &&
+            (homeRootKeysForce.has(k) ||
+              isKeyInScope(k, this.config.targets) ||
+              (Boolean(this.config.skills_keyword) && isSkillSubscribeKey(k, this.config.targets))),
         );
         await mapLimit(entries, IO_CONCURRENCY, async ([key, entry]) => {
           remoteKeys.add(key as LogicalKey);

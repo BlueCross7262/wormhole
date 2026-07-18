@@ -20,6 +20,13 @@ export function isKeyInScope(logicalKey: string, targets: Targets): boolean {
   return !mm.isMatch(logicalKey, targets.exclude, { dot: true });
 }
 
+export function isSkillSubscribeKey(logicalKey: string, targets: Targets): boolean {
+  if (!logicalKey.startsWith(".claude/skills/")) return false;
+  if (mm.isMatch(logicalKey, ["**/*.conflict-*"], { dot: true })) return false;
+  if (targets.exclude.length === 0) return true;
+  return !mm.isMatch(logicalKey, targets.exclude, { dot: true });
+}
+
 export async function scanLocal(config: Config): Promise<ScannedFile[]> {
   const { home, targets, stateDir } = config;
 

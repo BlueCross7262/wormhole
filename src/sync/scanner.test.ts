@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
-import { scanLocal } from "./scanner.js";
+import { scanLocal, isSkillSubscribeKey } from "./scanner.js";
 import type { Config } from "../types.js";
 
 function makeConfig(home: string, overrides?: Partial<Config["targets"]> & { stateDir?: string }): Config {
@@ -191,5 +191,36 @@ describe("scanLocal", () => {
       "homeRootTargets 미지정 시 .claude.json 이 스캔 결과에 없어야 함",
     );
     assert.ok(keys.includes(".claude/CLAUDE.md"), ".claude/CLAUDE.md 는 포함됨");
+  });
+});
+
+describe("isSkillSubscribeKey", () => {
+  const targets = (exclude: string[] = []) =>
+    ({ include: [], exclude }) as unknown as Config["targets"];
+
+  test("include 멤버십 없어도 .claude/skills 하위 키는 구독 대상", () => {
+    assert.equal(isSkillSubscribeKey(".claude/skills/foo/SKILL.md", targets()), true);
+    assert.equal(isSkillSubscribeKey(".claude/skills/foo/README.md", targets()), true);
+  });
+
+  test("스킬 네임스페이스 밖 키는 구독 대상 아님", () => {
+    assert.equal(isSkillSubscribeKey(".claude/agents/foo.md", targets()), false);
+    assert.equal(isSkillSubscribeKey(".claude/CLAUDE.md", targets()), false);
+    assert.equal(isSkillSubscribeKey(".claude/skillsX/foo/SKILL.md", targets()), false);
+  });
+
+  test("conflict 파일은 제외", () => {
+    assert.equal(isSkillSubscribeKey(".claude/skills/foo/SKILL.conflict-abc.md", targets()), false);
+  });
+
+  test("exclude 글로브는 존중", () => {
+    assert.equal(
+      isSkillSubscribeKey(".claude/skills/foo/SKILL.md", targets([".claude/skills/foo/**"])),
+      false,
+    );
+    assert.equal(
+      isSkillSubscribeKey(".claude/skills/bar/SKILL.md", targets([".claude/skills/foo/**"])),
+      true,
+    );
   });
 });
