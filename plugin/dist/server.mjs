@@ -33270,7 +33270,7 @@ var EMPTY_COMPLETION_RESULT = {
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 function resolveVersion() {
-  if (true) return "0.5.14";
+  if (true) return "0.5.15";
   try {
     const pkgPath = fileURLToPath(new URL("../package.json", import.meta.url));
     const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
@@ -50364,6 +50364,12 @@ function isKeyInScope(logicalKey, targets) {
   if (targets.exclude.length === 0) return true;
   return !import_micromatch.default.isMatch(logicalKey, targets.exclude, { dot: true });
 }
+function isSkillSubscribeKey(logicalKey, targets) {
+  if (!logicalKey.startsWith(".claude/skills/")) return false;
+  if (import_micromatch.default.isMatch(logicalKey, ["**/*.conflict-*"], { dot: true })) return false;
+  if (targets.exclude.length === 0) return true;
+  return !import_micromatch.default.isMatch(logicalKey, targets.exclude, { dot: true });
+}
 async function scanLocal(config2) {
   const { home, targets, stateDir } = config2;
   const ignore = [...targets.exclude, "**/*.conflict-*"];
@@ -51252,7 +51258,7 @@ var SyncEngine = class {
     });
     const homeRootKeys = new Set(Object.keys(this.config.homeRootTargets ?? {}));
     const toApply = status.items.filter(
-      (i2) => (i2.kind === "remoteAdded" || i2.kind === "remoteModified") && !remoteManifest?.entries[i2.logicalKey]?.scopeExcluded && (homeRootKeys.has(i2.logicalKey) || isKeyInScope(i2.logicalKey, this.config.targets))
+      (i2) => (i2.kind === "remoteAdded" || i2.kind === "remoteModified") && !remoteManifest?.entries[i2.logicalKey]?.scopeExcluded && (homeRootKeys.has(i2.logicalKey) || isKeyInScope(i2.logicalKey, this.config.targets) || Boolean(this.config.skills_keyword) && isSkillSubscribeKey(i2.logicalKey, this.config.targets))
     );
     const toRemove = status.items.filter((i2) => i2.kind === "remoteDeleted");
     const convergedItems = status.items.filter((i2) => i2.kind === "converged");
@@ -51330,7 +51336,9 @@ var SyncEngine = class {
       conflicts: status.conflicts,
       backupDir: hadBackup ? backupRoot : null
     };
-    if (!secondPass && this.reloadConfig && applied.some((k) => isConfigJsonKey(k))) {
+    if (!secondPass && this.reloadConfig && applied.some(
+      (k) => isConfigJsonKey(k) || Boolean(this.config.skills_keyword) && k.startsWith(".claude/skills/")
+    )) {
       let reloadedTargets;
       try {
         reloadedTargets = (await this.reloadConfig()).targets;
@@ -51380,7 +51388,7 @@ var SyncEngine = class {
       if (remoteManifest) {
         const homeRootKeysForce = new Set(Object.keys(this.config.homeRootTargets ?? {}));
         const entries = Object.entries(remoteManifest.entries).filter(
-          ([k, e2]) => !e2.deleted && !e2.scopeExcluded && (homeRootKeysForce.has(k) || isKeyInScope(k, this.config.targets))
+          ([k, e2]) => !e2.deleted && !e2.scopeExcluded && (homeRootKeysForce.has(k) || isKeyInScope(k, this.config.targets) || Boolean(this.config.skills_keyword) && isSkillSubscribeKey(k, this.config.targets))
         );
         await mapLimit(entries, IO_CONCURRENCY, async ([key, entry]) => {
           remoteKeys.add(key);
