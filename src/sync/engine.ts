@@ -29,6 +29,9 @@ import type {
   ConflictDetail,
   LogicalKey,
   Sha256Hex,
+  MergeFallback,
+  MergeFallbackReason,
+  ResolvePreviewItem,
 } from "../types.js";
 import type { AgeCrypto } from "../crypto/age.js";
 import type { RemoteStore } from "../webdav/client.js";
@@ -37,6 +40,7 @@ import { computeStatus } from "./diff.js";
 import { scanLocal, isKeyInScope, isSkillSubscribeKey } from "./scanner.js";
 import { hashFile, sha256, blobName } from "./hash.js";
 import { toOS, isSettingsKey, isClaudeJsonKey, isConfigJsonKey, isValidLogicalKey, isWithinHome } from "./paths.js";
+
 import { AsyncMutex, RemoteLock, withLock } from "./lock.js";
 import {
   threeWayMerge,
@@ -1036,27 +1040,12 @@ export class SyncEngine {
   // ── resolve ─────────────────────────────────────────────────
 
   /** dryRun resolve 계획. */
-  private async planResolve(
-    policy: ResolvePolicy,
-    keys?: string[],
-  ): Promise<ResolveResult> {
-    const status = await this.status();
-    const targets = this.selectConflicts(status.conflicts, keys);
-    return {
-      policy,
-      resolved: targets.map((c) => c.logicalKey),
-      conflictCopies: [],
-      backupDir: null,
-    };
-  }
-
-  /** resolve 1회. preserve-both/latest-wins/manual 정책 적용. */
-  private async runResolve(policy: ResolvePolicy, keys?: string[]): Promise<ResolveResult> {
+  private async loadConflictContext(): Promise<{
+    remoteManifest: Manifest | null;
+    state: SyncState;
+    status: SyncStatus;
+  }> {
     const remoteManifest = await this.manifestStore.read();
-    if (remoteManifest === null) {
-      return { policy, resolved: [], conflictCopies: [], backupDir: null };
-    }
-
     const local = await this.scanWithHashes();
     const state = await this.readState();
     const status = computeStatus({
@@ -1065,21 +1054,147 @@ export class SyncEngine {
       state,
       machineId: this.machineId,
     });
+    return { remoteManifest, state, status };
+  }
+
+  private async planResolve(
+    policy: ResolvePolicy,
+    keys?: string[],
+  ): Promise<ResolveResult> {
+    const { remoteManifest, status } = await this.loadConflictContext();
+    const targets = this.selectConflicts(status.conflicts, keys);
+    const preview: ResolvePreviewItem[] = [];
+
+    for (const conflict of targets) {
+      const key = conflict.logicalKey;
+      const entry = remoteManifest?.entries[key];
+      if (!entry) continue;
+
+      const absPath = this.safeAbsPath(key);
+      if (absPath === null) continue;
+
+      const mid = sanitizeToken(conflict.remoteMachineId);
+      const gen = sanitizeToken(conflict.remoteGeneration);
+      let sidecarPath: string | null = entry.deleted
+        ? `${absPath}.conflict-deleted-${mid}-${gen}`
+        : `${absPath}.conflict-${mid}-${gen}`;
+      if (!isWithinHome(this.config.home, sidecarPath)) sidecarPath = null;
+
+      let plannedCopyPath: string | null;
+      let mergeable: boolean | null = null;
+      let conflictKeys: string[] = [];
+      let copyPathUncertain = false;
+
+      const effectivePolicy = isConfigJsonKey(key) ? "latest-wins" : policy;
+
+      if (policy === "manual") {
+        plannedCopyPath = null;
+      } else if (effectivePolicy === "preserve-both") {
+        plannedCopyPath = sidecarPath;
+      } else if (effectivePolicy === "merge") {
+        if (!isSettingsKey(key) || entry.deleted) {
+          plannedCopyPath = sidecarPath;
+        } else {
+          let remotePlain: Buffer | null;
+          try {
+            remotePlain = await this.downloadBlob(key);
+          } catch {
+            remotePlain = null;
+          }
+
+          if (remotePlain === null) {
+            mergeable = null;
+            plannedCopyPath = null;
+            copyPathUncertain = true;
+          } else {
+            if (sha256(remotePlain) !== entry.contentHash) {
+              this.logger?.warn(`[engine] planResolve: blob 해시 불일치 ${key}`);
+            }
+            const remoteShared = this.parseJson(remotePlain.toString("utf-8"));
+            const localReal = await this.readJsonFile(absPath);
+            if (remoteShared !== null && localReal !== null) {
+              const home = this.config.home;
+              const localObj = home
+                ? (tokenizeHome(localReal, home) as Record<string, unknown>)
+                : localReal;
+              const baseShared = (await this.readBaseSnapshotJson(key)) ?? {};
+              const mergeResult = threeWayMerge(localObj, remoteShared, baseShared);
+              mergeable = !mergeResult.hasConflict;
+              conflictKeys = mergeResult.conflictKeys;
+              plannedCopyPath = mergeable ? null : sidecarPath;
+            } else {
+              mergeable = false;
+              plannedCopyPath = sidecarPath;
+            }
+          }
+        }
+      } else {
+        // latest-wins / ours: sidecar 를 만들지 않음.
+        plannedCopyPath = null;
+      }
+
+      preview.push({
+        logicalKey: key,
+        deletionConflict: conflict.isDeletionConflict,
+        localHash: conflict.localHash,
+        remoteHash: conflict.remoteHash,
+        remoteMachineId: conflict.remoteMachineId,
+        remoteGeneration: conflict.remoteGeneration,
+        plannedCopyPath,
+        copyPathUncertain,
+        mergeable,
+        conflictKeys,
+      });
+    }
+
+    return {
+      policy,
+      resolved: targets.map((c) => c.logicalKey),
+      conflictCopies: [],
+      backupDir: null,
+      preview,
+    };
+  }
+
+  /** resolve 1회. preserve-both/latest-wins/manual 정책 적용. */
+  private async runResolve(policy: ResolvePolicy, keys?: string[]): Promise<ResolveResult> {
+    const { remoteManifest, state, status } = await this.loadConflictContext();
+    if (remoteManifest === null) {
+      return {
+        policy,
+        resolved: [],
+        conflictCopies: [],
+        backupDir: null,
+        ...(policy === "merge" ? { mergeFallbacks: [] } : {}),
+      };
+    }
 
     const targets = this.selectConflicts(status.conflicts, keys);
     if (targets.length === 0) {
-      return { policy, resolved: [], conflictCopies: [], backupDir: null };
+      return {
+        policy,
+        resolved: [],
+        conflictCopies: [],
+        backupDir: null,
+        ...(policy === "merge" ? { mergeFallbacks: [] } : {}),
+      };
     }
 
     if (policy === "manual") {
       // manual 은 자동 처리 금지 — 충돌 목록만 반환(해소하지 않음).
-      return { policy, resolved: [], conflictCopies: [], backupDir: null };
+      return {
+        policy,
+        resolved: [],
+        conflictCopies: [],
+        backupDir: null,
+      };
     }
 
     const runTs = this.makeRunTs();
     const backupRoot = path.join(this.backupsDir, runTs);
     const resolved: LogicalKey[] = [];
     const conflictCopies: ConflictCopy[] = [];
+    const mergeFallbacks: MergeFallback[] = [];
     const nextState: SyncState = { ...state };
     let hadBackup = false;
     let anyAdopted = false;
@@ -1095,40 +1210,125 @@ export class SyncEngine {
 
       const effectivePolicy = isConfigJsonKey(key) ? "latest-wins" : policy;
 
+      const fallbackWithSidecar = async (
+        reason: MergeFallbackReason,
+        conflictKeys: string[],
+        remotePlainForSidecar: Buffer | null,
+        missing?: string[],
+      ): Promise<void> => {
+        const copy = await this.writeConflictSidecar(key, absPath, entry, conflict, remotePlainForSidecar);
+        if (copy) conflictCopies.push(copy);
+        mergeFallbacks.push({
+          logicalKey: key,
+          reason,
+          conflictKeys,
+          ...(missing ? { missing } : {}),
+        });
+        resolved.push(key);
+      };
+
+      if (effectivePolicy === "merge") {
+        if (!isSettingsKey(key) || entry.deleted) {
+          await fallbackWithSidecar(entry.deleted ? "deleted" : "not-settings", [], null);
+          continue;
+        }
+
+        const remotePlain = await this.downloadBlob(key);
+        if (remotePlain === null) {
+          this.logger?.warn(`[engine] resolve(merge): blob 부재 ${key}`);
+          mergeFallbacks.push({ logicalKey: key, reason: "blob-missing", conflictKeys: [] });
+          continue;
+        }
+
+        const remoteShared = this.parseJson(remotePlain.toString("utf-8"));
+        if (remoteShared === null) {
+          await fallbackWithSidecar("remote-unparseable", [], remotePlain);
+          continue;
+        }
+
+        const localExists = await fs.access(absPath).then(() => true).catch(() => false);
+        if (!localExists) {
+          await fallbackWithSidecar("local-missing", [], remotePlain);
+          continue;
+        }
+
+        let localRaw: Buffer;
+        try {
+          localRaw = await fs.readFile(absPath);
+        } catch {
+          await fallbackWithSidecar("local-unparseable", [], remotePlain);
+          continue;
+        }
+        const localReal = this.parseJson(localRaw.toString("utf-8"));
+        if (localReal === null) {
+          await fallbackWithSidecar("local-unparseable", [], remotePlain);
+          continue;
+        }
+
+        const home = this.config.home;
+        const localObj = home
+          ? (tokenizeHome(localReal, home) as Record<string, unknown>)
+          : localReal;
+        const baseShared = (await this.readBaseSnapshotJson(key)) ?? {};
+
+        const mergeResult = threeWayMerge(localObj, remoteShared, baseShared);
+        if (mergeResult.hasConflict) {
+          await fallbackWithSidecar("leaf-conflict", mergeResult.conflictKeys, remotePlain);
+          continue;
+        }
+
+        const prereq = checkInstallPrereqs(
+          mergeResult.merged,
+          path.join(this.config.home, ".claude", "plugins"),
+        );
+        if (!prereq.ok) {
+          await fallbackWithSidecar("install-prereq", [], remotePlain, prereq.missing);
+          continue;
+        }
+
+        const backupPath = await this.backupFile(absPath, key, backupRoot, localRaw);
+        if (backupPath !== null) hadBackup = true;
+
+        const currentLocalHash = await hashFile(absPath);
+        if (currentLocalHash !== sha256(localRaw)) {
+          this.logger?.warn(
+            `[engine] resolve(merge): 병합 입력 캡처 이후 로컬 변경 감지, 쓰기 취소 ${key}`,
+          );
+          await fallbackWithSidecar("adopt-failed", [], remotePlain);
+          continue;
+        }
+
+        const mergedReal = home ? detokenizeHome(mergeResult.merged, home) : mergeResult.merged;
+        const prevStateEntry = nextState[key];
+        try {
+          await this.atomicWriteFile(absPath, JSON.stringify(mergedReal, null, 2));
+          await this.writeBaseSnapshot(key, remotePlain);
+          nextState[key] = {
+            syncedHash: entry.contentHash,
+            syncedGeneration: entry.generation,
+          };
+        } catch (err) {
+          if (backupPath !== null) {
+            await this.rollback([{ key, absPath, backupPath }]);
+          }
+          if (prevStateEntry === undefined) delete nextState[key];
+          else nextState[key] = prevStateEntry;
+          await fallbackWithSidecar("adopt-failed", [], remotePlain);
+          this.logger?.warn(
+            `[engine] resolve(merge): 쓰기 실패 롤백 ${key}: ${String((err as Error).message)}`,
+          );
+          continue;
+        }
+
+        resolved.push(key);
+        anyAdopted = true;
+        continue;
+      }
+
       if (effectivePolicy === "preserve-both") {
         // 양쪽 보존: 로컬 유지 + 원격 의도를 사본/마커로 기록(멱등 — 동일 사본 있으면 재기록 생략).
-        // 원격 유래 machineId/generation 은 파일명 접미사로 쓰기 전 반드시 정제(경로 탈출 방어).
-        const mid = sanitizeToken(conflict.remoteMachineId);
-        const gen = sanitizeToken(conflict.remoteGeneration);
-        if (entry.deleted) {
-          // 삭제 충돌(원격 삭제 vs 로컬 변경): 로컬 유지 + 원격 삭제 의도를 마커로 보존.
-          const markerPath = `${absPath}.conflict-deleted-${mid}-${gen}`;
-          if (!isWithinHome(this.config.home, markerPath)) {
-            this.logger?.warn(`[engine] conflict 마커 경로가 home 밖 — 건너뜀: ${key}`);
-          } else {
-            if (!(await fs.access(markerPath).then(() => true).catch(() => false))) {
-              await this.atomicWriteFile(
-                markerPath,
-                `원격(${conflict.remoteMachineId}, gen ${conflict.remoteGeneration})이 이 파일을 삭제했습니다.\n` +
-                  `로컬본은 유지되었습니다. 검토 후 로컬을 삭제하거나 sync_push 로 원격에 복원하세요.\n`,
-              );
-            }
-            conflictCopies.push({ logicalKey: key, copyPath: markerPath });
-          }
-        } else {
-          const remotePlain = await this.downloadBlob(key);
-          if (remotePlain !== null) {
-            const copyPath = `${absPath}.conflict-${mid}-${gen}`;
-            if (!isWithinHome(this.config.home, copyPath)) {
-              this.logger?.warn(`[engine] conflict 사본 경로가 home 밖 — 건너뜀: ${key}`);
-            } else {
-              if (!(await fs.access(copyPath).then(() => true).catch(() => false))) {
-                await this.atomicWriteFile(copyPath, remotePlain);
-              }
-              conflictCopies.push({ logicalKey: key, copyPath });
-            }
-          }
-        }
+        const copy = await this.writeConflictSidecar(key, absPath, entry, conflict, null);
+        if (copy) conflictCopies.push(copy);
         // base/state 갱신은 보류 — 사용자가 수동 정리 후 push 하도록.
         resolved.push(key);
         continue;
@@ -1188,6 +1388,7 @@ export class SyncEngine {
       resolved,
       conflictCopies,
       backupDir: hadBackup ? backupRoot : null,
+      ...(policy === "merge" ? { mergeFallbacks } : {}),
     };
   }
 
@@ -1349,12 +1550,13 @@ export class SyncEngine {
     absPath: string,
     key: LogicalKey,
     backupRoot: string,
+    data?: Buffer,
   ): Promise<string | null> {
     try {
-      const data = await fs.readFile(absPath);
+      const content = data ?? (await fs.readFile(absPath));
       const backupPath = path.join(backupRoot, ...key.split("/"));
       await fs.mkdir(path.dirname(backupPath), { recursive: true });
-      await fs.writeFile(backupPath, data);
+      await fs.writeFile(backupPath, content);
       return backupPath;
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
@@ -1379,6 +1581,45 @@ export class SyncEngine {
         this.logger?.error(`[engine] 롤백 실패 ${b.key}: ${String((err as Error).message)}`);
       }
     }
+  }
+
+  private async writeConflictSidecar(
+    key: LogicalKey,
+    absPath: string,
+    entry: FileEntry,
+    conflict: ConflictItem,
+    remotePlain: Buffer | null,
+  ): Promise<ConflictCopy | null> {
+    // 원격 유래 machineId/generation 은 파일명 접미사로 쓰기 전 반드시 정제(경로 탈출 방어).
+    const mid = sanitizeToken(conflict.remoteMachineId);
+    const gen = sanitizeToken(conflict.remoteGeneration);
+    if (entry.deleted) {
+      const markerPath = `${absPath}.conflict-deleted-${mid}-${gen}`;
+      if (!isWithinHome(this.config.home, markerPath)) {
+        this.logger?.warn(`[engine] conflict 마커 경로가 home 밖 — 건너뜀: ${key}`);
+        return null;
+      }
+      if (!(await fs.access(markerPath).then(() => true).catch(() => false))) {
+        await this.atomicWriteFile(
+          markerPath,
+          `원격(${conflict.remoteMachineId}, gen ${conflict.remoteGeneration})이 이 파일을 삭제했습니다.\n` +
+            `로컬본은 유지되었습니다. 검토 후 로컬을 삭제하거나 sync_push 로 원격에 복원하세요.\n`,
+        );
+      }
+      return { logicalKey: key, copyPath: markerPath };
+    }
+
+    const plain = remotePlain ?? (await this.downloadBlob(key));
+    if (plain === null) return null;
+    const copyPath = `${absPath}.conflict-${mid}-${gen}`;
+    if (!isWithinHome(this.config.home, copyPath)) {
+      this.logger?.warn(`[engine] conflict 사본 경로가 home 밖 — 건너뜀: ${key}`);
+      return null;
+    }
+    if (!(await fs.access(copyPath).then(() => true).catch(() => false))) {
+      await this.atomicWriteFile(copyPath, plain);
+    }
+    return { logicalKey: key, copyPath };
   }
 
   /** manifest-only read + pulledSettings 추출. 블롭 다운로드·로컬 파일 미변경.

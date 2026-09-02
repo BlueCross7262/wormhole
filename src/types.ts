@@ -19,7 +19,7 @@ export type EpochMs = number;
 // ── 설정 (config.ts) ──────────────────────────────────────
 
 /** 충돌 해소 정책. 기본 preserve-both. */
-export type ResolvePolicy = "preserve-both" | "latest-wins" | "ours" | "manual";
+export type ResolvePolicy = "preserve-both" | "latest-wins" | "ours" | "manual" | "merge";
 
 /** 동기화 대상 include/exclude 글로브 (home 기준 posix). */
 export interface SyncTargets {
@@ -333,6 +333,37 @@ export interface PullResult {
   backupDir: string | null;
 }
 
+export type MergeFallbackReason =
+  | "not-settings"
+  | "deleted"
+  | "leaf-conflict"
+  | "blob-missing"
+  | "local-missing"
+  | "local-unparseable"
+  | "remote-unparseable"
+  | "install-prereq"
+  | "adopt-failed";
+
+export interface MergeFallback {
+  logicalKey: LogicalKey;
+  reason: MergeFallbackReason;
+  conflictKeys: string[];
+  missing?: string[];
+}
+
+export interface ResolvePreviewItem {
+  logicalKey: LogicalKey;
+  deletionConflict: boolean;
+  localHash: Sha256Hex | null;
+  remoteHash: Sha256Hex | null;
+  remoteMachineId: MachineId;
+  remoteGeneration: number;
+  plannedCopyPath: string | null;
+  copyPathUncertain: boolean;
+  mergeable: boolean | null;
+  conflictKeys: string[];
+}
+
 /** resolve 결과. */
 export interface ResolveResult {
   /** 적용된 정책. */
@@ -343,6 +374,8 @@ export interface ResolveResult {
   conflictCopies: ConflictCopy[];
   /** 백업 디렉터리 경로(있을 때). */
   backupDir: string | null;
+  mergeFallbacks?: MergeFallback[];
+  preview?: ResolvePreviewItem[];
 }
 
 /** preserve-both 시 기록된 원격 사본 정보. */

@@ -54,14 +54,18 @@ test("TRX-01: tools/list 4개 도구 inputSchema 계약", async (t) => {
   const doctorProps = by.wormhole_doctor.inputSchema?.properties ?? {};
   assert.equal(Object.keys(doctorProps).length, 0, "doctor 파라미터 없음");
 
-  // resolve: policy 3-enum, keys array, confirm
+  // resolve: policy 5-enum, keys array, confirm
   const rp = by.wormhole_resolve.inputSchema.properties;
-  assert.deepEqual(rp.policy.enum, ["preserve-both", "latest-wins", "manual"], "resolve.policy 3종");
+  assert.deepEqual(
+    rp.policy.enum,
+    ["preserve-both", "latest-wins", "ours", "manual", "merge"],
+    "resolve.policy 5종",
+  );
   assert.equal(rp.keys.type, "array", "resolve.keys array");
 
-  // sync: policy 2-enum (manual 제외), confirm boolean optional
+  // sync: policy 3-enum (manual/ours 제외), confirm boolean optional
   const sp = by.wormhole_sync.inputSchema.properties;
-  assert.deepEqual(sp.policy.enum, ["preserve-both", "latest-wins"], "sync.policy 2종(manual 없음)");
+  assert.deepEqual(sp.policy.enum, ["preserve-both", "latest-wins", "merge"], "sync.policy 3종(manual/ours 없음)");
   assert.equal(sp.confirm.type, "boolean", "sync.confirm boolean");
   assert.ok(!(by.wormhole_sync.inputSchema.required ?? []).includes("confirm"), "sync.confirm optional");
 });

@@ -81,7 +81,7 @@ const RawConfigSchema = z.object({
   // 동기화할 mcpServer 이름 allowlist. 등록된 서버만 .claude.json mcpServers 에서 동기화.
   // 미등록(wormhole 등)은 머신 로컬 보존. *_PAT/_TOKEN/_SECRET env 는 pull 시 로컬 값 re-graft.
   syncMcpServers: z.array(z.string()).default([]),
-  conflictPolicy: z.enum(["preserve-both", "latest-wins", "manual"]).default("preserve-both"),
+  conflictPolicy: z.enum(["preserve-both", "latest-wins", "manual", "merge"]).default("preserve-both"),
   lock: LockConfigSchema.partial().default({}),
   // home-root 파일(예: .claude.json)의 머지 서브키와 보존모드 맵.
   homeRootTargets: z.record(HomeRootTargetSchema).optional(),
@@ -95,7 +95,7 @@ const FullConfigSchema = z.object({
   remote: RemoteConfigSchema,
   crypto: CryptoConfigSchema,
   targets: SyncTargetsSchema,
-  conflictPolicy: z.enum(["preserve-both", "latest-wins", "manual"]),
+  conflictPolicy: z.enum(["preserve-both", "latest-wins", "manual", "merge"]),
   lock: LockConfigSchema,
 });
 

@@ -1015,7 +1015,7 @@
 
 ### 6.4 conflict-policies
 
-> **차원 개요**: 충돌 생애주기를 실제 MCP stdio 도구 경계에서 검증한다. `TWO_MACHINE` 픽스처로 동일 logicalKey 양측 발산을 생성하고, `wormhole_status` 의 conflicts[] 구조 정합성, `wormhole_resolve` 의 세 정책(preserve-both/latest-wins/manual) 실 적용 효과, keys 부분집합 필터, policy 생략 시 config.conflictPolicy 폴백, isDeletionConflict 경로, `wormhole_sync` confirm:true 자동 해소 파이프라인을 도구 call/response JSON 레벨에서 검증한다.
+> **차원 개요**: 충돌 생애주기를 실제 MCP stdio 도구 경계에서 검증한다. `TWO_MACHINE` 픽스처로 동일 logicalKey 양측 발산을 생성하고, `wormhole_status` 의 conflicts[] 구조 정합성, `wormhole_resolve` 의 네 정책(preserve-both/latest-wins/manual/merge) 실 적용 효과, keys 부분집합 필터, policy 생략 시 config.conflictPolicy 폴백, isDeletionConflict 경로, `merge` 의 settings.json 3-way 자동 병합·leaf-conflict 폴백, `wormhole_sync` confirm:true 자동 해소 파이프라인을 도구 call/response JSON 레벨에서 검증한다.
 
 #### CFL-01 · 양측 발산 후 wormhole_status 가 conflicts[] 를 완전한 구조로 노출하는가  `P0`
 
@@ -1248,6 +1248,68 @@
   - 양 호출 모두 isError 없음 + backupDir null
   - conflicts 카운트가 두 호출 전후 불변(멱등 = 부작용 누적 없음)
 - **신선도**: preserve-both 는 base 미전진으로 충돌 잔존→재호출 가능 상태 유지. 사본 멱등(fs.access 후 atomicWriteFile 생략) 가드를 2회 실행으로 검증하는 칸은 어느 시나리오도 미답. (b)해피 멱등은 pull no-op 이라 resolve 멱등과 별개.
+
+#### CFL-09 · wormhole_resolve merge policy — settings.json 서로 다른 leaf 키 발산 시 3-way 자동 병합, base/state 갱신  `P0`
+
+> Phase1+2 O1-v1 신규 시나리오 — `merge` 정책의 병합 성공 경로.
+
+- **전제조건**:
+  - `TWO_MACHINE` + `WRITABLE_WEBDAV` + `STDIO_RPC_CLIENT`
+  - 머신A/B 공통 baseline: `HOME_*/.claude/settings.json = {"env": {"SHARED": "base"}}` 로 최초 `wormhole_sync {"confirm": true}` 완료(양측 base 스냅샷·state 일치)
+  - 머신B: `settings.json.env.FROM_B = 'b-value'` 추가 후 `wormhole_sync {"confirm": true}` — 원격 generation 전진, 머신A 는 아직 모름
+  - 머신A: (머신B push 이전 base 기준) `settings.json.env.FROM_A = 'a-value'` 로컬만 추가, push 안 함 — 이후 머신B 의 원격 변경과 발산해 conflict 유발
+- **대상 도구**: `wormhole_resolve`, `wormhole_status`
+- **절차**:
+  1. 머신A: tools/call `wormhole_status {}` — conflicts[] 에 `.claude/settings.json` 확인
+  2. 머신A: tools/call `wormhole_resolve {"policy": "merge", "confirm": false}` — dryRun preview 확인
+  3. 머신A: tools/call `wormhole_resolve {"policy": "merge", "confirm": true}` — 실제 병합 적용
+  4. 응답 structuredContent 검사
+  5. `HOME_A/.claude/settings.json` 파일 내용 확인
+  6. 머신A: tools/call `wormhole_status {}` — conflicts 해소 확인
+  7. 머신B: `wormhole_sync {"confirm": true}` (pull) 후 `HOME_B/.claude/settings.json` 내용 확인
+- **기대 결과**:
+  - step2: `preview[0].logicalKey === '.claude/settings.json'`, `preview[0].mergeable === true`, `preview[0].conflictKeys` 빈 배열, `preview[0].plannedCopyPath === null`
+  - step3: `structuredContent.policy === 'merge'`, `resolved` 에 `.claude/settings.json` 포함, `conflictCopies === []`, `backupDir !== null`
+  - step3: `structuredContent.mergeFallbacks === []` (해당 키에 대한 폴백 항목 없음)
+  - step5: `settings.json.env` 에 `SHARED: 'base'`, `FROM_A: 'a-value'`, `FROM_B: 'b-value'` 세 키 모두 존재(두 로컬 변경의 합집합)
+  - step6: `structuredContent.conflicts` 에 `.claude/settings.json` 미포함(해소됨)
+  - step7: 머신B pull 후 `env.FROM_A` 도 반영되어 머신A 와 동일 shared subset
+- **합격 기준**:
+  - dryRun preview 의 `mergeable:true` 예측이 실제 confirm:true 결과(폴백 없음)와 일치
+  - 병합 결과가 두 로컬 변경의 합집합(FROM_A/FROM_B 모두 보존), 어느 쪽도 유실 없음
+  - `backupDir` 가 non-null 이고 그 디렉터리에 병합 전 원본 settings.json 사본 존재
+  - 병합 후 재조회 시 해당 키가 conflicts 목록에서 제거됨
+  - 머신B 가 pull 후 머신A 의 병합 결과(FROM_A 포함)를 그대로 수신
+- **신선도**: 기존 CFL-01~08 은 preserve-both/latest-wins/manual 세 정책만 다루며 3-way 자동 병합 경로는 전혀 검증하지 않음. 본 시나리오가 `merge` 정책의 실 MCP 경계 최초 검증이며, dryRun preview 예측치와 실제 적용 결과의 일치를 함께 확인한다.
+- **자동화 힌트**: dryRun 호출과 confirm:true 호출을 연속 실행해 `preview[0].mergeable` 과 실제 `mergeFallbacks` 빈 배열 여부를 대조. settings.json 은 JSON.parse 후 `env` 서브객체를 deep-equal.
+
+#### CFL-10 · wormhole_resolve merge policy — 동일 leaf 키 발산 시 leaf-conflict 폴백, preserve-both 사본 생성  `P1`
+
+> Phase1+2 O1-v1 신규 시나리오 — `merge` 정책의 부분 머지 금지(안전장치) 경로.
+
+- **전제조건**:
+  - CFL-09 와 동일 `TWO_MACHINE` + `WRITABLE_WEBDAV` + `STDIO_RPC_CLIENT` 구성
+  - 머신A/B 공통 baseline sync 완료 후, 머신B: `settings.json.env.SHARED = 'b-value'` 로 수정 후 push
+  - 머신A: (머신B push 이전 base 기준) 같은 키 `settings.json.env.SHARED = 'a-value'` 로컬만 수정, push 안 함
+- **대상 도구**: `wormhole_resolve`
+- **절차**:
+  1. 머신A: tools/call `wormhole_resolve {"policy": "merge", "confirm": false}` — dryRun preview 확인
+  2. 머신A: tools/call `wormhole_resolve {"policy": "merge", "confirm": true}`
+  3. 응답 structuredContent 검사
+  4. `HOME_A/.claude/settings.json` 내용 확인(무변경)
+  5. 생성된 사본 파일(`.conflict-<machineId_B>-<gen>`) 내용 확인
+- **기대 결과**:
+  - step1: `preview[0].mergeable === false`, `preview[0].conflictKeys` 에 `'env.SHARED'` 포함, `preview[0].plannedCopyPath` 가 `.conflict-{mid}-{gen}` 절대경로
+  - step3: `mergeFallbacks[0].logicalKey === '.claude/settings.json'`, `mergeFallbacks[0].reason === 'leaf-conflict'`, `mergeFallbacks[0].conflictKeys` 에 `'env.SHARED'` 포함
+  - step3: `structuredContent.resolved` 에 `.claude/settings.json` 포함(폴백도 resolved 로 집계), `structuredContent.backupDir === null`(채택 없이 폴백만 발생)
+  - step4: 머신A 로컬 settings.json 바이트 무변경(`env.SHARED === 'a-value'` 그대로)
+  - step5: 사본 파일 내용이 원격 정규화 shared subset(`env.SHARED: 'b-value'`) — 원격 raw 파일이 아님
+- **합격 기준**:
+  - leaf 충돌 시 로컬 파일을 절대 덮어쓰지 않음(preserve-both 와 동일 무손실 보장)
+  - `mergeFallbacks` 가 실패 사유(`leaf-conflict`)와 충돌 키 경로를 정확히 노출
+  - dryRun preview 의 `mergeable:false` 예측이 실제 폴백 발생과 일치
+  - 재조회 시 해당 키가 여전히 conflicts 목록에 남아 다음 사용자 개입 필요를 알림
+- **신선도**: CFL-09 가 병합 성공 경로만 다루므로, 본 시나리오는 `merge` 정책의 안전장치(부분 머지 금지, leaf 충돌 시 preserve-both 강등)를 실 MCP 경계에서 검증한다.
 
 ---
 

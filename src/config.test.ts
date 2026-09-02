@@ -12,6 +12,7 @@ import {
   DEFAULT_INCLUDE,
   DEFAULT_EXCLUDE,
   resolveSkillsInclude,
+  ConfigSchema,
 } from "./config.js";
 
 // ── env 격리 헬퍼 ──────────────────────────────────────────────
@@ -440,6 +441,23 @@ describe("Zod schema defaults populate omitted fields", () => {
     assert.equal(cfg.lock.ttlMs, 30_000);
     assert.equal(cfg.lock.acquireRetries, 3);
     assert.equal(cfg.lock.acquireRetryDelayMs, 1000);
+  });
+
+  test("M17: conflictPolicy 'merge' 파싱 성공, 'bogus' 는 throw", () => {
+    const cfg = resolveConfig({
+      remote: { url: "https://x.example.com/dav", username: "wormhole" },
+      conflictPolicy: "merge",
+    });
+    assert.equal(cfg.conflictPolicy, "merge");
+
+    assert.throws(() =>
+      resolveConfig({
+        remote: { url: "https://x.example.com/dav", username: "wormhole" },
+        conflictPolicy: "bogus",
+      }),
+    );
+
+    assert.doesNotThrow(() => ConfigSchema.parse(cfg));
   });
 
   test("loadConfig with missing config file throws actionable error (config.json required)", async () => {

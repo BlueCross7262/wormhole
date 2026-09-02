@@ -1,5 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
+import * as path from "node:path";
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
@@ -19,6 +20,7 @@ import type {
   SyncRunOptions,
   ConflictItem,
   ConflictDetail,
+  ResolvePreviewItem,
 } from "../types.js";
 
 // ----------------------------------------------------------------------------
@@ -72,6 +74,7 @@ interface EngineCalls {
   push: SyncRunOptions[];
   pull: SyncRunOptions[];
   resolve: Array<{ policy?: ResolvePolicy; keys?: string[]; options?: SyncRunOptions }>;
+  syncAtomic: Array<{ pluginsDir: string; policy?: ResolvePolicy }>;
 }
 
 interface FakeEngineOpts {
@@ -138,11 +141,27 @@ function fixtureResolve(policy: ResolvePolicy = "latest-wins"): ResolveResult {
   };
 }
 
+function fixturePreviewItem(overrides: Partial<ResolvePreviewItem> = {}): ResolvePreviewItem {
+  return {
+    logicalKey: "settings.json" as ResolvePreviewItem["logicalKey"],
+    deletionConflict: false,
+    localHash: "aaa" as ResolvePreviewItem["localHash"],
+    remoteHash: "bbb" as ResolvePreviewItem["remoteHash"],
+    remoteMachineId: "remote-M" as ResolvePreviewItem["remoteMachineId"],
+    remoteGeneration: 1,
+    plannedCopyPath: null,
+    copyPathUncertain: false,
+    mergeable: true,
+    conflictKeys: [],
+    ...overrides,
+  };
+}
+
 function makeFakeEngine(opts: FakeEngineOpts = {}): {
   engine: SyncEngine;
   calls: EngineCalls;
 } {
-  const calls: EngineCalls = { status: 0, push: [], pull: [], resolve: [] };
+  const calls: EngineCalls = { status: 0, push: [], pull: [], resolve: [], syncAtomic: [] };
   const engine = {
     config: { home: "/fake-home" },
     async status(): Promise<SyncStatus> {
@@ -166,6 +185,7 @@ function makeFakeEngine(opts: FakeEngineOpts = {}): {
       return opts.resolve ? opts.resolve(p, k, o) : fixtureResolve(p ?? "latest-wins");
     },
     async syncAtomic(o: { pluginsDir: string; policy?: ResolvePolicy }) {
+      calls.syncAtomic.push(o);
       if (opts.syncAtomic) return opts.syncAtomic(o);
       const pull = await engine.pull();
       if (pull.conflicts.length > 0) {
@@ -336,6 +356,16 @@ describe("wormhole_resolve — input schema", () => {
         confirm: true,
       }),
       { policy: "preserve-both", keys: ["k1", "k2"], confirm: true },
+    );
+  });
+
+  test("M9: accepts policy 'merge'", () => {
+    const server = new FakeServer();
+    const { engine } = makeFakeEngine();
+    registerResolveTool(server as unknown as McpServer, engine);
+    assert.deepEqual(
+      server.parse("wormhole_resolve", { policy: "merge", confirm: true }),
+      { policy: "merge", confirm: true },
     );
   });
 
@@ -625,5 +655,122 @@ describe("H10: dry-run wouldBlock 연산", () => {
     const out = parseStructured<{ wouldBlock: boolean; push: unknown }>(res);
     assert.equal(out.wouldBlock, false, "wouldBlock must be false for latest-wins");
     assert.ok(out.push !== undefined && out.push !== null, "push must be present when wouldBlock===false");
+  });
+});
+
+describe("M18: wormhole_sync dry-run — merge preview 기반 wouldBlock", () => {
+  test("M18a: policy=merge, 충돌 있음, preview 전부 mergeable → engine.resolve(merge, undefined, {dryRun:true}) 호출 + wouldBlock=false + push 존재", async () => {
+    const server = new FakeServer();
+    const conflict = { logicalKey: "c.txt" } as unknown as ConflictItem;
+    const preview = [fixturePreviewItem({ mergeable: true })];
+    const { engine, calls } = makeFakeEngine({
+      pull: () => Promise.resolve(fixturePull(true, [conflict])),
+      resolve: (p) => Promise.resolve({ ...fixtureResolve(p ?? "merge"), preview }),
+    });
+    registerSyncTool(server as unknown as McpServer, engine);
+
+    const res = await server.call("wormhole_sync", { policy: "merge" });
+
+    assert.equal(calls.resolve.length, 1, "충돌이 있으면 policy=merge 는 preview 를 위해 resolve 를 호출해야 한다");
+    assert.deepEqual(calls.resolve[0], { policy: "merge", keys: undefined, options: { dryRun: true } });
+
+    const out = parseStructured<{
+      wouldBlock: boolean;
+      wouldBlockUncertain?: boolean;
+      preview: unknown[];
+      push?: unknown;
+    }>(res);
+    assert.equal(out.wouldBlock, false, "preview 전부 mergeable:true 면 차단 예상 아님");
+    assert.equal(out.wouldBlockUncertain, undefined);
+    assert.deepEqual(out.preview, preview);
+    assert.ok(out.push !== undefined && out.push !== null, "wouldBlock=false 면 push 미리보기가 있어야 한다");
+  });
+
+  test("M18b: preview 에 mergeable:false 가 하나라도 있으면 wouldBlock=true, push 없음, conflicts 노출", async () => {
+    const server = new FakeServer();
+    const conflict = { logicalKey: "c.txt" } as unknown as ConflictItem;
+    const preview = [
+      fixturePreviewItem({ logicalKey: "a" as ResolvePreviewItem["logicalKey"], mergeable: true }),
+      fixturePreviewItem({
+        logicalKey: "b" as ResolvePreviewItem["logicalKey"],
+        mergeable: false,
+        conflictKeys: ["k"],
+        plannedCopyPath: "/x.conflict-m-1",
+      }),
+    ];
+    const { engine } = makeFakeEngine({
+      pull: () => Promise.resolve(fixturePull(true, [conflict])),
+      resolve: (p) => Promise.resolve({ ...fixtureResolve(p ?? "merge"), preview }),
+    });
+    registerSyncTool(server as unknown as McpServer, engine);
+
+    const res = await server.call("wormhole_sync", { policy: "merge" });
+    const out = parseStructured<{
+      wouldBlock: boolean;
+      wouldBlockUncertain?: boolean;
+      push?: unknown;
+      conflicts: unknown[];
+    }>(res);
+    assert.equal(out.wouldBlock, true, "하나라도 mergeable:false 면 차단 예상");
+    assert.equal(out.wouldBlockUncertain, undefined, "leaf-conflict 은 확정 차단이지 미확정이 아니다");
+    assert.ok(out.push == null, "wouldBlock=true 면 push 없음");
+    assert.equal(out.conflicts.length, 1);
+  });
+
+  test("M18c: mergeable:null + copyPathUncertain:true (blob 다운로드 실패) 가 섞이면 wouldBlockUncertain:true", async () => {
+    const server = new FakeServer();
+    const conflict = { logicalKey: "c.txt" } as unknown as ConflictItem;
+    const preview = [fixturePreviewItem({ mergeable: null, copyPathUncertain: true, plannedCopyPath: null })];
+    const { engine } = makeFakeEngine({
+      pull: () => Promise.resolve(fixturePull(true, [conflict])),
+      resolve: (p) => Promise.resolve({ ...fixtureResolve(p ?? "merge"), preview }),
+    });
+    registerSyncTool(server as unknown as McpServer, engine);
+
+    const res = await server.call("wormhole_sync", { policy: "merge" });
+    const out = parseStructured<{ wouldBlock: boolean; wouldBlockUncertain?: boolean }>(res);
+    assert.equal(out.wouldBlock, true, "미확정도 확정 안 됐으니 보수적으로 차단 예상 취급");
+    assert.equal(out.wouldBlockUncertain, true);
+  });
+
+  test("M18d: mergeable:null + copyPathUncertain:false (not-settings 등 확정 폴백) 는 wouldBlockUncertain 없이 wouldBlock=true", async () => {
+    const server = new FakeServer();
+    const conflict = { logicalKey: "c.txt" } as unknown as ConflictItem;
+    const preview = [
+      fixturePreviewItem({ mergeable: null, copyPathUncertain: false, plannedCopyPath: "/x.conflict-m-1" }),
+    ];
+    const { engine } = makeFakeEngine({
+      pull: () => Promise.resolve(fixturePull(true, [conflict])),
+      resolve: (p) => Promise.resolve({ ...fixtureResolve(p ?? "merge"), preview }),
+    });
+    registerSyncTool(server as unknown as McpServer, engine);
+
+    const res = await server.call("wormhole_sync", { policy: "merge" });
+    const out = parseStructured<{ wouldBlock: boolean; wouldBlockUncertain?: boolean }>(res);
+    assert.equal(out.wouldBlock, true);
+    assert.equal(out.wouldBlockUncertain, undefined, "not-settings 발 null 은 미확정이 아니라 확정 차단");
+  });
+
+  test("M18e: 충돌 0건이면 policy=merge 라도 resolve 를 호출하지 않는다 (wouldBlock=false, preview 없음)", async () => {
+    const server = new FakeServer();
+    const { engine, calls } = makeFakeEngine();
+    registerSyncTool(server as unknown as McpServer, engine);
+
+    const res = await server.call("wormhole_sync", { policy: "merge" });
+    assert.equal(calls.resolve.length, 0, "충돌이 없으면 merge preview 도 필요 없다");
+    const out = parseStructured<{ wouldBlock: boolean; preview?: unknown }>(res);
+    assert.equal(out.wouldBlock, false);
+    assert.equal(out.preview, undefined);
+  });
+
+  test("M18f: confirm:true 실경로에서 policy=merge 가 engine.syncAtomic 까지 전달된다", async () => {
+    const server = new FakeServer();
+    const { engine, calls } = makeFakeEngine();
+    registerSyncTool(server as unknown as McpServer, engine);
+
+    await server.call("wormhole_sync", { confirm: true, policy: "merge" });
+    assert.equal(calls.syncAtomic.length, 1);
+    assert.equal(calls.syncAtomic[0].policy, "merge");
+    assert.equal(calls.syncAtomic[0].pluginsDir, path.join("/fake-home", ".claude", "plugins"));
   });
 });

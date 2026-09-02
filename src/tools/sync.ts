@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import type { SyncEngine } from "../sync/engine.js";
-import type { ResolvePolicy } from "../types.js";
+import type { ResolvePolicy, ResolvePreviewItem } from "../types.js";
 
 // wormhole_sync — pull → (충돌 시) resolve → push 복합 동기화.
 // confirm 없이 호출하면 pull/push 계획만 미리보기로 계산한다(변경 없음).
@@ -17,9 +17,9 @@ export function registerSyncTool(server: McpServer, engine: SyncEngine): void {
         "pull → (충돌 시) resolve → push 를 한 번에 수행하는 복합 동기화. 안전 기본값: confirm 없이 호출하면 실제 변경 없이 pull/push 미리보기(dry-run)만 반환한다. 실제 적용은 confirm:true 가 필요하며, 이는 사용자의 명시적 확인이 있을 때만 전달한다 — 절대 자율적으로 confirm:true 를 넘기지 않는다.",
       inputSchema: {
         policy: z
-          .enum(["preserve-both", "latest-wins"])
+          .enum(["preserve-both", "latest-wins", "merge"])
           .describe(
-            "충돌 해소 정책. preserve-both(기본): 양쪽 보존(무손실). latest-wins: 원격 최신본(매니페스트 generation = 마지막으로 push 된 쪽 기준, 파일 mtime/벽시계 시각 아님)으로 덮어쓰기. 생략 시 preserve-both.",
+            "충돌 해소 정책. preserve-both(기본): 양쪽 보존(무손실). latest-wins: 원격 최신본(매니페스트 generation = 마지막으로 push 된 쪽 기준, 파일 mtime/벽시계 시각 아님)으로 덮어쓰기. merge: settings.json 만 3-way 자동 머지, leaf 충돌·삭제·비settings 는 preserve-both 폴백(잔존 시 push 차단). 생략 시 preserve-both.",
           )
           .optional(),
         confirm: z.boolean().optional().default(false),
@@ -30,12 +30,26 @@ export function registerSyncTool(server: McpServer, engine: SyncEngine): void {
         if (args.confirm !== true) {
           const pull = await engine.pull({ dryRun: true });
           const policy: ResolvePolicy = args.policy ?? "preserve-both";
-          const wouldBlock = pull.conflicts.length > 0 && policy !== "latest-wins";
+          let wouldBlock: boolean;
+          let mergePreviewItems: ResolvePreviewItem[] | undefined;
+          if (pull.conflicts.length > 0 && policy === "merge") {
+            const previewResult = await engine.resolve(policy, undefined, { dryRun: true });
+            mergePreviewItems = previewResult.preview ?? [];
+            wouldBlock = !mergePreviewItems.every((item) => item.mergeable === true);
+          } else {
+            wouldBlock = pull.conflicts.length > 0 && policy !== "latest-wins";
+          }
           const payload: Record<string, unknown> = {
             pull,
             wouldBlock,
             note: "미리보기 — 실제 적용하려면 confirm:true (사용자 확인 후)",
           };
+          if (mergePreviewItems !== undefined) {
+            payload.preview = mergePreviewItems;
+            if (mergePreviewItems.some((item) => item.mergeable === null && item.copyPathUncertain)) {
+              payload.wouldBlockUncertain = true;
+            }
+          }
           if (wouldBlock) {
             payload.conflicts = pull.conflicts;
             payload.conflictsNote =

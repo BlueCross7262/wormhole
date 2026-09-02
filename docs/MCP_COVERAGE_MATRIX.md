@@ -86,9 +86,9 @@
 | F-TOOLS-01 | wormhole_status 도구는 빈 inputSchema({})로 등록되어 인자 없이 호출 가능하며, engine.status() 결… | mcp-boundary | TRX-01, CGW-01, CGW-03, SCH-04 | direct |
 | F-TOOLS-02 | wormhole_status 성공 시 content[0]=text(JSON.stringify(result))와 structuredCont… | mcp-boundary | CGW-01, CFL-01, SCH-04, ELC-01 | direct |
 | F-TOOLS-03 | 모든 4개 도구 핸들러는 try/catch로 감싸 예외 발생 시 content=err.message text + isError:true인… | mcp-boundary | ELC-07, ELC-08, ELC-02, ELC-04, SCH-01, SCH-02, SCH-03, TMB-08, CGW-07, ELC-11 | direct |
-| F-TOOLS-04 | wormhole_resolve 입력스키마는 policy:z.enum(['preserve-both','latest-wins','manual… | mcp-boundary | TRX-01, SCH-01, SCH-02, SCH-03, SCH-05 | direct |
+| F-TOOLS-04 | wormhole_resolve 입력스키마는 policy:z.enum(['preserve-both','latest-wins','ours','manual','merge'])… | mcp-boundary | TRX-01, SCH-01, SCH-02, SCH-03, SCH-05 | direct |
 | F-TOOLS-05 | wormhole_resolve는 engine.resolve(policy, keys, {dryRun})으로 위임하며, keys 생략 시 전… | mcp-boundary | CGW-02, CFL-02, CFL-03, CFL-04, CFL-05, CFL-06, SCH-05 | direct |
-| F-TOOLS-06 | wormhole_sync 입력스키마는 policy:z.enum(['preserve-both','latest-wins']).optional… | mcp-boundary | TRX-01, SCH-01, SCH-03 | direct |
+| F-TOOLS-06 | wormhole_sync 입력스키마는 policy:z.enum(['preserve-both','latest-wins','merge']).optional… | mcp-boundary | TRX-01, SCH-01, SCH-03 | direct |
 | F-TOOLS-07 | wormhole_sync 미리보기 분기(confirm!==true): engine.pull({dryRun:true})와 engine.pu… | mcp-boundary | CGW-01, CGW-05, CGW-07 | direct |
 | F-TOOLS-08 | wormhole_sync 실제 실행 분기(confirm:true): policy 기본값 'preserve-both' 적용 후 engine… | mcp-boundary | CGW-05, CGW-06 | direct |
 | F-TOOLS-09 | wormhole_sync의 stop-on-error: pull/resolve/push를 순차 await하므로 앞 단계가 throw하면 뒤… | mcp-boundary | ELC-07, CGW-07 | direct |

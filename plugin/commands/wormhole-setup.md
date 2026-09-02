@@ -22,9 +22,8 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/setup.mjs
 **`~/.claude/wormhole-config.json`** — 동기화 범위 및 동작 설정 (선택적으로 편집)
 
 - `targets.include` / `targets.exclude` — 동기화할 glob 패턴 목록. 기본값은 `.claude/` 하위 주요 파일을 포함한다.
-- `settingsJson.localOnlyKeys` — 머신별로 유지할 settings.json 키 경로 목록 (동기화에서 제외).
-- `settingsJson.forceSyncKeys` — denylist 에 막혀도 강제 shared 로 동기화할 키 목록 (선택).
-- `conflictPolicy` — 충돌 시 처리 방식 (`preserve-both` / `latest-wins` / `manual`).
+- settings.json 은 별도 키 필터 없이 통째로 동기화된다 (프로토타입 오염 방지용 `__proto__` 류만 제외).
+- `conflictPolicy` — 충돌 시 처리 방식 (`preserve-both` / `latest-wins` / `ours` / `manual` / `merge`).
 - `crypto`, `lock` 등 고급 설정은 파일 내 값을 직접 수정한다.
 
 두 파일 설정 완료 후 `/wormhole-status`, `/wormhole-resolve`, `/wormhole-sync`, `/wormhole-doctor` 슬래시 커맨드를 바로 사용할 수 있다. 서버 재시작 불필요.
