@@ -33270,7 +33270,7 @@ var EMPTY_COMPLETION_RESULT = {
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 function resolveVersion() {
-  if (true) return "0.5.15";
+  if (true) return "0.5.16";
   try {
     const pkgPath = fileURLToPath(new URL("../package.json", import.meta.url));
     const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
@@ -33432,8 +33432,8 @@ function registerResolveTool(server, engine) {
       title: "Wormhole Resolve",
       description: "\uCDA9\uB3CC \uD56D\uBAA9\uC744 \uC9C0\uC815\uD55C \uC815\uCC45\uC73C\uB85C \uD574\uC18C\uD55C\uB2E4. keys \uC0DD\uB7B5 \uC2DC \uC804\uCCB4 \uCDA9\uB3CC \uCC98\uB9AC. \uC548\uC804 \uAE30\uBCF8\uAC12: confirm \uC5C6\uC774 \uD638\uCD9C\uD558\uBA74 \uC2E4\uC81C \uBCC0\uACBD \uC5C6\uC774 \uBBF8\uB9AC\uBCF4\uAE30(dry-run)\uB9CC \uBC18\uD658\uD55C\uB2E4. \uC2E4\uC81C \uC801\uC6A9\uC740 confirm:true \uAC00 \uD544\uC694\uD558\uBA70, \uC774\uB294 \uC0AC\uC6A9\uC790\uC758 \uBA85\uC2DC\uC801 \uD655\uC778\uC774 \uC788\uC744 \uB54C\uB9CC \uC804\uB2EC\uD55C\uB2E4 \u2014 \uC808\uB300 \uC790\uC728\uC801\uC73C\uB85C confirm:true \uB97C \uB118\uAE30\uC9C0 \uC54A\uB294\uB2E4.",
       inputSchema: {
-        policy: external_exports.enum(["preserve-both", "latest-wins", "ours", "manual"]).describe(
-          "\uCDA9\uB3CC \uD574\uC18C \uC815\uCC45. preserve-both(\uAE30\uBCF8): \uB85C\uCEEC \uC720\uC9C0 + \uC6D0\uACA9\uBCF8\uC744 .conflict \uC0AC\uBCF8\uC73C\uB85C \uBCF4\uC874(\uBB34\uC190\uC2E4). latest-wins: \uC6D0\uACA9 \uCD5C\uC2E0\uBCF8(\uB9E4\uB2C8\uD398\uC2A4\uD2B8 generation = \uB9C8\uC9C0\uB9C9\uC73C\uB85C push \uB41C \uCABD \uAE30\uC900, \uD30C\uC77C mtime/\uBCBD\uC2DC\uACC4 \uC2DC\uAC01 \uC544\uB2D8)\uC73C\uB85C \uB36E\uC5B4\uC4F0\uAE30 + \uB36E\uC5B4\uC4F0\uAE30 \uC804 \uB85C\uCEEC \uBC31\uC5C5. ours: \uB85C\uCEEC \uCF58\uD150\uCE20\uB97C \uCC44\uD0DD\uD558\uACE0 \uC6D0\uACA9\uC5D0 \uC5C5\uB85C\uB4DC(\uC6D0\uACA9\uC744 \uB85C\uCEEC\uB85C \uB36E\uC5B4\uC500). \uB85C\uCEEC \uC218\uC815 \uBCF4\uC874\uC774 \uBAA9\uC801. \uC218\uB3D9 \uBCD1\uD569 \uD6C4 ours \uB85C \uBCD1\uD569\uBCF8 \uCC44\uD0DD \uAC00\uB2A5. manual: \uCDA9\uB3CC \uBAA9\uB85D\uB9CC \uBC18\uD658\uD558\uACE0 \uC790\uB3D9 \uCC98\uB9AC\uD558\uC9C0 \uC54A\uC74C. \uC0DD\uB7B5 \uC2DC config \uC758 conflictPolicy \uB97C \uB530\uB978\uB2E4."
+        policy: external_exports.enum(["preserve-both", "latest-wins", "ours", "manual", "merge"]).describe(
+          "\uCDA9\uB3CC \uD574\uC18C \uC815\uCC45. preserve-both(\uAE30\uBCF8): \uB85C\uCEEC \uC720\uC9C0 + \uC6D0\uACA9\uBCF8\uC744 .conflict \uC0AC\uBCF8\uC73C\uB85C \uBCF4\uC874(\uBB34\uC190\uC2E4). latest-wins: \uC6D0\uACA9 \uCD5C\uC2E0\uBCF8(\uB9E4\uB2C8\uD398\uC2A4\uD2B8 generation = \uB9C8\uC9C0\uB9C9\uC73C\uB85C push \uB41C \uCABD \uAE30\uC900, \uD30C\uC77C mtime/\uBCBD\uC2DC\uACC4 \uC2DC\uAC01 \uC544\uB2D8)\uC73C\uB85C \uB36E\uC5B4\uC4F0\uAE30 + \uB36E\uC5B4\uC4F0\uAE30 \uC804 \uB85C\uCEEC \uBC31\uC5C5. ours: \uB85C\uCEEC \uCC44\uD0DD. base \uC2A4\uB0C5\uC0F7\uC744 \uC6D0\uACA9\uBCF8\uC73C\uB85C \uAC31\uC2E0\uD574 \uB2E4\uC74C push \uC5D0\uC11C \uB85C\uCEEC\uBCF8\uC774 \uC5C5\uB85C\uB4DC\uB428. resolve \uC790\uCCB4\uB294 \uC5C5\uB85C\uB4DC\uD558\uC9C0 \uC54A\uC74C. manual: \uCDA9\uB3CC \uBAA9\uB85D\uB9CC \uBC18\uD658\uD558\uACE0 \uC790\uB3D9 \uCC98\uB9AC\uD558\uC9C0 \uC54A\uC74C. merge: settings.json \uB9CC 3-way \uC790\uB3D9 \uBA38\uC9C0. leaf \uCDA9\uB3CC\xB7\uC0AD\uC81C\xB7\uBE44settings \uB294 preserve-both \uD3F4\uBC31. \uC0DD\uB7B5 \uC2DC config \uC758 conflictPolicy \uB97C \uB530\uB978\uB2E4."
         ).optional(),
         keys: external_exports.array(external_exports.string()).optional(),
         confirm: external_exports.boolean().optional().default(false)
@@ -33451,7 +33451,7 @@ function registerResolveTool(server, engine) {
           ...result
         };
         if (dryRun) {
-          payload.note = "\uBBF8\uB9AC\uBCF4\uAE30 \u2014 \uC2E4\uC81C \uC801\uC6A9\uD558\uB824\uBA74 confirm:true (\uC0AC\uC6A9\uC790 \uD655\uC778 \uD6C4)";
+          payload.note = "\uBBF8\uB9AC\uBCF4\uAE30 \u2014 \uC2E4\uC81C \uC801\uC6A9\uD558\uB824\uBA74 confirm:true (\uC0AC\uC6A9\uC790 \uD655\uC778 \uD6C4). \uD0A4\uBCC4 \uC608\uC0C1 \uACB0\uACFC(\uBA38\uC9C0 \uAC00\uB2A5 \uC5EC\uBD80\xB7\uC608\uC815 \uC0AC\uBCF8 \uACBD\uB85C)\uB294 preview \uD544\uB4DC \uCC38\uC870.";
         }
         return {
           content: [{ type: "text", text: JSON.stringify(payload) }],
@@ -33476,8 +33476,8 @@ function registerSyncTool(server, engine) {
       title: "Wormhole Sync",
       description: "pull \u2192 (\uCDA9\uB3CC \uC2DC) resolve \u2192 push \uB97C \uD55C \uBC88\uC5D0 \uC218\uD589\uD558\uB294 \uBCF5\uD569 \uB3D9\uAE30\uD654. \uC548\uC804 \uAE30\uBCF8\uAC12: confirm \uC5C6\uC774 \uD638\uCD9C\uD558\uBA74 \uC2E4\uC81C \uBCC0\uACBD \uC5C6\uC774 pull/push \uBBF8\uB9AC\uBCF4\uAE30(dry-run)\uB9CC \uBC18\uD658\uD55C\uB2E4. \uC2E4\uC81C \uC801\uC6A9\uC740 confirm:true \uAC00 \uD544\uC694\uD558\uBA70, \uC774\uB294 \uC0AC\uC6A9\uC790\uC758 \uBA85\uC2DC\uC801 \uD655\uC778\uC774 \uC788\uC744 \uB54C\uB9CC \uC804\uB2EC\uD55C\uB2E4 \u2014 \uC808\uB300 \uC790\uC728\uC801\uC73C\uB85C confirm:true \uB97C \uB118\uAE30\uC9C0 \uC54A\uB294\uB2E4.",
       inputSchema: {
-        policy: external_exports.enum(["preserve-both", "latest-wins"]).describe(
-          "\uCDA9\uB3CC \uD574\uC18C \uC815\uCC45. preserve-both(\uAE30\uBCF8): \uC591\uCABD \uBCF4\uC874(\uBB34\uC190\uC2E4). latest-wins: \uC6D0\uACA9 \uCD5C\uC2E0\uBCF8(\uB9E4\uB2C8\uD398\uC2A4\uD2B8 generation = \uB9C8\uC9C0\uB9C9\uC73C\uB85C push \uB41C \uCABD \uAE30\uC900, \uD30C\uC77C mtime/\uBCBD\uC2DC\uACC4 \uC2DC\uAC01 \uC544\uB2D8)\uC73C\uB85C \uB36E\uC5B4\uC4F0\uAE30. \uC0DD\uB7B5 \uC2DC preserve-both."
+        policy: external_exports.enum(["preserve-both", "latest-wins", "merge"]).describe(
+          "\uCDA9\uB3CC \uD574\uC18C \uC815\uCC45. preserve-both(\uAE30\uBCF8): \uC591\uCABD \uBCF4\uC874(\uBB34\uC190\uC2E4). latest-wins: \uC6D0\uACA9 \uCD5C\uC2E0\uBCF8(\uB9E4\uB2C8\uD398\uC2A4\uD2B8 generation = \uB9C8\uC9C0\uB9C9\uC73C\uB85C push \uB41C \uCABD \uAE30\uC900, \uD30C\uC77C mtime/\uBCBD\uC2DC\uACC4 \uC2DC\uAC01 \uC544\uB2D8)\uC73C\uB85C \uB36E\uC5B4\uC4F0\uAE30. merge: settings.json \uB9CC 3-way \uC790\uB3D9 \uBA38\uC9C0, leaf \uCDA9\uB3CC\xB7\uC0AD\uC81C\xB7\uBE44settings \uB294 preserve-both \uD3F4\uBC31(\uC794\uC874 \uC2DC push \uCC28\uB2E8). \uC0DD\uB7B5 \uC2DC preserve-both."
         ).optional(),
         confirm: external_exports.boolean().optional().default(false)
       }
@@ -33487,12 +33487,26 @@ function registerSyncTool(server, engine) {
         if (args.confirm !== true) {
           const pull = await engine.pull({ dryRun: true });
           const policy2 = args.policy ?? "preserve-both";
-          const wouldBlock = pull.conflicts.length > 0 && policy2 !== "latest-wins";
+          let wouldBlock;
+          let mergePreviewItems;
+          if (pull.conflicts.length > 0 && policy2 === "merge") {
+            const previewResult = await engine.resolve(policy2, void 0, { dryRun: true });
+            mergePreviewItems = previewResult.preview ?? [];
+            wouldBlock = !mergePreviewItems.every((item) => item.mergeable === true);
+          } else {
+            wouldBlock = pull.conflicts.length > 0 && policy2 !== "latest-wins";
+          }
           const payload2 = {
             pull,
             wouldBlock,
             note: "\uBBF8\uB9AC\uBCF4\uAE30 \u2014 \uC2E4\uC81C \uC801\uC6A9\uD558\uB824\uBA74 confirm:true (\uC0AC\uC6A9\uC790 \uD655\uC778 \uD6C4)"
           };
+          if (mergePreviewItems !== void 0) {
+            payload2.preview = mergePreviewItems;
+            if (mergePreviewItems.some((item) => item.mergeable === null && item.copyPathUncertain)) {
+              payload2.wouldBlockUncertain = true;
+            }
+          }
           if (wouldBlock) {
             payload2.conflicts = pull.conflicts;
             payload2.conflictsNote = "\uCDA9\uB3CC \uC794\uC874 \uC2DC push \uCC28\uB2E8\uB428. /wormhole-resolve \uB85C \uD0A4\uBCC4 theirs(latest-wins)/ours \uC120\uD0DD \uD6C4 \uC7AC sync \uD558\uC138\uC694.";
@@ -33630,7 +33644,7 @@ var RawConfigSchema = external_exports.object({
   // 동기화할 mcpServer 이름 allowlist. 등록된 서버만 .claude.json mcpServers 에서 동기화.
   // 미등록(wormhole 등)은 머신 로컬 보존. *_PAT/_TOKEN/_SECRET env 는 pull 시 로컬 값 re-graft.
   syncMcpServers: external_exports.array(external_exports.string()).default([]),
-  conflictPolicy: external_exports.enum(["preserve-both", "latest-wins", "manual"]).default("preserve-both"),
+  conflictPolicy: external_exports.enum(["preserve-both", "latest-wins", "manual", "merge"]).default("preserve-both"),
   lock: LockConfigSchema.partial().default({}),
   // home-root 파일(예: .claude.json)의 머지 서브키와 보존모드 맵.
   homeRootTargets: external_exports.record(HomeRootTargetSchema).optional(),
@@ -33642,7 +33656,7 @@ var FullConfigSchema = external_exports.object({
   remote: RemoteConfigSchema,
   crypto: CryptoConfigSchema,
   targets: SyncTargetsSchema,
-  conflictPolicy: external_exports.enum(["preserve-both", "latest-wins", "manual"]),
+  conflictPolicy: external_exports.enum(["preserve-both", "latest-wins", "manual", "merge"]),
   lock: LockConfigSchema
 });
 function expandTilde(p, home) {
@@ -51515,22 +51529,8 @@ var SyncEngine = class {
   }
   // ── resolve ─────────────────────────────────────────────────
   /** dryRun resolve 계획. */
-  async planResolve(policy, keys) {
-    const status = await this.status();
-    const targets = this.selectConflicts(status.conflicts, keys);
-    return {
-      policy,
-      resolved: targets.map((c) => c.logicalKey),
-      conflictCopies: [],
-      backupDir: null
-    };
-  }
-  /** resolve 1회. preserve-both/latest-wins/manual 정책 적용. */
-  async runResolve(policy, keys) {
+  async loadConflictContext() {
     const remoteManifest = await this.manifestStore.read();
-    if (remoteManifest === null) {
-      return { policy, resolved: [], conflictCopies: [], backupDir: null };
-    }
     const local = await this.scanWithHashes();
     const state = await this.readState();
     const status = computeStatus({
@@ -51539,17 +51539,124 @@ var SyncEngine = class {
       state,
       machineId: this.machineId
     });
+    return { remoteManifest, state, status };
+  }
+  async planResolve(policy, keys) {
+    const { remoteManifest, status } = await this.loadConflictContext();
+    const targets = this.selectConflicts(status.conflicts, keys);
+    const preview = [];
+    for (const conflict of targets) {
+      const key = conflict.logicalKey;
+      const entry = remoteManifest?.entries[key];
+      if (!entry) continue;
+      const absPath = this.safeAbsPath(key);
+      if (absPath === null) continue;
+      const mid = sanitizeToken(conflict.remoteMachineId);
+      const gen = sanitizeToken(conflict.remoteGeneration);
+      let sidecarPath = entry.deleted ? `${absPath}.conflict-deleted-${mid}-${gen}` : `${absPath}.conflict-${mid}-${gen}`;
+      if (!isWithinHome(this.config.home, sidecarPath)) sidecarPath = null;
+      let plannedCopyPath;
+      let mergeable = null;
+      let conflictKeys = [];
+      let copyPathUncertain = false;
+      const effectivePolicy = isConfigJsonKey(key) ? "latest-wins" : policy;
+      if (policy === "manual") {
+        plannedCopyPath = null;
+      } else if (effectivePolicy === "preserve-both") {
+        plannedCopyPath = sidecarPath;
+      } else if (effectivePolicy === "merge") {
+        if (!isSettingsKey(key) || entry.deleted) {
+          plannedCopyPath = sidecarPath;
+        } else {
+          let remotePlain;
+          try {
+            remotePlain = await this.downloadBlob(key);
+          } catch {
+            remotePlain = null;
+          }
+          if (remotePlain === null) {
+            mergeable = null;
+            plannedCopyPath = null;
+            copyPathUncertain = true;
+          } else {
+            if (sha2563(remotePlain) !== entry.contentHash) {
+              this.logger?.warn(`[engine] planResolve: blob \uD574\uC2DC \uBD88\uC77C\uCE58 ${key}`);
+            }
+            const remoteShared = this.parseJson(remotePlain.toString("utf-8"));
+            const localReal = await this.readJsonFile(absPath);
+            if (remoteShared !== null && localReal !== null) {
+              const home = this.config.home;
+              const localObj = home ? tokenizeHome(localReal, home) : localReal;
+              const baseShared = await this.readBaseSnapshotJson(key) ?? {};
+              const mergeResult = threeWayMerge(localObj, remoteShared, baseShared);
+              mergeable = !mergeResult.hasConflict;
+              conflictKeys = mergeResult.conflictKeys;
+              plannedCopyPath = mergeable ? null : sidecarPath;
+            } else {
+              mergeable = false;
+              plannedCopyPath = sidecarPath;
+            }
+          }
+        }
+      } else {
+        plannedCopyPath = null;
+      }
+      preview.push({
+        logicalKey: key,
+        deletionConflict: conflict.isDeletionConflict,
+        localHash: conflict.localHash,
+        remoteHash: conflict.remoteHash,
+        remoteMachineId: conflict.remoteMachineId,
+        remoteGeneration: conflict.remoteGeneration,
+        plannedCopyPath,
+        copyPathUncertain,
+        mergeable,
+        conflictKeys
+      });
+    }
+    return {
+      policy,
+      resolved: targets.map((c) => c.logicalKey),
+      conflictCopies: [],
+      backupDir: null,
+      preview
+    };
+  }
+  /** resolve 1회. preserve-both/latest-wins/manual 정책 적용. */
+  async runResolve(policy, keys) {
+    const { remoteManifest, state, status } = await this.loadConflictContext();
+    if (remoteManifest === null) {
+      return {
+        policy,
+        resolved: [],
+        conflictCopies: [],
+        backupDir: null,
+        ...policy === "merge" ? { mergeFallbacks: [] } : {}
+      };
+    }
     const targets = this.selectConflicts(status.conflicts, keys);
     if (targets.length === 0) {
-      return { policy, resolved: [], conflictCopies: [], backupDir: null };
+      return {
+        policy,
+        resolved: [],
+        conflictCopies: [],
+        backupDir: null,
+        ...policy === "merge" ? { mergeFallbacks: [] } : {}
+      };
     }
     if (policy === "manual") {
-      return { policy, resolved: [], conflictCopies: [], backupDir: null };
+      return {
+        policy,
+        resolved: [],
+        conflictCopies: [],
+        backupDir: null
+      };
     }
     const runTs = this.makeRunTs();
     const backupRoot = path11.join(this.backupsDir, runTs);
     const resolved = [];
     const conflictCopies = [];
+    const mergeFallbacks = [];
     const nextState = { ...state };
     let hadBackup = false;
     let anyAdopted = false;
@@ -51560,38 +51667,104 @@ var SyncEngine = class {
       const absPath = this.safeAbsPath(key);
       if (absPath === null) continue;
       const effectivePolicy = isConfigJsonKey(key) ? "latest-wins" : policy;
-      if (effectivePolicy === "preserve-both") {
-        const mid = sanitizeToken(conflict.remoteMachineId);
-        const gen = sanitizeToken(conflict.remoteGeneration);
-        if (entry.deleted) {
-          const markerPath = `${absPath}.conflict-deleted-${mid}-${gen}`;
-          if (!isWithinHome(this.config.home, markerPath)) {
-            this.logger?.warn(`[engine] conflict \uB9C8\uCEE4 \uACBD\uB85C\uAC00 home \uBC16 \u2014 \uAC74\uB108\uB700: ${key}`);
-          } else {
-            if (!await fs8.access(markerPath).then(() => true).catch(() => false)) {
-              await this.atomicWriteFile(
-                markerPath,
-                `\uC6D0\uACA9(${conflict.remoteMachineId}, gen ${conflict.remoteGeneration})\uC774 \uC774 \uD30C\uC77C\uC744 \uC0AD\uC81C\uD588\uC2B5\uB2C8\uB2E4.
-\uB85C\uCEEC\uBCF8\uC740 \uC720\uC9C0\uB418\uC5C8\uC2B5\uB2C8\uB2E4. \uAC80\uD1A0 \uD6C4 \uB85C\uCEEC\uC744 \uC0AD\uC81C\uD558\uAC70\uB098 sync_push \uB85C \uC6D0\uACA9\uC5D0 \uBCF5\uC6D0\uD558\uC138\uC694.
-`
-              );
-            }
-            conflictCopies.push({ logicalKey: key, copyPath: markerPath });
-          }
-        } else {
-          const remotePlain = await this.downloadBlob(key);
-          if (remotePlain !== null) {
-            const copyPath = `${absPath}.conflict-${mid}-${gen}`;
-            if (!isWithinHome(this.config.home, copyPath)) {
-              this.logger?.warn(`[engine] conflict \uC0AC\uBCF8 \uACBD\uB85C\uAC00 home \uBC16 \u2014 \uAC74\uB108\uB700: ${key}`);
-            } else {
-              if (!await fs8.access(copyPath).then(() => true).catch(() => false)) {
-                await this.atomicWriteFile(copyPath, remotePlain);
-              }
-              conflictCopies.push({ logicalKey: key, copyPath });
-            }
-          }
+      const fallbackWithSidecar = async (reason, conflictKeys, remotePlainForSidecar, missing) => {
+        const copy = await this.writeConflictSidecar(key, absPath, entry, conflict, remotePlainForSidecar);
+        if (copy) conflictCopies.push(copy);
+        mergeFallbacks.push({
+          logicalKey: key,
+          reason,
+          conflictKeys,
+          ...missing ? { missing } : {}
+        });
+        resolved.push(key);
+      };
+      if (effectivePolicy === "merge") {
+        if (!isSettingsKey(key) || entry.deleted) {
+          await fallbackWithSidecar(entry.deleted ? "deleted" : "not-settings", [], null);
+          continue;
         }
+        const remotePlain = await this.downloadBlob(key);
+        if (remotePlain === null) {
+          this.logger?.warn(`[engine] resolve(merge): blob \uBD80\uC7AC ${key}`);
+          mergeFallbacks.push({ logicalKey: key, reason: "blob-missing", conflictKeys: [] });
+          continue;
+        }
+        const remoteShared = this.parseJson(remotePlain.toString("utf-8"));
+        if (remoteShared === null) {
+          await fallbackWithSidecar("remote-unparseable", [], remotePlain);
+          continue;
+        }
+        const localExists = await fs8.access(absPath).then(() => true).catch(() => false);
+        if (!localExists) {
+          await fallbackWithSidecar("local-missing", [], remotePlain);
+          continue;
+        }
+        let localRaw;
+        try {
+          localRaw = await fs8.readFile(absPath);
+        } catch {
+          await fallbackWithSidecar("local-unparseable", [], remotePlain);
+          continue;
+        }
+        const localReal = this.parseJson(localRaw.toString("utf-8"));
+        if (localReal === null) {
+          await fallbackWithSidecar("local-unparseable", [], remotePlain);
+          continue;
+        }
+        const home = this.config.home;
+        const localObj = home ? tokenizeHome(localReal, home) : localReal;
+        const baseShared = await this.readBaseSnapshotJson(key) ?? {};
+        const mergeResult = threeWayMerge(localObj, remoteShared, baseShared);
+        if (mergeResult.hasConflict) {
+          await fallbackWithSidecar("leaf-conflict", mergeResult.conflictKeys, remotePlain);
+          continue;
+        }
+        const prereq = checkInstallPrereqs(
+          mergeResult.merged,
+          path11.join(this.config.home, ".claude", "plugins")
+        );
+        if (!prereq.ok) {
+          await fallbackWithSidecar("install-prereq", [], remotePlain, prereq.missing);
+          continue;
+        }
+        const backupPath2 = await this.backupFile(absPath, key, backupRoot, localRaw);
+        if (backupPath2 !== null) hadBackup = true;
+        const currentLocalHash = await hashFile(absPath);
+        if (currentLocalHash !== sha2563(localRaw)) {
+          this.logger?.warn(
+            `[engine] resolve(merge): \uBCD1\uD569 \uC785\uB825 \uCEA1\uCC98 \uC774\uD6C4 \uB85C\uCEEC \uBCC0\uACBD \uAC10\uC9C0, \uC4F0\uAE30 \uCDE8\uC18C ${key}`
+          );
+          await fallbackWithSidecar("adopt-failed", [], remotePlain);
+          continue;
+        }
+        const mergedReal = home ? detokenizeHome(mergeResult.merged, home) : mergeResult.merged;
+        const prevStateEntry = nextState[key];
+        try {
+          await this.atomicWriteFile(absPath, JSON.stringify(mergedReal, null, 2));
+          await this.writeBaseSnapshot(key, remotePlain);
+          nextState[key] = {
+            syncedHash: entry.contentHash,
+            syncedGeneration: entry.generation
+          };
+        } catch (err) {
+          if (backupPath2 !== null) {
+            await this.rollback([{ key, absPath, backupPath: backupPath2 }]);
+          }
+          if (prevStateEntry === void 0) delete nextState[key];
+          else nextState[key] = prevStateEntry;
+          await fallbackWithSidecar("adopt-failed", [], remotePlain);
+          this.logger?.warn(
+            `[engine] resolve(merge): \uC4F0\uAE30 \uC2E4\uD328 \uB864\uBC31 ${key}: ${String(err.message)}`
+          );
+          continue;
+        }
+        resolved.push(key);
+        anyAdopted = true;
+        continue;
+      }
+      if (effectivePolicy === "preserve-both") {
+        const copy = await this.writeConflictSidecar(key, absPath, entry, conflict, null);
+        if (copy) conflictCopies.push(copy);
         resolved.push(key);
         continue;
       }
@@ -51643,7 +51816,8 @@ var SyncEngine = class {
       policy,
       resolved,
       conflictCopies,
-      backupDir: hadBackup ? backupRoot : null
+      backupDir: hadBackup ? backupRoot : null,
+      ...policy === "merge" ? { mergeFallbacks } : {}
     };
   }
   /** 충돌 목록에서 keys 로 필터(생략 시 전체). */
@@ -51776,12 +51950,12 @@ var SyncEngine = class {
    * 대상 파일을 backups/<runTs>/<logicalKey> 로 백업.
    * 파일이 없으면(생성 케이스) null 반환(복원 시 삭제로 롤백).
    */
-  async backupFile(absPath, key, backupRoot) {
+  async backupFile(absPath, key, backupRoot, data) {
     try {
-      const data = await fs8.readFile(absPath);
+      const content = data ?? await fs8.readFile(absPath);
       const backupPath = path11.join(backupRoot, ...key.split("/"));
       await fs8.mkdir(path11.dirname(backupPath), { recursive: true });
-      await fs8.writeFile(backupPath, data);
+      await fs8.writeFile(backupPath, content);
       return backupPath;
     } catch (err) {
       if (err.code === "ENOENT") return null;
@@ -51802,6 +51976,37 @@ var SyncEngine = class {
         this.logger?.error(`[engine] \uB864\uBC31 \uC2E4\uD328 ${b.key}: ${String(err.message)}`);
       }
     }
+  }
+  async writeConflictSidecar(key, absPath, entry, conflict, remotePlain) {
+    const mid = sanitizeToken(conflict.remoteMachineId);
+    const gen = sanitizeToken(conflict.remoteGeneration);
+    if (entry.deleted) {
+      const markerPath = `${absPath}.conflict-deleted-${mid}-${gen}`;
+      if (!isWithinHome(this.config.home, markerPath)) {
+        this.logger?.warn(`[engine] conflict \uB9C8\uCEE4 \uACBD\uB85C\uAC00 home \uBC16 \u2014 \uAC74\uB108\uB700: ${key}`);
+        return null;
+      }
+      if (!await fs8.access(markerPath).then(() => true).catch(() => false)) {
+        await this.atomicWriteFile(
+          markerPath,
+          `\uC6D0\uACA9(${conflict.remoteMachineId}, gen ${conflict.remoteGeneration})\uC774 \uC774 \uD30C\uC77C\uC744 \uC0AD\uC81C\uD588\uC2B5\uB2C8\uB2E4.
+\uB85C\uCEEC\uBCF8\uC740 \uC720\uC9C0\uB418\uC5C8\uC2B5\uB2C8\uB2E4. \uAC80\uD1A0 \uD6C4 \uB85C\uCEEC\uC744 \uC0AD\uC81C\uD558\uAC70\uB098 sync_push \uB85C \uC6D0\uACA9\uC5D0 \uBCF5\uC6D0\uD558\uC138\uC694.
+`
+        );
+      }
+      return { logicalKey: key, copyPath: markerPath };
+    }
+    const plain = remotePlain ?? await this.downloadBlob(key);
+    if (plain === null) return null;
+    const copyPath = `${absPath}.conflict-${mid}-${gen}`;
+    if (!isWithinHome(this.config.home, copyPath)) {
+      this.logger?.warn(`[engine] conflict \uC0AC\uBCF8 \uACBD\uB85C\uAC00 home \uBC16 \u2014 \uAC74\uB108\uB700: ${key}`);
+      return null;
+    }
+    if (!await fs8.access(copyPath).then(() => true).catch(() => false)) {
+      await this.atomicWriteFile(copyPath, plain);
+    }
+    return { logicalKey: key, copyPath };
   }
   /** manifest-only read + pulledSettings 추출. 블롭 다운로드·로컬 파일 미변경.
    *  락 획득 前 read-only 단계 전용.
