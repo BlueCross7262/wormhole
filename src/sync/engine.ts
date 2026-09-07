@@ -696,6 +696,16 @@ export class SyncEngine {
     const toRemove = status.items.filter((i) => i.kind === "remoteDeleted");
     const convergedItems = status.items.filter((i) => i.kind === "converged");
 
+    // 원격 엔트리가 tombstone 없이 사라진 키 — 적용도 삭제도 하지 않으므로 눈에 띄게 남긴다.
+    const missingKeys = status.summary.remoteMissing;
+    if (missingKeys.length > 0) {
+      const head = missingKeys.slice(0, 5).join(", ");
+      const tail = missingKeys.length > 5 ? ` 외 ${missingKeys.length - 5}건` : "";
+      this.logger?.warn(
+        `[engine] pull: 원격 매니페스트에 엔트리 부재 ${missingKeys.length}건 — 적용·삭제 모두 하지 않음: ${head}${tail}`,
+      );
+    }
+
     if (toApply.length === 0 && toRemove.length === 0 && convergedItems.length === 0) {
       // 충돌만 있을 수 있음 — 정책 적용은 resolve 가 담당, pull 은 보고만.
       return {
@@ -720,7 +730,12 @@ export class SyncEngine {
       await mapLimit(toApply, IO_CONCURRENCY, async (item) => {
         const key = item.logicalKey;
         const entry = remoteManifest.entries[key];
-        if (!entry || entry.deleted) return;
+        if (!entry || entry.deleted) {
+          this.logger?.warn(
+            `[engine] pull: 원격 엔트리 부재/삭제로 적용 건너뜀 ${key}`,
+          );
+          return;
+        }
 
         // 원격 키 경로 검증(탈출 방어). 유효하지 않으면 건너뜀.
         const absPath = this.safeAbsPath(key);

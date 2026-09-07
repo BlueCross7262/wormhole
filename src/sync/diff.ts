@@ -80,6 +80,10 @@ export function classifyKey(
     const remoteDeleted = remoteEntry !== undefined && remoteEntry.deleted;
     if (remoteDeleted) {
       kind = localExists ? "remoteDeleted" : "unchanged";
+    } else if (remoteEntry === undefined && baseExists) {
+      // 원격이 tombstone 없이 엔트리를 드롭(force-up 으로 매니페스트 재생성 등).
+      // 삭제인지 미업로드인지 구분 불가하므로 보고만 하고 자동 적용/삭제하지 않는다.
+      kind = "remoteMissing";
     } else if (!baseExists) {
       kind = "remoteAdded";
     } else {
@@ -184,6 +188,7 @@ function summarize(items: DiffItem[]): SyncSummary {
     remoteAdded: [],
     remoteModified: [],
     remoteDeleted: [],
+    remoteMissing: [],
     conflicts: [],
     unchanged: [],
     converged: [],
@@ -207,6 +212,9 @@ function summarize(items: DiffItem[]): SyncSummary {
         break;
       case "remoteDeleted":
         summary.remoteDeleted.push(item.logicalKey);
+        break;
+      case "remoteMissing":
+        summary.remoteMissing.push(item.logicalKey);
         break;
       case "conflict":
         summary.conflicts.push(item.logicalKey);

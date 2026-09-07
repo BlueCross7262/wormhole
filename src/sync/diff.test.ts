@@ -197,6 +197,49 @@ describe("classifyKey — single-key 3-way 판정", () => {
     assert.equal(item.remoteGeneration, 7);
     assert.equal(item.remoteHash, null);
   });
+
+  test("remoteMissing: 원격 엔트리 자체가 부재(tombstone 아님) + base 존재 + 로컬 미변경", () => {
+    const item = classifyKey("k", "hOld", "hOld", undefined, 1);
+    assert.equal(item.kind, "remoteMissing");
+    assert.equal(item.remoteHash, null);
+    assert.equal(item.remoteGeneration, null);
+    assert.equal(item.localHash, "hOld");
+    assert.equal(item.baseHash, "hOld");
+  });
+
+  test("remoteMissing 은 tombstone 과 구분된다: tombstone 은 여전히 remoteDeleted", () => {
+    const tombstoned = classifyKey(
+      "k",
+      "hOld",
+      "hOld",
+      entry({ deleted: true, contentHash: "hOld", generation: 3 }),
+      1,
+    );
+    assert.equal(tombstoned.kind, "remoteDeleted");
+    const missing = classifyKey("k", "hOld", "hOld", undefined, 1);
+    assert.equal(missing.kind, "remoteMissing");
+  });
+
+  test("엔트리 부재 + 로컬도 변경됨 → conflict(삭제충돌) 로 남는다", () => {
+    const item = classifyKey("k", "hNew", "hOld", undefined, 1);
+    assert.equal(item.kind, "conflict");
+  });
+
+  test("엔트리 부재 + base 부재 → remoteMissing 아님(unchanged)", () => {
+    const item = classifyKey("k", null, null, undefined, undefined);
+    assert.equal(item.kind, "unchanged");
+  });
+
+  test("scopeExcluded 엔트리는 remoteMissing 으로 분류되지 않는다", () => {
+    const item = classifyKey(
+      "k",
+      "hOld",
+      "hOld",
+      entry({ scopeExcluded: true, contentHash: "hRemote", generation: 2 }),
+      1,
+    );
+    assert.equal(item.kind, "modified");
+  });
 });
 
 // ── computeStatus: collectKeys + toLocalMap + summarize 를 간접 검증 ──
@@ -221,6 +264,7 @@ describe("computeStatus — full diff over manifests", () => {
       remoteAdded: [],
       remoteModified: [],
       remoteDeleted: [],
+      remoteMissing: [],
       conflicts: [],
       unchanged: [],
       converged: [],
@@ -419,5 +463,24 @@ describe("computeStatus — full diff over manifests", () => {
     const status = computeStatus(input);
     assert.equal(status.items.length, 1);
     assert.equal(status.items[0].localHash, "hSecond");
+  });
+
+  test("force-up lineage 단절 재현: 원격이 엔트리를 드롭하면 remoteMissing 버킷에 모인다", () => {
+    // 다른 머신의 force-up 으로 매니페스트가 재생성돼 일부 키의 엔트리가 통째로 사라진 상황.
+    const input: DiffInput = {
+      local: [local("kept", "hKept"), local("dropped", "hDropped")],
+      manifest: manifestOf({ kept: entry({ contentHash: "hKept" }) }),
+      state: {
+        kept: { syncedHash: "hKept", syncedGeneration: 1 },
+        dropped: { syncedHash: "hDropped", syncedGeneration: 1 },
+      },
+      machineId: "me",
+    };
+    const status = computeStatus(input);
+    assert.deepEqual(status.summary.remoteMissing, ["dropped"]);
+    assert.deepEqual(status.summary.remoteModified, []);
+    assert.deepEqual(status.summary.remoteDeleted, []);
+    assert.deepEqual(status.summary.unchanged, ["kept"]);
+    assert.deepEqual(status.conflicts, []);
   });
 });

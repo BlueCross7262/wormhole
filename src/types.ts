@@ -195,6 +195,8 @@ export type ChangeKind =
   | "remoteAdded"
   | "remoteModified"
   | "remoteDeleted"
+  /** base 에는 있으나 원격 매니페스트에 엔트리 자체가 부재(tombstone 아님). 보고 전용 — 자동 적용/삭제 대상 아님. */
+  | "remoteMissing"
   /** 원격·로컬 동시 변경 발산 → 정책 적용. */
   | "conflict"
   /** 원격·로컬이 동일 콘텐츠로 수렴 → 전송 없이 base/state watermark 만 전진. */
@@ -256,6 +258,8 @@ export interface SyncSummary {
   remoteAdded: LogicalKey[];
   remoteModified: LogicalKey[];
   remoteDeleted: LogicalKey[];
+  /** 원격 매니페스트에 엔트리가 사라진 키(force-up 등 lineage 단절). 보고 전용. */
+  remoteMissing: LogicalKey[];
   conflicts: LogicalKey[];
   unchanged: LogicalKey[];
   /** 양측이 동일 콘텐츠로 수렴 → IO 없이 watermark 전진 대상. */
