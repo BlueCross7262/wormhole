@@ -32264,6 +32264,8 @@ function classifyKey(logicalKey, localHash, baseHash, remoteEntry, syncedGenerat
     const remoteDeleted = remoteEntry !== void 0 && remoteEntry.deleted;
     if (remoteDeleted) {
       kind = localExists ? "remoteDeleted" : "unchanged";
+    } else if (remoteEntry === void 0 && baseExists) {
+      kind = "remoteMissing";
     } else if (!baseExists) {
       kind = "remoteAdded";
     } else {
@@ -32344,6 +32346,7 @@ function summarize(items) {
     remoteAdded: [],
     remoteModified: [],
     remoteDeleted: [],
+    remoteMissing: [],
     conflicts: [],
     unchanged: [],
     converged: []
@@ -32367,6 +32370,9 @@ function summarize(items) {
         break;
       case "remoteDeleted":
         summary.remoteDeleted.push(item.logicalKey);
+        break;
+      case "remoteMissing":
+        summary.remoteMissing.push(item.logicalKey);
         break;
       case "conflict":
         summary.conflicts.push(item.logicalKey);
@@ -33530,6 +33536,14 @@ var SyncEngine = class {
     );
     const toRemove = status.items.filter((i2) => i2.kind === "remoteDeleted");
     const convergedItems = status.items.filter((i2) => i2.kind === "converged");
+    const missingKeys = status.summary.remoteMissing;
+    if (missingKeys.length > 0) {
+      const head = missingKeys.slice(0, 5).join(", ");
+      const tail = missingKeys.length > 5 ? ` \uC678 ${missingKeys.length - 5}\uAC74` : "";
+      this.logger?.warn(
+        `[engine] pull: \uC6D0\uACA9 \uB9E4\uB2C8\uD398\uC2A4\uD2B8\uC5D0 \uC5D4\uD2B8\uB9AC \uBD80\uC7AC ${missingKeys.length}\uAC74 \u2014 \uC801\uC6A9\xB7\uC0AD\uC81C \uBAA8\uB450 \uD558\uC9C0 \uC54A\uC74C: ${head}${tail}`
+      );
+    }
     if (toApply.length === 0 && toRemove.length === 0 && convergedItems.length === 0) {
       return {
         dryRun: false,
@@ -33549,7 +33563,12 @@ var SyncEngine = class {
       await mapLimit(toApply, IO_CONCURRENCY, async (item) => {
         const key = item.logicalKey;
         const entry = remoteManifest.entries[key];
-        if (!entry || entry.deleted) return;
+        if (!entry || entry.deleted) {
+          this.logger?.warn(
+            `[engine] pull: \uC6D0\uACA9 \uC5D4\uD2B8\uB9AC \uBD80\uC7AC/\uC0AD\uC81C\uB85C \uC801\uC6A9 \uAC74\uB108\uB700 ${key}`
+          );
+          return;
+        }
         const absPath = this.safeAbsPath(key);
         if (absPath === null) return;
         const plain = await this.downloadBlob(key);
@@ -34531,7 +34550,7 @@ import * as nodePath from "node:path";
 import { readFileSync as readFileSync4 } from "node:fs";
 import { fileURLToPath } from "node:url";
 function resolveVersion() {
-  if (true) return "0.5.16";
+  if (true) return "0.5.17";
   try {
     const pkgPath = fileURLToPath(new URL("../package.json", import.meta.url));
     const pkg = JSON.parse(readFileSync4(pkgPath, "utf-8"));
