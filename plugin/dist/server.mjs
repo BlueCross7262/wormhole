@@ -33270,7 +33270,7 @@ var EMPTY_COMPLETION_RESULT = {
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 function resolveVersion() {
-  if (true) return "0.5.17";
+  if (true) return "0.5.18";
   try {
     const pkgPath = fileURLToPath(new URL("../package.json", import.meta.url));
     const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
@@ -51039,7 +51039,7 @@ var SyncEngine = class {
     const manifest = remoteManifest ?? ManifestStore.empty(this.machineId);
     const local = await this.scanWithHashes();
     const state = await this.readState();
-    this.purgeDescopedKeys(local, state, manifest);
+    await this.purgeDescopedKeys(local, state, manifest);
     const status = computeStatus({ local, manifest: remoteManifest, state, machineId: this.machineId });
     const pushed = [
       ...status.summary.added,
@@ -51083,7 +51083,7 @@ var SyncEngine = class {
     const expectedGeneration = remoteManifest ? remoteManifest.manifestGeneration : null;
     const local = await this.scanWithHashes();
     const state = await this.readState();
-    const descoped = this.purgeDescopedKeys(local, state, manifest);
+    const descoped = await this.purgeDescopedKeys(local, state, manifest);
     const status = computeStatus({
       local,
       manifest: remoteManifest,
@@ -51529,9 +51529,13 @@ var SyncEngine = class {
    * classifyKey 가 이 플래그로 단락해 out-of-scope 키를 "deleted"(tombstone) 로 오분류하지 않게 한다.
    * base 스냅샷·state 엔트리 제거는 커밋-지점 원자성을 위해 caller(runPush)의 post-commit 으로 지연한다
    * — 부작용이 없어 planPush(dry-run)에서도 로컬 상태를 파괴하지 않는다.
-   * local 스캔에 없고 state 에 잔존하는 키 = de-scope 대상.
+   * local 스캔에 없고 state 에 잔존하는 키 = de-scope 후보.
+   * marker 모드 스킬 키는 스코프가 로컬 FS 파생(resolveSkillsInclude)이라 dir 삭제가 유일한
+   * 삭제 채널이다. 그 키가 디스크에서도 사라졌으면(isDeletedOnDisk) 마킹을 생략해 classifyKey
+   * 가 "deleted" 로 분류하게 하고, 파일이 남아 있으면(마커 제거 등 unpublish) 기존대로 마킹한다.
+   * 비스킬 키는 config 로 스코프를 줄인 머신별 opt-out 이 정당하므로 FS 판정을 적용하지 않는다.
    */
-  purgeDescopedKeys(local, state, manifest) {
+  async purgeDescopedKeys(local, state, manifest) {
     const localKeys = new Set(local.map((f3) => f3.logicalKey));
     const homeRootKeys = new Set(Object.keys(this.config.homeRootTargets ?? {}));
     const descoped = [];
@@ -51539,12 +51543,29 @@ var SyncEngine = class {
       if (localKeys.has(key)) continue;
       if (homeRootKeys.has(key)) continue;
       if (isKeyInScope(key, this.config.targets)) continue;
+      const markerSkill = Boolean(this.config.skills_keyword) && isSkillSubscribeKey(key, this.config.targets);
+      if (markerSkill && await this.isDeletedOnDisk(key)) continue;
       if (manifest.entries[key] && !manifest.entries[key].deleted) {
         manifest.entries[key] = { ...manifest.entries[key], scopeExcluded: true };
         descoped.push(key);
       }
     }
     return descoped;
+  }
+  /**
+   * 로컬 파일이 실제로 사라졌는지 판정한다. 삭제로 보는 유일한 조건은 stat 이 ENOENT 인 경우다.
+   * safeAbsPath 가 null(경로 이탈)이거나 권한·IO 오류, 경로에 디렉터리가 있는 비정상 상태는
+   * 모두 false 를 돌려 de-scope 경로로 보낸다 — 불확실성을 삭제 전파로 승격하지 않는다.
+   */
+  async isDeletedOnDisk(key) {
+    const absPath = this.safeAbsPath(key);
+    if (absPath === null) return false;
+    try {
+      await fs8.stat(absPath);
+      return false;
+    } catch (err) {
+      return err.code === "ENOENT";
+    }
   }
   // ── resolve ─────────────────────────────────────────────────
   /** dryRun resolve 계획. */
