@@ -22,6 +22,19 @@ JSON 결과를 읽고 사용자에게 한국어로 요약한다.
 `/wormhole-resolve` 로 키별 theirs(`--policy latest-wins`), ours(`--policy ours`), 또는 merge(`--policy merge`, settings.json 3-way 자동 머지) 를 선택한 뒤 재 sync 한다.
 `--policy latest-wins` sync 는 충돌을 자동 해소하므로 차단되지 않는다. `--policy merge` sync 는 폴백 없이 전부 머지되면 차단되지 않고, 폴백된 키가 남으면 그 키가 잔존 충돌로 push 를 막는다.
 
+### resolve 실행 여부 확인 (필수)
+
+- 결과 JSON 이 `aborted: true` + `reason: "conflicts"` 면 그 자리에서 재시도하지 않는다. 먼저 `conflicts` 배열의 `logicalKey`·`remoteMachineId`·`copyPath` 를 요약해 보여준다.
+- 요약 직후 `AskUserQuestion` 으로 `/wormhole-resolve` 실행 여부와 정책을 사용자에게 묻는다. 묻지 않고 자동 실행하지 않는다. 선택지 4개를 제시한다.
+  - `merge` — settings.json 키 단위 3-way 자동 머지. 충돌 키가 전부 `settings.json` 이면 이 항목을 첫 번째 권장으로 둔다
+  - `latest-wins` — 원격본(theirs) 채택
+  - `ours` — 로컬본 채택
+  - 실행하지 않음 — 충돌 sidecar 를 사용자가 직접 확인
+- 정책을 고르면 `/wormhole-resolve --policy <선택값>` 을 실행하고, 남은 항목이 없을 때만 sync 를 1회 재실행한다. 일부 키만 해소하려면 `--policy manual --keys k1,k2` 를 쓴다.
+- 재실행에서도 `aborted: true` 면 잔존 충돌을 보고하고 멈춘다. 같은 질문을 반복하거나 다른 정책으로 자동 전환하지 않는다.
+- 실행하지 않음을 고르면 어떤 명령도 실행하지 않고 충돌 목록과 sidecar 경로만 남긴 채 끝낸다.
+- `reason: "missing-plugins"` 차단은 이 질문 대상이 아니다 — `missing` 목록을 보고하고 플러그인 설치를 안내한다.
+
 ## Force 모드 (파괴적 — 주의)
 
 ### `--force-up` (원격 초기화 후 로컬 전체 업로드)
