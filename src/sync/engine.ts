@@ -76,20 +76,45 @@ export class InstallBarrierError extends Error {
   }
 }
 
+function enabledPluginKeys(settings: unknown): Set<string> {
+  const obj = settings as Record<string, unknown> | null | undefined;
+  const enabled = (obj?.enabledPlugins ?? {}) as Record<string, unknown>;
+  return new Set(
+    Object.entries(enabled)
+      .filter(([, v]) => !!v)
+      .map(([k]) => k),
+  );
+}
+
 /** installed_plugins.json + known_marketplaces.json 기반 설치 선결조건 검사.
  *  pulledSettings.enabledPlugins 의 truthy 키만 추출해 plugin-level 로 판정.
  *  레지스트리 파일 부재/파싱 실패는 보수적으로 미설치 처리.
+ *
+ *  localSettings/baseSettings 를 주면 "이 sync 가 끝난 뒤에도 로컬에 남을 요구" 만 검사한다.
+ *  base 에 켜져 있었는데 로컬이 끈 키는 이번 동기화로 원격에서도 사라질 요구이므로 제외한다
+ *  — 그러지 않으면 플러그인을 지운 머신이 그 제거를 push 하지 못해 영구 교착에 빠진다.
+ *  base 에 없던 키(= 원격이 새로 추가한 요구)는 로컬이 안 켰어도 그대로 검사한다.
+ *  둘 중 하나라도 없으면(읽기·파싱 실패 포함) 기존대로 원격 기준 전수 검사한다.
  */
 export function checkInstallPrereqs(
   pulledSettings: unknown,
   pluginsDir: string,
+  opts?: { localSettings?: unknown; baseSettings?: unknown },
 ): { ok: boolean; missing: string[] } {
   const settings = pulledSettings as Record<string, unknown> | null | undefined;
   const enabledPlugins = (settings?.enabledPlugins ?? {}) as Record<string, unknown>;
 
-  const required = Object.entries(enabledPlugins)
+  let required = Object.entries(enabledPlugins)
     .filter(([, v]) => !!v)
     .map(([k]) => k);
+
+  if (opts?.localSettings != null && opts?.baseSettings != null) {
+    const localEnabled = enabledPluginKeys(opts.localSettings);
+    const baseEnabled = enabledPluginKeys(opts.baseSettings);
+    required = required.filter(
+      (key) => localEnabled.has(key) || !baseEnabled.has(key),
+    );
+  }
 
   if (required.length === 0) return { ok: true, missing: [] };
 
@@ -1575,6 +1600,20 @@ export class SyncEngine {
     return this.readJsonFile(this.baseSnapshotPath(key));
   }
 
+  /** 설치 선결조건 검사 범위 축소용 로컬/base settings. 둘 다 있을 때만 반환. */
+  private async readPrereqScope(): Promise<
+    { localSettings: Record<string, unknown>; baseSettings: Record<string, unknown> } | undefined
+  > {
+    const key = ".claude/settings.json" as LogicalKey;
+    const localSettings = await this.readJsonFile(
+      path.join(this.config.home, ".claude", "settings.json"),
+    );
+    if (localSettings === null) return undefined;
+    const baseSettings = await this.readBaseSnapshotJson(key);
+    if (baseSettings === null) return undefined;
+    return { localSettings, baseSettings };
+  }
+
   // ── 백업/롤백 ───────────────────────────────────────────────
 
   /** runTs 디렉터리명(파일시스템 안전). */
@@ -1707,8 +1746,9 @@ export class SyncEngine {
     const { pluginsDir, policy } = opts;
 
     const { pulledSettings } = await this.fetchRemote();
+    const prereqScope = await this.readPrereqScope();
 
-    const prereq = checkInstallPrereqs(pulledSettings, pluginsDir);
+    const prereq = checkInstallPrereqs(pulledSettings, pluginsDir, prereqScope);
     if (!prereq.ok) {
       return { aborted: true, reason: "missing-plugins", missing: prereq.missing };
     }
@@ -1716,7 +1756,7 @@ export class SyncEngine {
     return this.mutex.runExclusive(async () =>
       withLock(this.lock, async () => {
         const { pulledSettings: freshSettings } = await this.fetchRemote();
-        const recheck = checkInstallPrereqs(freshSettings, pluginsDir);
+        const recheck = checkInstallPrereqs(freshSettings, pluginsDir, await this.readPrereqScope());
         if (!recheck.ok) {
           return { aborted: true as const, reason: "missing-plugins" as const, missing: recheck.missing };
         }
