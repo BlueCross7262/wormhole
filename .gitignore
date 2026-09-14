@@ -60,6 +60,12 @@ desktop.ini
 # ── graphify 도구 부산물 (이번 세션 생성, wormhole 소스 아님 — 추적 안 함) ──
 graphify-out/
 /CLAUDE.md
-.claude/
+.claude/*
+
+# ── 내부 개발용 프로젝트 스킬 (배포 대상 아님 — plugin/ 에 안 들어간다) ──
+!.claude/skills/
+!.claude/skills/**
+
+.lmgh/
 
 .notes/
