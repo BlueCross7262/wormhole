@@ -25,14 +25,14 @@ JSON 결과를 읽고 사용자에게 한국어로 요약한다.
 ### resolve 실행 여부 확인 (필수)
 
 - 결과 JSON 이 `aborted: true` + `reason: "conflicts"` 면 그 자리에서 재시도하지 않는다. 먼저 `conflicts` 배열의 `logicalKey`·`remoteMachineId`·`copyPath` 를 요약해 보여준다.
-- 요약 직후 `AskUserQuestion` 으로 `/wormhole-resolve` 실행 여부와 정책을 사용자에게 묻는다. 묻지 않고 자동 실행하지 않는다. 선택지 4개를 제시한다.
-  - `merge` — settings.json 키 단위 3-way 자동 머지. 충돌 키가 전부 `settings.json` 이면 이 항목을 첫 번째 권장으로 둔다
-  - `latest-wins` — 원격본(theirs) 채택
-  - `ours` — 로컬본 채택
+- 요약 직후 `AskUserQuestion` 으로 `/wormhole-resolve` 실행 여부를 묻는다. 묻지 않고 자동 실행하지 않는다. 선택지 3개를 제시한다. 이 질문에서 파일 단위 정책을 확정하지 않는다 — 정책 선택은 아래 항목별 확인 결과가 정한다.
+  - 항목별로 확인하며 해소 (Recommended) — `/wormhole-resolve` 를 `--policy` 없이 실행한다. 그 문서의 「충돌 항목별 확인 (필수)」 절차가 비교 표를 먼저 내고 갈린 항목마다 `base`·로컬·원격·직접 입력 중에서 묻는다
+  - 정책 하나로 일괄 해소 — 사용자가 표 없이 빠른 처리를 원할 때만 고른다. 이 선택지를 고르면 그때 `merge` / `latest-wins` / `ours` 중 하나를 다시 묻고 `/wormhole-resolve --policy <선택값>` 을 실행한다. 충돌 키가 전부 `settings.json` 이면 `merge` 를 권장값으로 둔다
   - 실행하지 않음 — 충돌 sidecar 를 사용자가 직접 확인
-- 정책을 고르면 `/wormhole-resolve --policy <선택값>` 을 실행하고, 남은 항목이 없을 때만 sync 를 1회 재실행한다. 일부 키만 해소하려면 `--policy manual --keys k1,k2` 를 쓴다.
+- 해소가 끝나 남은 항목이 없을 때만 sync 를 1회 재실행한다. 일부 키만 해소하려면 `--policy manual --keys k1,k2` 를 쓴다.
 - 재실행에서도 `aborted: true` 면 잔존 충돌을 보고하고 멈춘다. 같은 질문을 반복하거나 다른 정책으로 자동 전환하지 않는다.
 - 실행하지 않음을 고르면 어떤 명령도 실행하지 않고 충돌 목록과 sidecar 경로만 남긴 채 끝낸다.
+- 해소 후 남는 충돌 sidecar 는 wormhole 관리 대상이 아니라 push 에 섞이지 않는다. 경로를 보고하고 삭제 여부는 사용자가 정한다.
 - `reason: "missing-plugins"` 차단은 이 질문 대상이 아니다 — `missing` 목록을 보고하고 플러그인 설치를 안내한다.
 
 ## Force 모드 (파괴적 — 주의)
