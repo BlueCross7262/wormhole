@@ -33270,7 +33270,7 @@ var EMPTY_COMPLETION_RESULT = {
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 function resolveVersion() {
-  if (true) return "0.5.19";
+  if (true) return "0.5.20";
   try {
     const pkgPath = fileURLToPath(new URL("../package.json", import.meta.url));
     const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
@@ -50806,10 +50806,24 @@ function deepAssign(target, src) {
 }
 
 // src/sync/engine.ts
-function checkInstallPrereqs(pulledSettings, pluginsDir) {
+function enabledPluginKeys(settings) {
+  const obj = settings;
+  const enabled = obj?.enabledPlugins ?? {};
+  return new Set(
+    Object.entries(enabled).filter(([, v]) => !!v).map(([k]) => k)
+  );
+}
+function checkInstallPrereqs(pulledSettings, pluginsDir, opts) {
   const settings = pulledSettings;
   const enabledPlugins = settings?.enabledPlugins ?? {};
-  const required2 = Object.entries(enabledPlugins).filter(([, v]) => !!v).map(([k]) => k);
+  let required2 = Object.entries(enabledPlugins).filter(([, v]) => !!v).map(([k]) => k);
+  if (opts?.localSettings != null && opts?.baseSettings != null) {
+    const localEnabled = enabledPluginKeys(opts.localSettings);
+    const baseEnabled = enabledPluginKeys(opts.baseSettings);
+    required2 = required2.filter(
+      (key) => localEnabled.has(key) || !baseEnabled.has(key)
+    );
+  }
   if (required2.length === 0) return { ok: true, missing: [] };
   let installedPlugins = {};
   try {
@@ -51981,6 +51995,17 @@ var SyncEngine = class {
   async readBaseSnapshotJson(key) {
     return this.readJsonFile(this.baseSnapshotPath(key));
   }
+  /** 설치 선결조건 검사 범위 축소용 로컬/base settings. 둘 다 있을 때만 반환. */
+  async readPrereqScope() {
+    const key = ".claude/settings.json";
+    const localSettings = await this.readJsonFile(
+      path11.join(this.config.home, ".claude", "settings.json")
+    );
+    if (localSettings === null) return void 0;
+    const baseSettings = await this.readBaseSnapshotJson(key);
+    if (baseSettings === null) return void 0;
+    return { localSettings, baseSettings };
+  }
   // ── 백업/롤백 ───────────────────────────────────────────────
   /** runTs 디렉터리명(파일시스템 안전). */
   makeRunTs() {
@@ -52078,14 +52103,15 @@ var SyncEngine = class {
   async syncAtomic(opts) {
     const { pluginsDir, policy } = opts;
     const { pulledSettings } = await this.fetchRemote();
-    const prereq = checkInstallPrereqs(pulledSettings, pluginsDir);
+    const prereqScope = await this.readPrereqScope();
+    const prereq = checkInstallPrereqs(pulledSettings, pluginsDir, prereqScope);
     if (!prereq.ok) {
       return { aborted: true, reason: "missing-plugins", missing: prereq.missing };
     }
     return this.mutex.runExclusive(
       async () => withLock(this.lock, async () => {
         const { pulledSettings: freshSettings } = await this.fetchRemote();
-        const recheck = checkInstallPrereqs(freshSettings, pluginsDir);
+        const recheck = checkInstallPrereqs(freshSettings, pluginsDir, await this.readPrereqScope());
         if (!recheck.ok) {
           return { aborted: true, reason: "missing-plugins", missing: recheck.missing };
         }
