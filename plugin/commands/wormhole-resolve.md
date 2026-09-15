@@ -20,6 +20,9 @@ JSON 결과를 읽고 사용자에게 한국어로 요약한다.
 - 원격 값 — 충돌 sidecar (`<파일>.conflict-<machineId>-<generation>`) 를 읽는다.
 - `base` 값 — `<stateDir>/base/<sha256(logicalKey)>` 를 읽는다. `stateDir` 은 wormhole 설정값이고 파일명은 논리키 문자열의 sha256 hex 다. 파일이 없으면 `base` 는 빈 객체로 본다.
 - `merge` 예측이 필요하면 `--policy merge --dry-run` 으로 `mergeable` 과 `conflictKeys` 를 먼저 확인한다.
+- 변경 내용 — `--dry-run` 결과 `preview[]` 의 `remoteChangeDiff`(원격이 base 대비 무엇을 바꿨나)와 `localChangeDiff`(로컬이 base 대비 무엇을 바꿨나)를 읽는다. 이전 sync 가 남긴 `<파일>.conflict-<machineId>-<generation>.diff` 에도 같은 내용이 사람 읽는 형태로 기록돼 있다.
+  - 어느 쪽이 `null` 이면 그 쪽 변경 내용을 구할 수 없다는 뜻이다. 변경 없음으로 읽지 않는다.
+  - `format` 이 `binary`·`deleted` 이거나 `pruned: true` 면 본문이 없다. 이때는 아래 값 수집 결과로만 비교한다.
 
 ### 비교 표
 
@@ -53,7 +56,9 @@ JSON 결과를 읽고 사용자에게 한국어로 요약한다.
   - settings.json 이 아닌 파일, 삭제 충돌도 preserve-both 로 폴백한다
   - 폴백 사유 9종 — `not-settings`, `deleted`, `leaf-conflict`, `blob-missing`, `local-missing`, `local-unparseable`, `remote-unparseable`, `install-prereq`, `adopt-failed`
   - 결과의 `mergeFallbacks` 배열에서 키별 폴백 사유를 확인한다
-- `--dry-run` — 실제 변경 없이 미리보기. 결과의 `preview` 배열에 키별 판단 근거(삭제충돌 여부, 예정 sidecar 경로, 로컬·원격 해시, `merge` 정책이면 머지 가능 여부와 충돌 키 목록)가 담긴다
+- `--dry-run` — 실제 변경 없이 미리보기. 결과의 `preview` 배열에 키별 판단 근거(삭제충돌 여부, 예정 sidecar 경로, 로컬·원격 해시, 양쪽 변경 내용 `remoteChangeDiff`·`localChangeDiff`, `merge` 정책이면 머지 가능 여부와 충돌 키 목록)가 담긴다
   - preview 는 예측값이다. 다운로드 시점과 실제 실행 시점 사이 원격이 바뀌면 결과가 달라질 수 있다
 
 충돌 sidecar (`<파일>.conflict-<machineId>-<generation>`, 삭제 충돌은 `.conflict-deleted-` 접두)에 기록되는 settings.json 의 원격 내용은 raw 파일이 아니라 정규화(키 정렬 + `${HOME}` 토큰화)를 거친 원문이다. 로컬 settings.json 과 1:1 비교하면 키 순서와 홈 경로 표기가 달라 보이는 게 정상이다.
+
+같은 위치의 `<파일>.conflict-<machineId>-<generation>.diff` 는 sync 가 충돌을 보고할 때 남기는 양쪽 변경 내용 기록이다. 원격 diff 는 그 머신이 push 할 때 매니페스트에 저장한 값이고, 로컬 diff 는 보고 시점에 base 스냅샷과 대조해 계산한 값이다. 두 sidecar 모두 wormhole 동기화 범위 밖이라 push 에 섞이지 않는다.

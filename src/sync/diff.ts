@@ -143,6 +143,7 @@ export function computeStatus(input: DiffInput): SyncStatus {
         remoteMachineId: re?.lastModifiedBy ?? "unknown",
         remoteGeneration: re?.generation ?? 0,
         isDeletionConflict,
+        remoteChangeDiff: re?.changeDiff ?? null,
       });
     }
   }

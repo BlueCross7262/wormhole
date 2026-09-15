@@ -107,6 +107,32 @@ export interface Config {
 // ── 매니페스트 (manifest.ts) ──────────────────────────────
 
 /** 매니페스트 단일 엔트리 (logicalKey 별 메타). 삭제는 tombstone 으로 표현. */
+/**
+ * 한 번의 push 가 만든 콘텐츠 변화의 기계 diff. 충돌 해소 시 "원격이 무엇을 바꿨나" 를
+ * 해시가 아니라 실제 변경으로 보여주기 위한 advisory 데이터.
+ * 동기화 정확성 판정에는 쓰지 않는다 — 구버전 클라이언트가 strip 해도 무해해야 한다.
+ */
+export interface ChangeDiff {
+  /** diff 산출 형식. binary·deleted 는 text 가 빈 문자열. */
+  format: "unified" | "binary" | "added" | "deleted";
+  /** 이 diff 의 출발점 콘텐츠 해시. 신규(base 부재)면 null. */
+  baseHash: Sha256Hex | null;
+  /** 도착점 콘텐츠 해시. deleted 면 사라진 콘텐츠의 해시. */
+  contentHash: Sha256Hex;
+  /** 추가 줄수. 절단·prune 전 전체 diff 기준. */
+  added: number;
+  /** 삭제 줄수. 절단·prune 전 전체 diff 기준. */
+  removed: number;
+  /** 키당 상한 초과로 text 앞부분만 남겼는지. prune 은 이 값을 바꾸지 않는다. */
+  truncated: boolean;
+  /** 매니페스트 총량 예산 초과로 text 를 통째 비웠는지. */
+  pruned: boolean;
+  /** diff 산출 시각(ms). prune 우선순위 기준. */
+  diffAt: EpochMs;
+  /** unified diff 본문. truncated 면 앞부분만, pruned 면 빈 문자열. */
+  text: string;
+}
+
 export interface FileEntry {
   /** 평문 콘텐츠 sha256 hex. deleted 면 마지막 알려진 값(또는 빈 문자열). */
   contentHash: Sha256Hex;
@@ -124,6 +150,8 @@ export interface FileEntry {
   deletedAt: EpochMs | null;
   /** de-scope 마킹. true 면 이 머신의 동기화 범위에서 제외된 키 — pull/force-download 적용 건너뜀. */
   scopeExcluded?: boolean;
+  /** 이 엔트리를 만든 push 의 변경 diff. advisory — 없을 수 있다(구버전 작성분). */
+  changeDiff?: ChangeDiff;
 }
 
 /** 매니페스트 전체. 암호화 후 armored 로 <base>/manifest.json.age 에 저장. */
@@ -232,6 +260,8 @@ export interface ConflictItem {
   remoteGeneration: number;
   /** 한쪽이 tombstone(삭제)인 충돌이면 true. */
   isDeletionConflict: boolean;
+  /** 원격본을 만든 push 의 변경 diff. 원격 엔트리가 없거나 구버전 작성분이면 null. */
+  remoteChangeDiff?: ChangeDiff | null;
 }
 
 /** 전체 동기화 상태/계획. status 및 diff 의 산출. */
@@ -366,6 +396,10 @@ export interface ResolvePreviewItem {
   copyPathUncertain: boolean;
   mergeable: boolean | null;
   conflictKeys: string[];
+  /** 원격본을 만든 push 의 변경 diff. 원격 엔트리 부재·구버전 작성분이면 null. */
+  remoteChangeDiff?: ChangeDiff | null;
+  /** base→로컬 변경 diff. 이 자리에서 계산한다(저장 안 함). 계산 불가면 null. */
+  localChangeDiff?: ChangeDiff | null;
 }
 
 /** resolve 결과. */
@@ -397,6 +431,12 @@ export interface ConflictDetail {
   remoteMachineId: MachineId;
   remoteGeneration: number;
   copyPath: string | null;
+  /** 원격본을 만든 push 의 변경 diff. 원격 엔트리 부재·구버전 작성분이면 null. */
+  remoteChangeDiff?: ChangeDiff | null;
+  /** base→로컬 변경 diff. 이 자리에서 계산한다(저장 안 함). 계산 불가면 null. */
+  localChangeDiff?: ChangeDiff | null;
+  /** 양쪽 diff 를 담은 사이드카 경로. 기록 못 했으면 null. */
+  diffPath?: string | null;
 }
 
 // ── 로깅 (logger.ts) ──────────────────────────────────────

@@ -393,6 +393,19 @@ describe("H7: blocked.conflicts 필드 기대값 정확성(실 엔진)", () => {
     const expectedCopyPath = `${expectedAbsPath}.conflict-machine-a-1`;
     assert.equal(cDetail.copyPath, expectedCopyPath, "copyPath must match expected sidecar path");
     assert.ok(existsSync(cDetail.copyPath), "copyPath file must exist on disk");
+
+    // B 는 A 의 push 를 pull 한 적이 없어 base 스냅샷이 없다 — 양쪽 모두 base 대비 전량 추가다.
+    assert.equal(cDetail.remoteChangeDiff?.format, "added", "원격 첫 push 는 added diff");
+    assert.equal(cDetail.remoteChangeDiff?.baseHash, null);
+    assert.equal(cDetail.localChangeDiff?.format, "added", "base 부재면 로컬도 전량 추가");
+    assert.equal(cDetail.localChangeDiff?.added, 1);
+    assert.equal(cDetail.localChangeDiff?.contentHash, expectedLocalHash);
+    assert.equal(
+      cDetail.diffPath,
+      `${expectedAbsPath}.conflict-machine-a-1.diff`,
+      "diffPath must match expected diff sidecar path",
+    );
+    assert.ok(existsSync(cDetail.diffPath!), "diff sidecar file must exist on disk");
   });
 
   test("H7-b: 충돌 2건 각 copyPath 가 해당 키에 1:1 매핑(미스조인 없음)", async () => {

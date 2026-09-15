@@ -25,6 +25,10 @@ JSON 결과를 읽고 사용자에게 한국어로 요약한다.
 ### resolve 실행 여부 확인 (필수)
 
 - 결과 JSON 이 `aborted: true` + `reason: "conflicts"` 면 그 자리에서 재시도하지 않는다. 먼저 `conflicts` 배열의 `logicalKey`·`remoteMachineId`·`copyPath` 를 요약해 보여준다.
+- 요약에 양쪽 변경 내용을 함께 싣는다. `conflicts[]` 의 `remoteChangeDiff`(원격이 무엇을 바꿨나, 그 머신이 push 할 때 저장한 값)와 `localChangeDiff`(이 머신이 base 대비 무엇을 바꿨나, 보고 시점 계산값)를 쓴다.
+  - 각 diff 는 `added`·`removed` 줄수와 `text`(unified diff 본문)를 담는다. 요약에는 줄수와 핵심 변경 줄만 내고 전문은 `diffPath` 파일을 가리킨다.
+  - `remoteChangeDiff` 가 `null` 이면 원격 엔트리가 없거나 구버전 wormhole 이 쓴 항목이다 — 변경 없음이 아니라 정보 없음으로 보고한다.
+  - `format` 이 `binary`·`deleted` 이거나 `pruned: true` 면 본문이 비어 있다. 각각 바이너리·삭제·원격 예산 초과로 구분해 적는다. `truncated: true` 는 본문이 앞부분만 남은 것이다.
 - 요약 직후 `AskUserQuestion` 으로 `/wormhole-resolve` 실행 여부를 묻는다. 묻지 않고 자동 실행하지 않는다. 선택지 3개를 제시한다. 이 질문에서 파일 단위 정책을 확정하지 않는다 — 정책 선택은 아래 항목별 확인 결과가 정한다.
   - 항목별로 확인하며 해소 (Recommended) — `/wormhole-resolve` 를 `--policy` 없이 실행한다. 그 문서의 「충돌 항목별 확인 (필수)」 절차가 비교 표를 먼저 내고 갈린 항목마다 `base`·로컬·원격·직접 입력 중에서 묻는다
   - 정책 하나로 일괄 해소 — 사용자가 표 없이 빠른 처리를 원할 때만 고른다. 이 선택지를 고르면 그때 `merge` / `latest-wins` / `ours` 중 하나를 다시 묻고 `/wormhole-resolve --policy <선택값>` 을 실행한다. 충돌 키가 전부 `settings.json` 이면 `merge` 를 권장값으로 둔다
@@ -32,7 +36,7 @@ JSON 결과를 읽고 사용자에게 한국어로 요약한다.
 - 해소가 끝나 남은 항목이 없을 때만 sync 를 1회 재실행한다. 일부 키만 해소하려면 `--policy manual --keys k1,k2` 를 쓴다.
 - 재실행에서도 `aborted: true` 면 잔존 충돌을 보고하고 멈춘다. 같은 질문을 반복하거나 다른 정책으로 자동 전환하지 않는다.
 - 실행하지 않음을 고르면 어떤 명령도 실행하지 않고 충돌 목록과 sidecar 경로만 남긴 채 끝낸다.
-- 해소 후 남는 충돌 sidecar 는 wormhole 관리 대상이 아니라 push 에 섞이지 않는다. 경로를 보고하고 삭제 여부는 사용자가 정한다.
+- 해소 후 남는 충돌 sidecar 는 wormhole 관리 대상이 아니라 push 에 섞이지 않는다. 경로를 보고하고 삭제 여부는 사용자가 정한다. 같은 위치의 `<파일>.conflict-<machineId>-<generation>.diff`(양쪽 변경 내용 기록, `conflicts[].diffPath`)도 같은 대상이므로 함께 보고한다.
 - `reason: "missing-plugins"` 차단은 이 질문 대상이 아니다 — `missing` 목록을 보고하고 플러그인 설치를 안내한다.
 
 ## Force 모드 (파괴적 — 주의)

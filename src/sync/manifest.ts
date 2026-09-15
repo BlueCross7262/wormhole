@@ -7,13 +7,28 @@ import type {
   MachineId,
   Config,
   Sha256Hex,
+  ChangeDiff,
 } from "../types.js";
+import { HARD_MAX_DIFF_BYTES } from "./change-diff.js";
 import type { AgeCrypto } from "../crypto/age.js";
 import type { RemoteStore } from "../webdav/client.js";
 import { PreconditionFailedError } from "../webdav/client.js";
 import { z } from "zod";
 
 // 원격(타 머신/타 OS 작성) 매니페스트는 신뢰 불가 입력 — 복호 성공만으로 구조를 믿지 않고 zod 로 검증.
+// changeDiff 본문은 원격이 채우는 값이라 상한을 강제한다. 상한이 없으면 피어 하나가
+// 매니페스트를 부풀려 모든 머신의 pull 을 무겁게 만들 수 있다(advisory 데이터가 동기화를 방해).
+const ChangeDiffSchema = z.object({
+  format: z.enum(["unified", "binary", "added", "deleted"]),
+  baseHash: z.string().nullable(),
+  contentHash: z.string(),
+  added: z.number().int().nonnegative(),
+  removed: z.number().int().nonnegative(),
+  truncated: z.boolean(),
+  pruned: z.boolean(),
+  diffAt: z.number(),
+  text: z.string().max(HARD_MAX_DIFF_BYTES),
+});
 const FileEntrySchema = z.object({
   contentHash: z.string(),
   size: z.number().int().nonnegative(),
@@ -23,6 +38,7 @@ const FileEntrySchema = z.object({
   deleted: z.boolean(),
   deletedAt: z.number().nullable(),
   scopeExcluded: z.boolean().optional(),
+  changeDiff: ChangeDiffSchema.optional(),
 });
 const ManifestSchema = z.object({
   schemaVersion: z.literal(1),
@@ -217,6 +233,7 @@ export class ManifestStore {
     size: number,
     mtimeMs: number,
     machineId: MachineId,
+    changeDiff?: ChangeDiff | null,
   ): FileEntry {
     const existing = manifest.entries[logicalKey];
 
@@ -229,6 +246,7 @@ export class ManifestStore {
         lastModifiedBy: machineId,
         deleted: false,
         deletedAt: null,
+        ...(changeDiff ? { changeDiff: { ...changeDiff, baseHash: null } } : {}),
       };
       manifest.entries[logicalKey] = entry;
       return entry;
@@ -236,6 +254,13 @@ export class ManifestStore {
 
     // 콘텐츠 변경(또는 tombstone 부활) 시 generation +1.
     const changed = existing.contentHash !== contentHash || existing.deleted;
+    // baseHash 는 스냅샷이 아니라 직전 원격 엔트리 해시로 확정한다 — "gen N → N+1 변화" 가
+    // 구성적으로 보장된다. 콘텐츠 무변경이면 기존 diff 를 보존한다(덮어쓰지 않음).
+    const nextDiff = changed
+      ? changeDiff
+        ? { ...changeDiff, baseHash: existing.contentHash }
+        : undefined
+      : existing.changeDiff;
     const entry: FileEntry = {
       contentHash,
       size,
@@ -244,6 +269,7 @@ export class ManifestStore {
       lastModifiedBy: changed ? machineId : existing.lastModifiedBy,
       deleted: false,
       deletedAt: null,
+      ...(nextDiff ? { changeDiff: nextDiff } : {}),
     };
     manifest.entries[logicalKey] = entry;
     return entry;
@@ -255,17 +281,28 @@ export class ManifestStore {
     manifest: Manifest,
     logicalKey: LogicalKey,
     machineId: MachineId,
+    changeDiff?: ChangeDiff | null,
   ): FileEntry | null {
     const existing = manifest.entries[logicalKey];
     if (!existing) return null;
     if (existing.deleted) return existing;
 
+    // deleted 는 "gen N 의 콘텐츠가 사라짐" 이므로 baseHash·contentHash 가 모두 직전 해시다.
     const entry: FileEntry = {
       ...existing,
       generation: existing.generation + 1,
       lastModifiedBy: machineId,
       deleted: true,
       deletedAt: Date.now(),
+      ...(changeDiff
+        ? {
+            changeDiff: {
+              ...changeDiff,
+              baseHash: existing.contentHash,
+              contentHash: existing.contentHash,
+            },
+          }
+        : {}),
     };
     manifest.entries[logicalKey] = entry;
     return entry;

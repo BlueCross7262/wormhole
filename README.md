@@ -625,6 +625,17 @@ wormhole 은 **명시적 단발 동기화** 모델이다. 상주 서버·자동 
 - `/wormhole-sync --policy merge` 로 sync 안에서도 쓸 수 있다. 폴백된 키가 하나라도 남으면 그 실행은 push 를 막고 종료코드 1 을 낸다 — merge 도 다른 정책과 마찬가지로 완전히 해소되지 않은 충돌로는 push 하지 않는다.
 - config 의 `conflictPolicy` 에 `"merge"` 를 지정하는 경우의 구버전 호환 주의는 §5 config.json 설정의 경고를 참조.
 
+### 변경 내용 기록 (changeDiff)
+
+충돌을 만난 머신이 "원격이 무엇을 바꿨나" 를 해시가 아니라 실제 변경으로 볼 수 있도록, push 는 그 변경의 기계 diff 를 매니페스트 엔트리에 함께 저장한다.
+
+- push 시 base 스냅샷과 업로드본을 비교해 unified diff 를 만들고 `FileEntry.changeDiff` 에 넣는다. 사람 개입이 없으므로 무인 sync·hook 실행에서도 항상 남는다.
+- `settings.json`·`.claude.json` 은 양쪽을 동기화 정규화폼으로 맞춘 뒤 비교한다 — 키 순서·들여쓰기·후행 개행 차이가 diff 잡음으로 새지 않는다.
+- 충돌이 push 를 막으면 `conflicts[]` 에 `remoteChangeDiff`(저장된 원격 변경)와 `localChangeDiff`(보고 시점에 계산한 로컬 변경)가 함께 실리고, `<파일>.conflict-<machineId>-<generation>.diff` 사이드카에도 사람이 읽는 형태로 기록된다. `resolve --dry-run` 의 `preview[]` 에도 같은 두 필드가 담긴다.
+- 크기 한도 — 키당 본문 4 KiB(초과 시 `truncated: true`, 줄수 통계는 전체값 유지), 매니페스트 총 본문 256 KiB(초과 시 오래된 것부터 본문만 비우고 `pruned: true`). 원격에서 받는 본문은 64 KiB 하드 상한으로 검증한다.
+- advisory 데이터다. 동기화 정확성 판정에 쓰지 않으며, 이 필드를 모르는 구버전 wormhole 이 매니페스트를 다시 쓰면 기록이 사라진다 — 이후 push 가 다시 채운다.
+- `pruneChangeDiffs` 는 push 하는 머신에서만 돈다. 오래 pull 만 하는 머신은 예산을 넘긴 매니페스트를 그대로 받을 수 있고, 누구든 다음 push 에서 정리된다.
+
 ---
 
 ## 10. 안전장치

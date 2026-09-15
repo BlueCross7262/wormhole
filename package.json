@@ -23,6 +23,7 @@
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@scure/base": "^1.1.5",
     "age-encryption": "^0.2.3",
+    "diff": "^9.0.0",
     "fast-glob": "^3.3.2",
     "micromatch": "^4.0.8",
     "webdav": "^5.7.1",

@@ -27,6 +27,7 @@ import type {
   ConflictItem,
   ConflictCopy,
   ConflictDetail,
+  ChangeDiff,
   LogicalKey,
   Sha256Hex,
   MergeFallback,
@@ -36,6 +37,13 @@ import type {
 import type { AgeCrypto } from "../crypto/age.js";
 import type { RemoteStore } from "../webdav/client.js";
 import { ManifestStore, ManifestConflictError, MANIFEST_FILE } from "./manifest.js";
+import {
+  computeChangeDiff,
+  pruneChangeDiffs,
+  renderDiffSection,
+  MAX_DIFF_BYTES_PER_KEY,
+  MAX_TOTAL_DIFF_BYTES,
+} from "./change-diff.js";
 import { computeStatus } from "./diff.js";
 import { scanLocal, isKeyInScope, isSkillSubscribeKey } from "./scanner.js";
 import { hashFile, sha256, blobName } from "./hash.js";
@@ -532,6 +540,31 @@ export class SyncEngine {
         mtimeMs = f.mtimeMs;
       }
       await this.uploadBlob(key, content);
+      // base 스냅샷은 postCommit 으로 지연되므로 이 시점의 값은 아직 직전 동기화본이다.
+      // blob 과 base 가 모두 정규화폼이라 정규화 차이가 diff 로 새지 않는다.
+      const baseForDiff = await this.readBaseSnapshotBuffer(key);
+      // base 스냅샷과 직전 원격 엔트리가 어긋나면 diff 의 출발점이 실제 gen N 콘텐츠가 아니다.
+      // baseHash 는 upsertEntry 가 원격 엔트리 해시로 확정하므로 계약은 유지되지만, 본문은
+      // 그 해시가 가리키는 콘텐츠와 다를 수 있다 — advisory 라 막지 않고 알린다.
+      const prevEntry = manifest.entries[key];
+      if (baseForDiff !== null && prevEntry && !prevEntry.deleted) {
+        const baseSnapHash = sha256(baseForDiff);
+        if (baseSnapHash !== prevEntry.contentHash) {
+          this.logger?.warn(
+            `[engine] changeDiff: base 스냅샷이 원격 엔트리와 불일치 — diff 본문이 부정확할 수 있음 ${key} base=${baseSnapHash.slice(0, 8)} remote=${prevEntry.contentHash.slice(0, 8)}`,
+          );
+        }
+      }
+      const changeDiff = computeChangeDiff(
+        baseForDiff === null ? null : this.normalizeForDiff(key, baseForDiff.toString("utf-8")),
+        content.toString("utf-8"),
+        {
+          maxBytes: MAX_DIFF_BYTES_PER_KEY,
+          baseHash: null,
+          contentHash,
+          now: Date.now(),
+        },
+      );
       const entry = ManifestStore.upsertEntry(
         manifest,
         key,
@@ -539,6 +572,7 @@ export class SyncEngine {
         size,
         mtimeMs,
         this.machineId,
+        changeDiff,
       );
       const gen = entry.generation;
       const blobContent = content;
@@ -552,7 +586,18 @@ export class SyncEngine {
     // 삭제(tombstone)는 네트워크 없는 동기 작업 — 순차 처리.
     for (const item of deleteItems) {
       const key = item.logicalKey;
-      const entry = ManifestStore.tombstoneEntry(manifest, key, this.machineId);
+      const baseForDiff = await this.readBaseSnapshotBuffer(key);
+      const deleteDiff = computeChangeDiff(
+        baseForDiff === null ? null : this.normalizeForDiff(key, baseForDiff.toString("utf-8")),
+        null,
+        {
+          maxBytes: MAX_DIFF_BYTES_PER_KEY,
+          baseHash: null,
+          contentHash: "",
+          now: Date.now(),
+        },
+      );
+      const entry = ManifestStore.tombstoneEntry(manifest, key, this.machineId, deleteDiff);
       postCommit.push(async () => {
         await this.removeBaseSnapshot(key);
       });
@@ -586,6 +631,8 @@ export class SyncEngine {
     }
 
     // 커밋 지점: 매니페스트 CAS 쓰기. push/delete 가 있을 때만 원격 반영.
+    // write() 는 entries 를 건드리지 않으므로 prune 은 반드시 그 호출 전에 돌아야 반영된다.
+    pruneChangeDiffs(manifest, MAX_TOTAL_DIFF_BYTES);
     let writtenGeneration = manifest.manifestGeneration;
     if (pushed.length > 0 || deleted.length > 0 || descoped.length > 0) {
       const written = await this.manifestStore.write(
@@ -1209,6 +1256,8 @@ export class SyncEngine {
         copyPathUncertain,
         mergeable,
         conflictKeys,
+        remoteChangeDiff: entry.changeDiff ?? null,
+        localChangeDiff: await this.computeLocalChangeDiff(key, absPath),
       });
     }
 
@@ -1600,6 +1649,92 @@ export class SyncEngine {
     return this.readJsonFile(this.baseSnapshotPath(key));
   }
 
+  /** base 스냅샷 원본 바이트. 없거나 읽기 실패면 null(diff 는 advisory 라 실패를 전파하지 않는다). */
+  private async readBaseSnapshotBuffer(key: LogicalKey): Promise<Buffer | null> {
+    try {
+      return await fs.readFile(this.baseSnapshotPath(key));
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * diff 비교용 정규화. settings.json·.claude.json 은 양쪽을 같은 정규화폼으로 맞춰야
+   * 키 순서·들여쓰기·후행 개행 차이가 diff 잡음으로 새지 않는다.
+   * base 스냅샷은 기록 경로마다 직렬화가 미세하게 달라(예: pull 경로는 후행 개행 없음)
+   * 로컬만 정규화하면 어긋난다 — 양쪽 모두 이 함수를 통과시킨다.
+   */
+  private normalizeForDiff(key: LogicalKey, text: string): string {
+    if (isSettingsKey(key)) return normalizeSettingsForSync(text, this.config.home).text;
+    if (isClaudeJsonKey(key)) {
+      return normalizeClaudeJsonForSync(text, this.config.syncMcpServers, this.config.home).text;
+    }
+    return text;
+  }
+
+  /**
+   * 충돌 시점의 base→로컬 diff. 저장하지 않고 보고할 때마다 계산한다.
+   * settings.json·.claude.json 은 base 스냅샷이 정규화폼이므로 로컬도 같은 정규화를 거쳐야
+   * 키 순서·${HOME} 토큰 차이가 diff 로 새지 않는다.
+   * 계산 불가(로컬 부재·base 부재·읽기 실패)면 null — 충돌 보고 자체를 막지 않는다.
+   */
+  private async computeLocalChangeDiff(
+    key: LogicalKey,
+    absPath: string,
+  ): Promise<ChangeDiff | null> {
+    const base = await this.readBaseSnapshotBuffer(key);
+    let nextText: string | null = null;
+    try {
+      nextText = this.normalizeForDiff(key, await fs.readFile(absPath, "utf-8"));
+    } catch {
+      nextText = null;
+    }
+    if (base === null && nextText === null) return null;
+
+    const baseText = base === null ? null : this.normalizeForDiff(key, base.toString("utf-8"));
+    const baseHash = baseText === null ? null : sha256(Buffer.from(baseText, "utf-8"));
+    return computeChangeDiff(baseText, nextText, {
+      maxBytes: MAX_DIFF_BYTES_PER_KEY,
+      baseHash,
+      // 삭제는 "그 콘텐츠가 사라짐" 이므로 contentHash 도 base 해시다(tombstone 쪽 규약과 동일).
+      contentHash: nextText === null ? (baseHash ?? "") : sha256(Buffer.from(nextText, "utf-8")),
+      now: Date.now(),
+    });
+  }
+
+  /** 충돌 사이드카 옆에 양쪽 diff 를 기록한다. 본문이 JSON 일 수 있는 사이드카를 건드리지 않는다. */
+  private async writeConflictDiffSidecar(
+    absPath: string,
+    conflict: ConflictItem,
+    remoteDiff: ChangeDiff | null,
+    localDiff: ChangeDiff | null,
+  ): Promise<string | null> {
+    const mid = sanitizeToken(conflict.remoteMachineId);
+    const gen = sanitizeToken(conflict.remoteGeneration);
+    const diffPath = `${absPath}.conflict-${mid}-${gen}.diff`;
+    if (!isWithinHome(this.config.home, diffPath)) {
+      this.logger?.warn(`[engine] conflict diff 경로가 home 밖 — 건너뜀: ${conflict.logicalKey}`);
+      return null;
+    }
+    const body = [
+      `# ${conflict.logicalKey}`,
+      `# 원격: ${conflict.remoteMachineId} gen ${conflict.remoteGeneration}`,
+      "",
+      "## 원격 변경 (base -> 원격)",
+      renderDiffSection(remoteDiff),
+      "",
+      "## 로컬 변경 (base -> 로컬)",
+      renderDiffSection(localDiff),
+      "",
+    ].join("\n");
+    try {
+      await this.atomicWriteFile(diffPath, body);
+    } catch {
+      return null;
+    }
+    return diffPath;
+  }
+
   /** 설치 선결조건 검사 범위 축소용 로컬/base settings. 둘 다 있을 때만 반환. */
   private async readPrereqScope(): Promise<
     { localSettings: Record<string, unknown>; baseSettings: Record<string, unknown> } | undefined
@@ -1773,14 +1908,31 @@ export class SyncEngine {
           const copyMap = new Map(
             (resolveResult?.conflictCopies ?? []).map((c) => [c.logicalKey, c.copyPath]),
           );
-          const conflicts: ConflictDetail[] = afterStatus.conflicts.map((c) => ({
-            logicalKey: c.logicalKey,
-            localHash: c.localHash,
-            remoteHash: c.remoteHash,
-            remoteMachineId: c.remoteMachineId,
-            remoteGeneration: c.remoteGeneration,
-            copyPath: copyMap.get(c.logicalKey) ?? null,
-          }));
+          // 양쪽 diff 는 저장분(원격)과 그 자리 계산분(로컬)을 함께 싣는다 — 한쪽만으로는
+          // 비교 대상이 없어 충돌 판단에 쓸 수 없다. 사이드카는 별도 .diff 파일로 남긴다.
+          const conflicts: ConflictDetail[] = [];
+          for (const c of afterStatus.conflicts) {
+            const absPath = toOS(this.config.home, c.logicalKey);
+            const localChangeDiff = await this.computeLocalChangeDiff(c.logicalKey, absPath);
+            const remoteChangeDiff = c.remoteChangeDiff ?? null;
+            const diffPath = await this.writeConflictDiffSidecar(
+              absPath,
+              c,
+              remoteChangeDiff,
+              localChangeDiff,
+            );
+            conflicts.push({
+              logicalKey: c.logicalKey,
+              localHash: c.localHash,
+              remoteHash: c.remoteHash,
+              remoteMachineId: c.remoteMachineId,
+              remoteGeneration: c.remoteGeneration,
+              copyPath: copyMap.get(c.logicalKey) ?? null,
+              remoteChangeDiff,
+              localChangeDiff,
+              diffPath,
+            });
+          }
           return { aborted: true as const, reason: "conflicts" as const, conflicts };
         }
 
