@@ -33270,7 +33270,7 @@ var EMPTY_COMPLETION_RESULT = {
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 function resolveVersion() {
-  if (true) return "0.5.20";
+  if (true) return "0.5.21";
   try {
     const pkgPath = fileURLToPath(new URL("../package.json", import.meta.url));
     const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
