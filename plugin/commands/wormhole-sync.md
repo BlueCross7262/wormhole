@@ -1,6 +1,6 @@
 ---
 description: wormhole 동기화 실행 (pull→push)
-argument-hint: "[--policy latest-wins | merge] [--force-up | --force-down] [--dry-run]"
+argument-hint: "[--policy latest-wins | merge] | [--force-up | --force-down] [--dry-run]"
 ---
 
 ```bash
@@ -17,8 +17,11 @@ JSON 결과를 읽고 사용자에게 한국어로 요약한다.
 - 자동 해소를 원하되 비파괴적으로 하려면 `--policy merge` 를 전달한다.
   - 이 정책을 받은 `sync` 는 `settings.json` 만 키 단위로 3-way 자동 머지한다.
   - 그 외 파일·leaf 충돌·삭제 충돌은 `preserve-both` 로 폴백한다.
-- `manual` 정책은 sync 에서 쓸 수 없다.
-  충돌을 수동으로 해소하려면 `/wormhole-resolve` 를 실행한다.
+- `manual` 정책과 `ours` 정책은 sync 에서 쓸 수 없다.
+  `sync` 는 두 값을 오류로 거부한다.
+  충돌을 수동으로 해소하거나 로컬본을 채택하려면 `/wormhole-resolve` 를 실행한다.
+- `sync` 는 `--dry-run` 을 `--force-up`·`--force-down` 에서만 쓴다.
+  `sync` 는 일반 실행에서 이 플래그를 무시하고 실제로 pull 과 push 를 한다.
 - pull 또는 resolve 단계에서 오류가 나면 `sync` 는 push 없이 중단한다.
 - `syncAtomic` 은 설치 전제조건(미설치 플러그인·마켓플레이스 참조)과 잔존 충돌을 하드배리어로 검사한다.
   하나라도 걸리면 `syncAtomic` 은 push 를 차단하고 종료 코드 1 로 끝난다.
