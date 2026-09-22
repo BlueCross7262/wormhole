@@ -15,7 +15,7 @@ export function registerResolveTool(server: McpServer, engine: SyncEngine): void
         policy: z
           .enum(["preserve-both", "latest-wins", "ours", "manual", "merge"])
           .describe(
-            "충돌 해소 정책. preserve-both(기본): 로컬 유지 + 원격본을 .conflict 사본으로 보존(무손실). latest-wins: 원격 최신본(매니페스트 generation = 마지막으로 push 된 쪽 기준, 파일 mtime/벽시계 시각 아님)으로 덮어쓰기 + 덮어쓰기 전 로컬 백업. ours: 로컬 채택. base 스냅샷을 원격본으로 갱신해 다음 push 에서 로컬본이 업로드됨. resolve 자체는 업로드하지 않음. manual: 충돌 목록만 반환하고 자동 처리하지 않음. merge: settings.json 만 3-way 자동 머지. leaf 충돌·삭제·비settings 는 preserve-both 폴백. 생략 시 config 의 conflictPolicy 를 따른다.",
+            "충돌 해소 정책. preserve-both(기본): 로컬 유지 + 원격본을 .conflict 사본으로 보존(무손실). latest-wins: 원격 최신본(매니페스트 generation = 마지막으로 push 된 쪽 기준, 파일 mtime/벽시계 시각 아님)으로 덮어쓰기 + 덮어쓰기 전 로컬 백업. settings.json 과 ~/.claude.json 은 remote-wins 머지라 settingsExclude 키와 머신 고유 키를 보존. ours: 로컬 채택. base 스냅샷을 원격본으로 갱신해 다음 push 에서 로컬본이 업로드됨. resolve 자체는 업로드하지 않음. manual: 충돌 목록만 반환하고 자동 처리하지 않음. merge: settings.json 만 3-way 자동 머지. leaf 충돌·삭제·비settings 는 preserve-both 폴백. 생략 시 config 의 conflictPolicy 를 따른다.",
           )
           .optional(),
         keys: z.array(z.string()).optional(),

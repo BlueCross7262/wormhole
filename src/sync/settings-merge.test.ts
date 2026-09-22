@@ -6,6 +6,7 @@ import {
   extractSharedSubset,
   threeWayMerge,
   normalizeSettingsForSync,
+  isExcludedPath,
 } from "./settings-merge.js";
 import { sha256 } from "./hash.js";
 
@@ -466,6 +467,98 @@ describe("삭제 전파 회귀 가드 (threeWayMerge)", () => {
     );
     assert.equal(res.merged.ghost, "resurrect");
     assert.equal(res.hasConflict, false);
+  });
+});
+
+// ── settingsExclude — 제외 키 경로 ───────────────────────────
+
+describe("isExcludedPath", () => {
+  test("최상위 키 정확 매치", () => {
+    assert.equal(isExcludedPath(["model"], ["model"]), true);
+    assert.equal(isExcludedPath(["modelX"], ["model"]), false);
+  });
+
+  test("세그먼트 수가 다르면 매치하지 않는다", () => {
+    assert.equal(isExcludedPath(["env", "FOO"], ["env"]), false);
+    assert.equal(isExcludedPath(["model"], ["model.sub"]), false);
+  });
+
+  test("'*' 는 세그먼트 하나만 대체한다", () => {
+    assert.equal(isExcludedPath(["env", "FOO"], ["env.*"]), true);
+    assert.equal(isExcludedPath(["envX", "FOO"], ["env.*"]), false);
+    assert.equal(isExcludedPath(["env", "FOO", "BAR"], ["env.*"]), false);
+  });
+
+  test("빈 목록은 아무것도 제외하지 않는다", () => {
+    assert.equal(isExcludedPath(["model"], []), false);
+  });
+});
+
+describe("extractSharedSubset — excludes", () => {
+  test("제외 키는 shared subset 에서 빠진다", () => {
+    const shared = extractSharedSubset({ model: "opus", cleanupPeriodDays: 30 }, ["model"]);
+    assert.deepEqual(shared, { cleanupPeriodDays: 30 });
+  });
+
+  test("제외 패턴이 객체를 가리키면 서브트리째 빠진다", () => {
+    const shared = extractSharedSubset({ env: { A: "1", B: "2" }, keep: 1 }, ["env"]);
+    assert.deepEqual(shared, { keep: 1 });
+  });
+
+  test("중첩 경로 제외는 그 leaf 만 뺀다", () => {
+    const shared = extractSharedSubset({ env: { A: "1", B: "2" } }, ["env.A"]);
+    assert.deepEqual(shared, { env: { B: "2" } });
+  });
+});
+
+describe("normalizeSettingsForSync — excludes", () => {
+  test("제외 키 유무만 다른 두 입력은 같은 해시를 낸다(push 멱등성)", () => {
+    const withModel = JSON.stringify({ model: "opus", cleanupPeriodDays: 30 });
+    const withoutModel = JSON.stringify({ cleanupPeriodDays: 30 });
+    const a = normalizeSettingsForSync(withModel, "", ["model"]);
+    const b = normalizeSettingsForSync(withoutModel, "", ["model"]);
+    assert.equal(a.hash, b.hash);
+    assert.equal(a.text.includes("model"), false, "업로드 텍스트에 제외 키가 없어야 한다");
+  });
+
+  test("제외 목록이 비면 기존 동작 그대로 model 을 포함한다", () => {
+    const norm = normalizeSettingsForSync(JSON.stringify({ model: "opus" }), "");
+    assert.equal(norm.text.includes("model"), true);
+  });
+});
+
+describe("threeWayMerge — excludes", () => {
+  test("구버전 peer 가 보낸 remote model 은 로컬로 내려오지 않는다", () => {
+    const local = { model: "local-opus", theme: "dark" };
+    const remote = { model: "remote-haiku", theme: "dark" };
+    const base = { theme: "dark" };
+    const res = threeWayMerge(local, remote, base, ["model"]);
+    assert.equal(res.merged.model, "local-opus");
+    assert.equal(res.hasConflict, false);
+    assert.deepEqual(res.conflictKeys, []);
+    assert.equal(
+      Object.prototype.hasOwnProperty.call(res.sharedSubset, "model"),
+      false,
+      "shared subset 에 제외 키가 실리면 안 된다",
+    );
+  });
+
+  test("옛 base 스냅샷에 model 이 있고 remote 에 없어도 로컬 model 을 지우지 않는다", () => {
+    const local = { model: "local-opus", theme: "dark" };
+    const remote = { theme: "dark" };
+    const base = { model: "local-opus", theme: "dark" };
+    const res = threeWayMerge(local, remote, base, ["model"]);
+    assert.equal(res.merged.model, "local-opus");
+    assert.equal(res.hasConflict, false);
+  });
+
+  test("제외하지 않은 키의 3-way 머지는 그대로 동작한다", () => {
+    const local = { model: "local-opus", theme: "dark" };
+    const remote = { model: "remote-haiku", theme: "light" };
+    const base = { model: "local-opus", theme: "dark" };
+    const res = threeWayMerge(local, remote, base, ["model"]);
+    assert.equal(res.merged.theme, "light");
+    assert.equal(res.merged.model, "local-opus");
   });
 });
 

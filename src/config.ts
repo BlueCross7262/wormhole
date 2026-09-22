@@ -17,6 +17,10 @@ export const DEFAULT_INCLUDE: string[] = [
   ".claude/hud/**",
 ];
 
+// settings.json 에서 동기화하지 않을 키 경로 기본값. dot-path 이며 세그먼트 '*' 를 허용한다.
+// 사용자가 wormhole-config.json 의 settingsExclude 에 적은 값은 이 기본값에 더해진다(대체 아님).
+export const DEFAULT_SETTINGS_EXCLUDE: string[] = ["model"];
+
 export const DEFAULT_EXCLUDE: string[] = [
   ".claude/.credentials.json",
   ".claude/settings.local.json",
@@ -85,6 +89,8 @@ const RawConfigSchema = z.object({
   lock: LockConfigSchema.partial().default({}),
   // home-root 파일(예: .claude.json)의 머지 서브키와 보존모드 맵.
   homeRootTargets: z.record(HomeRootTargetSchema).optional(),
+  // settings.json 에서 제외할 키 경로. DEFAULT_SETTINGS_EXCLUDE 에 가산한다.
+  settingsExclude: z.array(z.string()).optional(),
   skills_keyword: z.string().optional(),
 });
 
@@ -309,6 +315,10 @@ function resolvePaths(parsed: z.infer<typeof RawConfigSchema>, home: string, sta
     conflictPolicy: parsed.conflictPolicy,
     lock: LockConfigSchema.parse(parsed.lock),
     homeRootTargets: parsed.homeRootTargets,
+    settingsExclude: dedupe([
+      ...DEFAULT_SETTINGS_EXCLUDE,
+      ...(parsed.settingsExclude ?? []),
+    ]),
   };
 }
 

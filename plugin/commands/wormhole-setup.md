@@ -25,7 +25,11 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/setup.mjs
 
 - `targets.include` / `targets.exclude` — 동기화할 glob 패턴 목록이다.
   기본값은 `.claude/` 하위 주요 파일을 포함한다.
-- wormhole 은 `settings.json` 을 별도 키 필터 없이 통째로 동기화한다 (프로토타입 오염 방지용 `__proto__` 류만 제외).
+- wormhole 은 `settings.json` 을 통째로 동기화하되 `settingsExclude` 에 적힌 키 경로만 뺀다 (프로토타입 오염 방지용 `__proto__` 류도 항상 제외).
+- `settingsExclude` — `settings.json` 에서 동기화하지 않을 키 경로 목록이다.
+  기본값은 `["model"]` 이며 여기 적은 값은 기본값을 대체하지 않고 더해진다.
+  dot-path 로 적고 세그먼트 하나를 `*` 로 대체할 수 있다 (`env.*`).
+  제외한 키는 머신마다 로컬 값을 유지한다.
 - `conflictPolicy` — 충돌 시 처리 방식 (`preserve-both` / `latest-wins` / `ours` / `manual` / `merge`).
 - `crypto`, `lock` 등 고급 설정은 파일 내 값을 직접 수정한다.
 

@@ -80,6 +80,7 @@ JSON 결과를 읽고 사용자에게 한국어로 요약한다.
 인수 옵션:
 - `--policy preserve-both` — 양쪽 버전 모두 보존 (기본값)
 - `--policy latest-wins` — `resolve` 는 원격 최신본(manifest generation 우선)을 채택한다 (theirs 채택).
+  `settings.json` 과 `~/.claude.json` 은 remote-wins 머지로 처리해 `settingsExclude` 키와 머신 고유 키(로그인 identity 등)를 남긴다.
   - "최신" 은 마지막으로 push 한 쪽(generation 이 높은 쪽)을 뜻한다.
     파일 mtime 이나 벽시계 시각을 뜻하지 않는다.
   - `resolve` 는 덮어쓰기 전에 로컬 변경분을 백업한다.

@@ -102,6 +102,11 @@ export interface Config {
   lock: LockConfig;
   /** home-root 파일(예: .claude.json)의 머지 서브키와 보존모드 맵. 미지정 시 undefined. */
   homeRootTargets?: Record<string, HomeRootTarget>;
+  /**
+   * settings.json 에서 동기화하지 않을 키 경로. dot-path 이며 세그먼트 '*' 를 허용한다.
+   * loadConfig/resolveConfig 는 항상 채운다. 미지정 시 DEFAULT_SETTINGS_EXCLUDE 를 쓴다.
+   */
+  settingsExclude?: string[];
 }
 
 // ── 매니페스트 (manifest.ts) ──────────────────────────────

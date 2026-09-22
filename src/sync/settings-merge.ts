@@ -75,13 +75,39 @@ export function detokenizeHome(value: unknown, home: string): unknown {
   return value;
 }
 
-// 객체를 깊이 순회하며 forbidden 키를 제거한 깊은 복제를 반환한다.
-function pruneLocal(obj: Record<string, unknown>): Record<string, unknown> {
+// 제외 경로 매칭. 패턴은 dot-path 이며 세그먼트 하나를 '*' 로 대체할 수 있다.
+// 'model' 은 최상위 model 만, 'env.*' 는 env 바로 아래 한 단계만 매치한다.
+// 세그먼트 수가 다르면 매치하지 않는다 — 'env' 패턴은 env 서브트리를 통째로 제외한다.
+export function isExcludedPath(segments: string[], excludes: string[]): boolean {
+  for (const pattern of excludes) {
+    const pat = pattern.split(".");
+    if (pat.length !== segments.length) continue;
+    let hit = true;
+    for (let i = 0; i < pat.length; i++) {
+      if (pat[i] === "*") continue;
+      if (pat[i] !== segments[i]) {
+        hit = false;
+        break;
+      }
+    }
+    if (hit) return true;
+  }
+  return false;
+}
+
+// 객체를 깊이 순회하며 forbidden 키와 제외 경로를 제거한 깊은 복제를 반환한다.
+function pruneLocal(
+  obj: Record<string, unknown>,
+  excludes: string[],
+  prefix: string[],
+): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(obj)) {
     if (isForbiddenKey(k)) continue;
+    const segments = [...prefix, k];
+    if (excludes.length > 0 && isExcludedPath(segments, excludes)) continue;
     if (isPlainObject(v)) {
-      out[k] = pruneLocal(v);
+      out[k] = pruneLocal(v, excludes, segments);
     } else {
       out[k] = v;
     }
@@ -89,8 +115,11 @@ function pruneLocal(obj: Record<string, unknown>): Record<string, unknown> {
   return out;
 }
 
-export function extractSharedSubset(obj: Record<string, unknown>): Record<string, unknown> {
-  return pruneLocal(obj);
+export function extractSharedSubset(
+  obj: Record<string, unknown>,
+  excludes: string[] = [],
+): Record<string, unknown> {
+  return pruneLocal(obj, excludes, []);
 }
 
 // 동등성 비교(구조적). 동시 변경 충돌 판정용.
@@ -191,14 +220,18 @@ export function threeWayMerge(
   local: Record<string, unknown>,
   remoteShared: Record<string, unknown>,
   baseShared: Record<string, unknown>,
+  excludes: string[] = [],
 ): SettingsMergeResult {
-  const localShared = extractSharedSubset(local);
+  const localShared = extractSharedSubset(local, excludes);
   const conflictKeys: string[] = [];
 
+  // 원격·base 도 같은 제외 목록으로 잘라야 한다. 구버전 머신이나 옛 base 스냅샷이
+  // 제외키를 들고 있으면 mergeRecursive 가 그 값을 remote-only 변경으로 채택해
+  // 로컬에 되살린다.
   const mergedShared = mergeRecursive(
     localShared,
-    remoteShared,
-    baseShared,
+    extractSharedSubset(remoteShared, excludes),
+    extractSharedSubset(baseShared, excludes),
     "",
     conflictKeys,
   );
@@ -246,6 +279,7 @@ function stableNormalize(value: unknown): unknown {
 export function normalizeSettingsForSync(
   rawText: string,
   home = "",
+  excludes: string[] = [],
 ): { text: string; hash: string; size: number } {
   let parsed: unknown;
   try {
@@ -255,7 +289,7 @@ export function normalizeSettingsForSync(
     return { text: rawText, hash: sha256(buf), size: buf.byteLength };
   }
   const obj = isPlainObject(parsed) ? parsed : {};
-  const shared = extractSharedSubset(obj);
+  const shared = extractSharedSubset(obj, excludes);
   const tokenized = home ? tokenizeHome(shared, home) : shared;
   const text = stableStringify(tokenized);
   const buf = Buffer.from(text, "utf-8");

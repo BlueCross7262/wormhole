@@ -460,6 +460,12 @@ cp config.example.json ~/.claude/wormhole-config.json
 | `targets.exclude` | 동기화 제외 glob | 자격증명·캐시·로컬 오버라이드 |
 | `syncMcpServers` | `.claude.json` mcpServers allowlist. 등록된 서버만 동기화. 미등록은 로컬. *_PAT/_TOKEN/_SECRET env 는 pull 시 로컬 값 보존. | `[]` |
 | `conflictPolicy` | 충돌 기본 정책. config 스키마가 받는 값은 `preserve-both` / `latest-wins` / `manual` / `merge` 4종이다. `ours` 는 config 에 지정할 수 없고 `/wormhole-resolve --policy ours` (또는 MCP) 호출로만 쓴다 | `preserve-both` |
+| `settingsExclude` | `settings.json` 에서 동기화하지 않을 키 경로 목록. 여기 적힌 키는 push 에 담기지 않고 pull 로도 덮이지 않으며 머신마다 로컬 값을 유지한다 | `["model"]` |
+
+- `settingsExclude` 는 `targets.exclude` 와 달리 기본값을 대체하지 않고 **가산**한다. `settingsExclude: ["env.LOCAL_ONLY"]` 로 적으면 실제 적용값은 `["model", "env.LOCAL_ONLY"]` 다. 기본 제외인 `model` 을 다시 동기화할 방법은 없다.
+- 값은 dot-path 이며 세그먼트 하나를 `*` 로 대체할 수 있다. `model` 은 최상위 `model`, `env.*` 는 `env` 바로 아래 한 단계, `env` 는 `env` 서브트리 전체를 제외한다. `*` 는 세그먼트 하나만 대체하므로 `env.*` 는 `env.A.B` 를 제외하지 않는다.
+- 머신 전부를 `settingsExclude` 지원 버전으로 올린 뒤 동기화한다. 새 버전 머신이 먼저 push 하면 제외 키가 원격에서 빠지고, 구버전 머신은 그것을 "원격이 지운 키" 로 읽어 자기 로컬 `model` 을 지운다.
+- 모든 충돌 정책이 `settingsExclude` 를 지킨다. `latest-wins` 도 `settings.json` 과 `~/.claude.json` 만은 raw 덮어쓰기 대신 remote-wins 머지로 처리해 제외 키와 머신 고유 키(로그인 identity 등)를 남긴다.
 
 - config 에 `conflictPolicy: "merge"` 를 쓰기 전에 동기화 대상 머신 전부를 `merge` 정책을 지원하는 wormhole 버전으로 먼저 올린다. 구버전 wormhole 은 알 수 없는 `conflictPolicy` 값을 zod 스키마 검증에서 거부해 config 파싱 자체가 실패하고, 그 머신은 wormhole 커맨드를 전혀 실행할 수 없게 된다.
 
@@ -549,7 +555,7 @@ wormhole doctor
 
 - `--policy` 는 `preserve-both` | `latest-wins` | `ours` | `merge` | `manual`. 생략 시 config 의 `conflictPolicy` 를 따른다.
 - `--keys` 생략 시 전체 충돌 대상.
-- `latest-wins`: 원격 최신본 (매니페스트 generation 우선) 으로 덮어쓴다. 여기서 "최신" 은 **마지막으로 push 된** 쪽(generation 이 높은 쪽)을 뜻하며, 파일 mtime/벽시계 시각이 아니다. 덮어쓰기 전 로컬본은 백업 디렉터리에 보존된다.
+- `latest-wins`: 원격 최신본 (매니페스트 generation 우선) 으로 덮어쓴다. 여기서 "최신" 은 **마지막으로 push 된** 쪽(generation 이 높은 쪽)을 뜻하며, 파일 mtime/벽시계 시각이 아니다. 덮어쓰기 전 로컬본은 백업 디렉터리에 보존된다. `settings.json` 과 `~/.claude.json` 은 raw 덮어쓰기 대신 remote-wins 머지로 처리해 `settingsExclude` 키와 머신 고유 키를 남긴다.
 - `ours`: 로컬을 채택한다. resolve 자체는 원격에 아무것도 업로드하지 않고, base 스냅샷만 원격본으로 갱신한다 — 그 결과 다음 `push` (또는 `sync`) 때 로컬본이 실제로 업로드된다.
 - `merge`: `settings.json` 만 대상으로 키 단위 3-way 자동 머지(로컬 vs 원격 공유분 vs base)를 시도한다.
   - 삭제 충돌이거나 `settings.json` 이 아닌 파일이면 자동 머지 없이 `preserve-both` 로 폴백한다.

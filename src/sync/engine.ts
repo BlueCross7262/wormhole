@@ -45,6 +45,7 @@ import {
   MAX_TOTAL_DIFF_BYTES,
 } from "./change-diff.js";
 import { computeStatus } from "./diff.js";
+import { DEFAULT_SETTINGS_EXCLUDE } from "../config.js";
 import { scanLocal, isKeyInScope, isSkillSubscribeKey } from "./scanner.js";
 import { hashFile, sha256, blobName } from "./hash.js";
 import { toOS, isSettingsKey, isClaudeJsonKey, isConfigJsonKey, isValidLogicalKey, isWithinHome } from "./paths.js";
@@ -365,7 +366,7 @@ export class SyncEngine {
           continue; // 스캔 후 삭제됨.
         }
         const norm = isSettingsKey(f.logicalKey)
-          ? normalizeSettingsForSync(raw, this.config.home)
+          ? normalizeSettingsForSync(raw, this.config.home, this.settingsExclude())
           : normalizeClaudeJsonForSync(raw, this.config.syncMcpServers, this.config.home);
         contentHash = norm.hash;
         size = norm.size;
@@ -686,7 +687,7 @@ export class SyncEngine {
         continue;
       }
       const norm = isSettingsKey(key)
-        ? normalizeSettingsForSync(rawText, this.config.home)
+        ? normalizeSettingsForSync(rawText, this.config.home, this.settingsExclude())
         : normalizeClaudeJsonForSync(rawText, this.config.syncMcpServers, this.config.home);
       const content = Buffer.from(norm.text, "utf-8");
       out.set(key, { content, contentHash: norm.hash, size: norm.size });
@@ -1028,7 +1029,7 @@ export class SyncEngine {
     // base 스냅샷은 토큰 공간으로 저장되어 있음.
     const baseShared = (await this.readBaseSnapshotJson(key)) ?? {};
 
-    const result = threeWayMerge(localObj, remoteShared, baseShared);
+    const result = threeWayMerge(localObj, remoteShared, baseShared, this.settingsExclude());
 
     // 사용자 파일은 실제 home 경로로 복원해서 쓴다.
     const mergedReal = home ? detokenizeHome(result.merged, home) : result.merged;
@@ -1058,11 +1059,16 @@ export class SyncEngine {
     const localObj = home
       ? (tokenizeHome(localReal, home) as Record<string, unknown>)
       : localReal;
-    const baseShared = extractSharedSubset(localObj);
-    const result = threeWayMerge(localObj, remoteShared, baseShared);
+    const excludes = this.settingsExclude();
+    const baseShared = extractSharedSubset(localObj, excludes);
+    const result = threeWayMerge(localObj, remoteShared, baseShared, excludes);
     const mergedReal = home ? detokenizeHome(result.merged, home) : result.merged;
     await this.atomicWriteFile(absPath, JSON.stringify(mergedReal, null, 2));
-    await this.writeBaseSnapshot(key, JSON.stringify(remoteShared, null, 2));
+    // base 스냅샷도 제외키를 뺀 상태로 남긴다. 다음 3-way 의 base 가 이 파일이다.
+    await this.writeBaseSnapshot(
+      key,
+      JSON.stringify(extractSharedSubset(remoteShared, excludes), null, 2),
+    );
     nextState[key] = { syncedHash: entry.contentHash, syncedGeneration: entry.generation };
   }
 
@@ -1230,7 +1236,12 @@ export class SyncEngine {
                 ? (tokenizeHome(localReal, home) as Record<string, unknown>)
                 : localReal;
               const baseShared = (await this.readBaseSnapshotJson(key)) ?? {};
-              const mergeResult = threeWayMerge(localObj, remoteShared, baseShared);
+              const mergeResult = threeWayMerge(
+                localObj,
+                remoteShared,
+                baseShared,
+                this.settingsExclude(),
+              );
               mergeable = !mergeResult.hasConflict;
               conflictKeys = mergeResult.conflictKeys;
               plannedCopyPath = mergeable ? null : sidecarPath;
@@ -1385,7 +1396,12 @@ export class SyncEngine {
           : localReal;
         const baseShared = (await this.readBaseSnapshotJson(key)) ?? {};
 
-        const mergeResult = threeWayMerge(localObj, remoteShared, baseShared);
+        const mergeResult = threeWayMerge(
+          localObj,
+          remoteShared,
+          baseShared,
+          this.settingsExclude(),
+        );
         if (mergeResult.hasConflict) {
           await fallbackWithSidecar("leaf-conflict", mergeResult.conflictKeys, remotePlain);
           continue;
@@ -1482,12 +1498,20 @@ export class SyncEngine {
           this.logger?.warn(`[engine] resolve(latest-wins): blob 부재 ${key}`);
           continue;
         }
-        await this.atomicWriteFile(absPath, remotePlain);
-        await this.writeBaseSnapshot(key, remotePlain);
-        nextState[key] = {
-          syncedHash: entry.contentHash,
-          syncedGeneration: entry.generation,
-        };
+        // .claude.json·settings.json 은 raw 로 덮으면 로그인 identity·머신고유 설정·
+        // settingsExclude 키가 사라진다. forceDownload 와 같은 remote-wins 머지를 쓴다.
+        if (isClaudeJsonKey(key)) {
+          await this.applyPullClaudeJson(key, absPath, remotePlain, entry, nextState);
+        } else if (isSettingsKey(key)) {
+          await this.applyForceDownSettings(key, absPath, remotePlain, entry, nextState);
+        } else {
+          await this.atomicWriteFile(absPath, remotePlain);
+          await this.writeBaseSnapshot(key, remotePlain);
+          nextState[key] = {
+            syncedHash: entry.contentHash,
+            syncedGeneration: entry.generation,
+          };
+        }
       }
       resolved.push(key);
       if (isConfigJsonKey(key)) anyAdopted = true;
@@ -1664,8 +1688,15 @@ export class SyncEngine {
    * base 스냅샷은 기록 경로마다 직렬화가 미세하게 달라(예: pull 경로는 후행 개행 없음)
    * 로컬만 정규화하면 어긋난다 — 양쪽 모두 이 함수를 통과시킨다.
    */
+  /** settings.json 제외 키 경로. config 미지정 머신은 기본값을 쓴다. */
+  private settingsExclude(): string[] {
+    return this.config.settingsExclude ?? DEFAULT_SETTINGS_EXCLUDE;
+  }
+
   private normalizeForDiff(key: LogicalKey, text: string): string {
-    if (isSettingsKey(key)) return normalizeSettingsForSync(text, this.config.home).text;
+    if (isSettingsKey(key)) {
+      return normalizeSettingsForSync(text, this.config.home, this.settingsExclude()).text;
+    }
     if (isClaudeJsonKey(key)) {
       return normalizeClaudeJsonForSync(text, this.config.syncMcpServers, this.config.home).text;
     }

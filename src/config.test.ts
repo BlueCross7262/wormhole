@@ -11,6 +11,7 @@ import {
   loadDotEnvIntoProcess,
   DEFAULT_INCLUDE,
   DEFAULT_EXCLUDE,
+  DEFAULT_SETTINGS_EXCLUDE,
   resolveSkillsInclude,
   ConfigSchema,
 } from "./config.js";
@@ -856,5 +857,25 @@ describe("resolveConfig — skills_keyword 통합", () => {
   test("skills_keyword 가 Config 에 전달됨", () => {
     const cfg = resolveConfig(minimalRaw({ home: tmpRoot, skills_keyword: "wormhole-sync" }));
     assert.equal(cfg.skills_keyword, "wormhole-sync");
+  });
+});
+
+// ── settingsExclude — 기본값 + 사용자 가산 ────────────────────
+
+describe("resolveConfig — settingsExclude", () => {
+  test("미지정이면 DEFAULT_SETTINGS_EXCLUDE 를 쓴다", () => {
+    const cfg = resolveConfig(minimalRaw({}));
+    assert.deepEqual(cfg.settingsExclude, DEFAULT_SETTINGS_EXCLUDE);
+    assert.ok(cfg.settingsExclude?.includes("model"));
+  });
+
+  test("사용자 값은 기본값을 대체하지 않고 더해진다", () => {
+    const cfg = resolveConfig(minimalRaw({ settingsExclude: ["env.LOCAL_ONLY"] }));
+    assert.deepEqual(cfg.settingsExclude, ["model", "env.LOCAL_ONLY"]);
+  });
+
+  test("기본값과 겹치는 사용자 값은 중복되지 않는다", () => {
+    const cfg = resolveConfig(minimalRaw({ settingsExclude: ["model", "statusLine.command"] }));
+    assert.deepEqual(cfg.settingsExclude, ["model", "statusLine.command"]);
   });
 });

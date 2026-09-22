@@ -41,6 +41,9 @@
     "serena"
   ],
   "conflictPolicy": "preserve-both",
+  "settingsExclude": [
+    "model"
+  ],
   "homeRootTargets": {
     ".claude.json": {
       "subkeys": [
