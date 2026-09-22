@@ -26,6 +26,66 @@ JSON 결과를 읽고 사용자에게 한국어로 요약한다.
 - `syncAtomic` 은 설치 전제조건(미설치 플러그인·마켓플레이스 참조)과 잔존 충돌을 하드배리어로 검사한다.
   하나라도 걸리면 `syncAtomic` 은 push 를 차단하고 종료 코드 1 로 끝난다.
 
+## 성공 결과 요약 서식
+
+결과 JSON 이 아래 셋 중 하나면 이 서식으로 요약한다.
+
+- 일반 sync — `aborted: false` 와 `pull`·`push` 를 담는다.
+- `--force-up` — `forceUpload` 키 하나를 담는다.
+  그 값은 `push` 와 같은 모양이다.
+- `--force-down` — `forceDownload` 키 하나를 담는다.
+  그 값은 `pull` 과 같은 모양이다.
+
+- 값은 결과 JSON 에서 그대로 옮긴다.
+- 결과 JSON 에 없는 사실을 요약에 적지 않는다.
+- 요약은 아래 첫 줄과 본문 표의 행으로만 구성한다.
+  표에 없는 필드, 결과에 대한 추론, 종료 코드·실행 경위를 덧붙이지 않는다.
+  예외는 이 문서의 다른 절이 요구하는 안내(Force 모드 경고 등)뿐이다.
+- 성공 결과에서는 사용자에게 질문하지 않는다.
+- force 모드에서는 아래 `pull.` 을 `forceDownload.` 으로, `push.` 를 `forceUpload.` 으로 읽는다.
+
+### 첫 줄
+
+첫 줄에 결과 한 줄을 적는다.
+모드마다 아래 서식을 쓴다.
+
+```
+일반 sync  — sync 완료 — pull 적용 <applied 수>·삭제 <removed 수>, push 업로드 <pushed 수>·삭제 <deleted 수>, 세대 <manifestGeneration>
+force-up   — force-up 완료 — 업로드 <pushed 수>·삭제 <deleted 수>, 세대 <manifestGeneration>
+force-down — force-down 완료 — 적용 <applied 수>·삭제 <removed 수>
+```
+
+- `dryRun: true` 면 「완료」를 「계획(dry-run, 변경 없음)」으로 바꾼다.
+  이때 `manifestGeneration` 은 예상치라 세대 뒤에 「(예상)」을 붙인다.
+- `manifestGeneration` 이 `null` 이면 세대 자리에 「원격 manifest 없음」을 적는다.
+
+### 본문
+
+첫 줄 아래에 pull 블록, push 블록 순서로 적는다.
+force 모드는 해당 블록 하나만 적는다.
+
+| 필드 | 조건 | 표기 |
+|---|---|---|
+| `pull.applied`·`pull.removed` | 둘 다 빈 배열 | 「원격 변경 없음」 한 줄 |
+| `pull.applied` | 비어 있지 않음 | 「적용」 아래에 `logicalKey` 목록 |
+| `pull.removed` | 비어 있지 않음 | 「로컬 삭제(원격 삭제 반영)」 아래에 `logicalKey` 목록 |
+| `pull.conflicts` | 비어 있지 않음 | 「정책으로 해소한 충돌」 아래에 `logicalKey`·`remoteMachineId`. 정책 이름을 함께 적는다 — 인자의 `--policy` 값, 인자에 없으면 「설정 기본 정책」 |
+| `pull.backupDir` | `null` 이 아님 | 「백업」 과 그 경로. 덮어쓴 로컬 파일을 되살릴 위치라 생략하지 않는다 |
+| `push.pushed`·`push.deleted` | 둘 다 빈 배열 | 「올릴 변경 없음」 한 줄 |
+| `push.pushed` | 비어 있지 않음 | 「업로드」 아래에 `logicalKey` 목록 |
+| `push.deleted` | 비어 있지 않음 | 「원격 삭제(tombstone)」 아래에 `logicalKey` 목록 |
+| `push.skipped` | 항상 | 「변경 없어 건너뜀 <수>」 |
+| `push.conflicts` | 비어 있지 않음 | 「push 보류」 아래에 `logicalKey`·`remoteMachineId`. push 시점에 새로 감지된 충돌이라 이 키들은 올라가지 않았다. sync 재실행을 안내한다 |
+
+- 조건이 맞지 않는 행은 적지 않는다.
+  빈 배열을 「없음」으로 따로 보고하지 않는다.
+  예외는 「원격 변경 없음」·「올릴 변경 없음」 두 줄뿐이다.
+- `logicalKey` 는 받은 그대로 적는다.
+  절대경로로 바꾸지 않는다.
+- 한 목록이 20개 이하면 전부 적는다.
+- 한 목록이 20개를 넘으면 총 개수와 상위 디렉터리별 개수만 적는다.
+  전체 목록은 결과 JSON 에 있다고 적는다.
+
 ## 충돌 차단 및 해소 안내
 
 충돌이 자동으로 해소되지 않으면 `sync` 는 push 를 전면 차단한다.
