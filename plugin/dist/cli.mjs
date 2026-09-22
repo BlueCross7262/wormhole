@@ -16607,8 +16607,56 @@ var NEVER = INVALID;
 
 // src/config.ts
 import * as fs from "fs";
-import * as path2 from "path";
+import * as path3 from "path";
 import * as os2 from "os";
+
+// src/sync/paths.ts
+import path2 from "node:path";
+var SETTINGS_LOGICAL_KEY = ".claude/settings.json";
+var CLAUDE_JSON_LOGICAL_KEY = ".claude.json";
+function toLogical(home, absPath) {
+  const rel = path2.relative(home, absPath);
+  return rel.split(path2.sep).join("/");
+}
+function toOS(home, logicalKey) {
+  return path2.join(home, ...logicalKey.split("/"));
+}
+function isValidLogicalKey(logicalKey) {
+  if (typeof logicalKey !== "string" || logicalKey.length === 0) return false;
+  if (logicalKey.includes("\0")) return false;
+  if (logicalKey.includes("\\")) return false;
+  if (logicalKey.startsWith("/")) return false;
+  if (/^[a-zA-Z]:/.test(logicalKey)) return false;
+  const WIN_RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\.|$)/i;
+  for (const seg of logicalKey.split("/")) {
+    if (seg === "" || seg === "." || seg === "..") return false;
+    if (seg.includes(":")) return false;
+    if (/[ .]$/.test(seg)) return false;
+    if (WIN_RESERVED.test(seg)) return false;
+  }
+  return true;
+}
+function isWithinHome(home, absPath) {
+  const rel = path2.relative(home, absPath);
+  if (rel.length === 0) return false;
+  if (rel.startsWith("..")) return false;
+  if (path2.isAbsolute(rel)) return false;
+  return true;
+}
+function isSettingsKey(logicalKey) {
+  return logicalKey === SETTINGS_LOGICAL_KEY;
+}
+function isClaudeJsonKey(logicalKey) {
+  return logicalKey === CLAUDE_JSON_LOGICAL_KEY;
+}
+var CONFIG_JSON_LOGICAL_KEY = ".claude/wormhole-config.json";
+function isConfigJsonKey(logicalKey) {
+  return logicalKey === CONFIG_JSON_LOGICAL_KEY;
+}
+var CONFLICT_SIDECAR_INFIX = ".wormhole-conflict-";
+var CONFLICT_SIDECAR_GLOBS = [`**/*${CONFLICT_SIDECAR_INFIX}*`, "**/*.conflict-*"];
+
+// src/config.ts
 var DEFAULT_INCLUDE = [
   ".claude/CLAUDE.md",
   ".claude/settings.json",
@@ -16631,7 +16679,7 @@ var DEFAULT_EXCLUDE = [
   ".claude/history/**",
   "**/*.log",
   "**/cache/**",
-  "**/*.conflict-*"
+  ...CONFLICT_SIDECAR_GLOBS
 ];
 var RemoteConfigSchema = external_exports.object({
   url: external_exports.string().min(1),
@@ -16695,11 +16743,11 @@ var FullConfigSchema = external_exports.object({
 });
 function expandTilde(p, home) {
   if (p === "~") return home;
-  if (p.startsWith("~/") || p.startsWith("~\\")) return path2.join(home, p.slice(2));
+  if (p.startsWith("~/") || p.startsWith("~\\")) return path3.join(home, p.slice(2));
   return p;
 }
 function loadDotEnvIntoProcess(envPath) {
-  const target = envPath ?? path2.join(os2.homedir(), ".wormhole", ".env");
+  const target = envPath ?? path3.join(os2.homedir(), ".wormhole", ".env");
   let content;
   try {
     content = fs.readFileSync(target, "utf-8");
@@ -16770,7 +16818,7 @@ function resolveSkillsInclude(home, keyword, fsImpl = {
   readdirSync: (p) => fs.readdirSync(p),
   readFileSync: (p, enc) => fs.readFileSync(p, enc)
 }) {
-  const skillsDir = path2.join(home, ".claude", "skills");
+  const skillsDir = path3.join(home, ".claude", "skills");
   let entries;
   try {
     entries = fsImpl.readdirSync(skillsDir);
@@ -16779,7 +16827,7 @@ function resolveSkillsInclude(home, keyword, fsImpl = {
   }
   const result = [];
   for (const entry of entries) {
-    const skillMd = path2.join(skillsDir, entry, "SKILL.md");
+    const skillMd = path3.join(skillsDir, entry, "SKILL.md");
     let content;
     try {
       content = fsImpl.readFileSync(skillMd, "utf-8");
@@ -16803,20 +16851,20 @@ function resolvePaths(parsed, home, stateDir) {
   const cryptoRaw = CryptoConfigSchema.parse(parsed.crypto);
   let passphraseFile = cryptoRaw.passphraseFile;
   if (!passphraseFile) {
-    passphraseFile = path2.join(stateDir, "passphrase");
+    passphraseFile = path3.join(stateDir, "passphrase");
   } else {
     passphraseFile = expandTilde(passphraseFile, home);
-    if (!path2.isAbsolute(passphraseFile)) {
-      passphraseFile = path2.resolve(stateDir, passphraseFile);
+    if (!path3.isAbsolute(passphraseFile)) {
+      passphraseFile = path3.resolve(stateDir, passphraseFile);
     }
   }
   let derivedKeyPath = cryptoRaw.derivedKeyPath;
   if (!derivedKeyPath) {
-    derivedKeyPath = path2.join(stateDir, "age-key.txt");
+    derivedKeyPath = path3.join(stateDir, "age-key.txt");
   } else {
     derivedKeyPath = expandTilde(derivedKeyPath, home);
-    if (!path2.isAbsolute(derivedKeyPath)) {
-      derivedKeyPath = path2.resolve(stateDir, derivedKeyPath);
+    if (!path3.isAbsolute(derivedKeyPath)) {
+      derivedKeyPath = path3.resolve(stateDir, derivedKeyPath);
     }
   }
   return {
@@ -16871,8 +16919,8 @@ function dedupe(values) {
 function resolveConfigPath(home, configPathArg, envValue, exists2 = fs.existsSync) {
   if (configPathArg !== void 0) return configPathArg;
   if (envValue !== void 0) return envValue;
-  const canonical = path2.join(home, ".claude", "wormhole-config.json");
-  const legacy = path2.join(home, ".wormhole", "config.json");
+  const canonical = path3.join(home, ".claude", "wormhole-config.json");
+  const legacy = path3.join(home, ".wormhole", "config.json");
   if (exists2(canonical)) return canonical;
   if (exists2(legacy)) return legacy;
   return canonical;
@@ -16913,14 +16961,14 @@ async function loadConfig(configPath, dotEnvPath) {
       ...parseCommaList(process.env["WORMHOLE_SYNC_EXCLUDE"])
     ])
   };
-  const stateDir = parsed.stateDir ? path2.resolve(expandTilde(parsed.stateDir, home)) : path2.join(home, ".wormhole");
-  const resolvedHome = parsed.home ? path2.resolve(expandTilde(parsed.home, home)) : home;
+  const stateDir = parsed.stateDir ? path3.resolve(expandTilde(parsed.stateDir, home)) : path3.join(home, ".wormhole");
+  const resolvedHome = parsed.home ? path3.resolve(expandTilde(parsed.home, home)) : home;
   return resolvePaths(parsed, resolvedHome, stateDir);
 }
 
 // src/crypto/age.ts
 import { promises as fs2 } from "node:fs";
-import * as path3 from "node:path";
+import * as path4 from "node:path";
 
 // node_modules/age-encryption/node_modules/@noble/hashes/esm/cryptoNode.js
 import * as nc from "node:crypto";
@@ -21377,7 +21425,7 @@ var AgeCrypto = class _AgeCrypto {
   }
   // 파생된 identity 를 0600 으로 캐시. 부모 디렉터리 mkdir -p.
   static async #cacheIdentity(cachePath, identity, logger2) {
-    await fs2.mkdir(path3.dirname(cachePath), { recursive: true });
+    await fs2.mkdir(path4.dirname(cachePath), { recursive: true });
     const body = `# wormhole \uD30C\uC0DD age \uD0A4 \u2014 passphrase \uB85C\uBD80\uD130 \uC790\uB3D9 \uC0DD\uC131\uB428. \uC218\uB3D9 \uD3B8\uC9D1 \uAE08\uC9C0.
 ${identity}
 `;
@@ -24397,11 +24445,11 @@ var qmarksTestNoExtDot = ([$0]) => {
   return (f3) => f3.length === len && f3 !== "." && f3 !== "..";
 };
 var defaultPlatform = typeof process === "object" && process ? typeof process.env === "object" && process.env && process.env.__MINIMATCH_TESTING_PLATFORM__ || process.platform : "posix";
-var path5 = {
+var path6 = {
   win32: { sep: "\\" },
   posix: { sep: "/" }
 };
-var sep = defaultPlatform === "win32" ? path5.win32.sep : path5.posix.sep;
+var sep = defaultPlatform === "win32" ? path6.win32.sep : path6.posix.sep;
 minimatch.sep = sep;
 var GLOBSTAR = /* @__PURE__ */ Symbol("globstar **");
 minimatch.GLOBSTAR = GLOBSTAR;
@@ -31995,10 +32043,10 @@ function classifyEtag(etag) {
 
 // src/sync/machine.ts
 import * as fs4 from "fs/promises";
-import * as path7 from "path";
+import * as path8 from "path";
 import * as crypto3 from "crypto";
 async function loadOrCreateMachineId(stateDir) {
-  const filePath = path7.join(stateDir, "machine-id");
+  const filePath = path8.join(stateDir, "machine-id");
   try {
     const content = await fs4.readFile(filePath, "utf-8");
     const id2 = content.trim();
@@ -32019,7 +32067,7 @@ async function loadOrCreateMachineId(stateDir) {
   return id;
 }
 async function readMachineIdIfExists(stateDir) {
-  const filePath = path7.join(stateDir, "machine-id");
+  const filePath = path8.join(stateDir, "machine-id");
   try {
     const content = await fs4.readFile(filePath, "utf-8");
     const id = content.trim();
@@ -33025,54 +33073,8 @@ var import_fast_glob = __toESM(require_out4(), 1);
 var import_micromatch = __toESM(require_micromatch(), 1);
 import * as fs5 from "node:fs/promises";
 import * as path9 from "node:path";
-
-// src/sync/paths.ts
-import path8 from "node:path";
-var SETTINGS_LOGICAL_KEY = ".claude/settings.json";
-var CLAUDE_JSON_LOGICAL_KEY = ".claude.json";
-function toLogical(home, absPath) {
-  const rel = path8.relative(home, absPath);
-  return rel.split(path8.sep).join("/");
-}
-function toOS(home, logicalKey) {
-  return path8.join(home, ...logicalKey.split("/"));
-}
-function isValidLogicalKey(logicalKey) {
-  if (typeof logicalKey !== "string" || logicalKey.length === 0) return false;
-  if (logicalKey.includes("\0")) return false;
-  if (logicalKey.includes("\\")) return false;
-  if (logicalKey.startsWith("/")) return false;
-  if (/^[a-zA-Z]:/.test(logicalKey)) return false;
-  const WIN_RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\.|$)/i;
-  for (const seg of logicalKey.split("/")) {
-    if (seg === "" || seg === "." || seg === "..") return false;
-    if (seg.includes(":")) return false;
-    if (/[ .]$/.test(seg)) return false;
-    if (WIN_RESERVED.test(seg)) return false;
-  }
-  return true;
-}
-function isWithinHome(home, absPath) {
-  const rel = path8.relative(home, absPath);
-  if (rel.length === 0) return false;
-  if (rel.startsWith("..")) return false;
-  if (path8.isAbsolute(rel)) return false;
-  return true;
-}
-function isSettingsKey(logicalKey) {
-  return logicalKey === SETTINGS_LOGICAL_KEY;
-}
-function isClaudeJsonKey(logicalKey) {
-  return logicalKey === CLAUDE_JSON_LOGICAL_KEY;
-}
-var CONFIG_JSON_LOGICAL_KEY = ".claude/wormhole-config.json";
-function isConfigJsonKey(logicalKey) {
-  return logicalKey === CONFIG_JSON_LOGICAL_KEY;
-}
-
-// src/sync/scanner.ts
 function isKeyInScope(logicalKey, targets) {
-  if (import_micromatch.default.isMatch(logicalKey, ["**/*.conflict-*"], { dot: true })) return false;
+  if (import_micromatch.default.isMatch(logicalKey, CONFLICT_SIDECAR_GLOBS, { dot: true })) return false;
   const inInclude = import_micromatch.default.isMatch(logicalKey, targets.include, { dot: true });
   if (!inInclude) return false;
   if (targets.exclude.length === 0) return true;
@@ -33080,13 +33082,13 @@ function isKeyInScope(logicalKey, targets) {
 }
 function isSkillSubscribeKey(logicalKey, targets) {
   if (!logicalKey.startsWith(".claude/skills/")) return false;
-  if (import_micromatch.default.isMatch(logicalKey, ["**/*.conflict-*"], { dot: true })) return false;
+  if (import_micromatch.default.isMatch(logicalKey, CONFLICT_SIDECAR_GLOBS, { dot: true })) return false;
   if (targets.exclude.length === 0) return true;
   return !import_micromatch.default.isMatch(logicalKey, targets.exclude, { dot: true });
 }
 async function scanLocal(config) {
   const { home, targets, stateDir } = config;
-  const ignore = [...targets.exclude, "**/*.conflict-*"];
+  const ignore = [...targets.exclude, ...CONFLICT_SIDECAR_GLOBS];
   const relState = path9.relative(home, stateDir);
   if (relState !== "" && !relState.startsWith("..") && !path9.isAbsolute(relState)) {
     ignore.push(`${relState.split(path9.sep).join("/")}/**`);
@@ -34548,7 +34550,7 @@ var SyncEngine = class {
       if (absPath === null) continue;
       const mid = sanitizeToken(conflict.remoteMachineId);
       const gen = sanitizeToken(conflict.remoteGeneration);
-      let sidecarPath = entry.deleted ? `${absPath}.conflict-deleted-${mid}-${gen}` : `${absPath}.conflict-${mid}-${gen}`;
+      let sidecarPath = entry.deleted ? `${absPath}${CONFLICT_SIDECAR_INFIX}deleted-${mid}-${gen}` : `${absPath}${CONFLICT_SIDECAR_INFIX}${mid}-${gen}`;
       if (!isWithinHome(this.config.home, sidecarPath)) sidecarPath = null;
       let plannedCopyPath;
       let mergeable = null;
@@ -35010,7 +35012,7 @@ var SyncEngine = class {
   async writeConflictDiffSidecar(absPath, conflict, remoteDiff, localDiff) {
     const mid = sanitizeToken(conflict.remoteMachineId);
     const gen = sanitizeToken(conflict.remoteGeneration);
-    const diffPath = `${absPath}.conflict-${mid}-${gen}.diff`;
+    const diffPath = `${absPath}${CONFLICT_SIDECAR_INFIX}${mid}-${gen}.diff`;
     if (!isWithinHome(this.config.home, diffPath)) {
       this.logger?.warn(`[engine] conflict diff \uACBD\uB85C\uAC00 home \uBC16 \u2014 \uAC74\uB108\uB700: ${conflict.logicalKey}`);
       return null;
@@ -35084,7 +35086,7 @@ var SyncEngine = class {
     const mid = sanitizeToken(conflict.remoteMachineId);
     const gen = sanitizeToken(conflict.remoteGeneration);
     if (entry.deleted) {
-      const markerPath = `${absPath}.conflict-deleted-${mid}-${gen}`;
+      const markerPath = `${absPath}${CONFLICT_SIDECAR_INFIX}deleted-${mid}-${gen}`;
       if (!isWithinHome(this.config.home, markerPath)) {
         this.logger?.warn(`[engine] conflict \uB9C8\uCEE4 \uACBD\uB85C\uAC00 home \uBC16 \u2014 \uAC74\uB108\uB700: ${key}`);
         return null;
@@ -35101,7 +35103,7 @@ var SyncEngine = class {
     }
     const plain = remotePlain ?? await this.downloadBlob(key);
     if (plain === null) return null;
-    const copyPath = `${absPath}.conflict-${mid}-${gen}`;
+    const copyPath = `${absPath}${CONFLICT_SIDECAR_INFIX}${mid}-${gen}`;
     if (!isWithinHome(this.config.home, copyPath)) {
       this.logger?.warn(`[engine] conflict \uC0AC\uBCF8 \uACBD\uB85C\uAC00 home \uBC16 \u2014 \uAC74\uB108\uB700: ${key}`);
       return null;
@@ -35396,7 +35398,7 @@ import * as nodePath from "node:path";
 import { readFileSync as readFileSync4 } from "node:fs";
 import { fileURLToPath } from "node:url";
 function resolveVersion() {
-  if (true) return "0.5.23";
+  if (true) return "0.5.24";
   try {
     const pkgPath = fileURLToPath(new URL("../package.json", import.meta.url));
     const pkg = JSON.parse(readFileSync4(pkgPath, "utf-8"));
