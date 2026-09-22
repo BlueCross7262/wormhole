@@ -33270,7 +33270,7 @@ var EMPTY_COMPLETION_RESULT = {
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 function resolveVersion() {
-  if (true) return "0.5.22";
+  if (true) return "0.5.23";
   try {
     const pkgPath = fileURLToPath(new URL("../package.json", import.meta.url));
     const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
@@ -33433,7 +33433,7 @@ function registerResolveTool(server, engine) {
       description: "\uCDA9\uB3CC \uD56D\uBAA9\uC744 \uC9C0\uC815\uD55C \uC815\uCC45\uC73C\uB85C \uD574\uC18C\uD55C\uB2E4. keys \uC0DD\uB7B5 \uC2DC \uC804\uCCB4 \uCDA9\uB3CC \uCC98\uB9AC. \uC548\uC804 \uAE30\uBCF8\uAC12: confirm \uC5C6\uC774 \uD638\uCD9C\uD558\uBA74 \uC2E4\uC81C \uBCC0\uACBD \uC5C6\uC774 \uBBF8\uB9AC\uBCF4\uAE30(dry-run)\uB9CC \uBC18\uD658\uD55C\uB2E4. \uC2E4\uC81C \uC801\uC6A9\uC740 confirm:true \uAC00 \uD544\uC694\uD558\uBA70, \uC774\uB294 \uC0AC\uC6A9\uC790\uC758 \uBA85\uC2DC\uC801 \uD655\uC778\uC774 \uC788\uC744 \uB54C\uB9CC \uC804\uB2EC\uD55C\uB2E4 \u2014 \uC808\uB300 \uC790\uC728\uC801\uC73C\uB85C confirm:true \uB97C \uB118\uAE30\uC9C0 \uC54A\uB294\uB2E4.",
       inputSchema: {
         policy: external_exports.enum(["preserve-both", "latest-wins", "ours", "manual", "merge"]).describe(
-          "\uCDA9\uB3CC \uD574\uC18C \uC815\uCC45. preserve-both(\uAE30\uBCF8): \uB85C\uCEEC \uC720\uC9C0 + \uC6D0\uACA9\uBCF8\uC744 .conflict \uC0AC\uBCF8\uC73C\uB85C \uBCF4\uC874(\uBB34\uC190\uC2E4). latest-wins: \uC6D0\uACA9 \uCD5C\uC2E0\uBCF8(\uB9E4\uB2C8\uD398\uC2A4\uD2B8 generation = \uB9C8\uC9C0\uB9C9\uC73C\uB85C push \uB41C \uCABD \uAE30\uC900, \uD30C\uC77C mtime/\uBCBD\uC2DC\uACC4 \uC2DC\uAC01 \uC544\uB2D8)\uC73C\uB85C \uB36E\uC5B4\uC4F0\uAE30 + \uB36E\uC5B4\uC4F0\uAE30 \uC804 \uB85C\uCEEC \uBC31\uC5C5. ours: \uB85C\uCEEC \uCC44\uD0DD. base \uC2A4\uB0C5\uC0F7\uC744 \uC6D0\uACA9\uBCF8\uC73C\uB85C \uAC31\uC2E0\uD574 \uB2E4\uC74C push \uC5D0\uC11C \uB85C\uCEEC\uBCF8\uC774 \uC5C5\uB85C\uB4DC\uB428. resolve \uC790\uCCB4\uB294 \uC5C5\uB85C\uB4DC\uD558\uC9C0 \uC54A\uC74C. manual: \uCDA9\uB3CC \uBAA9\uB85D\uB9CC \uBC18\uD658\uD558\uACE0 \uC790\uB3D9 \uCC98\uB9AC\uD558\uC9C0 \uC54A\uC74C. merge: settings.json \uB9CC 3-way \uC790\uB3D9 \uBA38\uC9C0. leaf \uCDA9\uB3CC\xB7\uC0AD\uC81C\xB7\uBE44settings \uB294 preserve-both \uD3F4\uBC31. \uC0DD\uB7B5 \uC2DC config \uC758 conflictPolicy \uB97C \uB530\uB978\uB2E4."
+          "\uCDA9\uB3CC \uD574\uC18C \uC815\uCC45. preserve-both(\uAE30\uBCF8): \uB85C\uCEEC \uC720\uC9C0 + \uC6D0\uACA9\uBCF8\uC744 .conflict \uC0AC\uBCF8\uC73C\uB85C \uBCF4\uC874(\uBB34\uC190\uC2E4). latest-wins: \uC6D0\uACA9 \uCD5C\uC2E0\uBCF8(\uB9E4\uB2C8\uD398\uC2A4\uD2B8 generation = \uB9C8\uC9C0\uB9C9\uC73C\uB85C push \uB41C \uCABD \uAE30\uC900, \uD30C\uC77C mtime/\uBCBD\uC2DC\uACC4 \uC2DC\uAC01 \uC544\uB2D8)\uC73C\uB85C \uB36E\uC5B4\uC4F0\uAE30 + \uB36E\uC5B4\uC4F0\uAE30 \uC804 \uB85C\uCEEC \uBC31\uC5C5. settings.json \uACFC ~/.claude.json \uC740 remote-wins \uBA38\uC9C0\uB77C settingsExclude \uD0A4\uC640 \uBA38\uC2E0 \uACE0\uC720 \uD0A4\uB97C \uBCF4\uC874. ours: \uB85C\uCEEC \uCC44\uD0DD. base \uC2A4\uB0C5\uC0F7\uC744 \uC6D0\uACA9\uBCF8\uC73C\uB85C \uAC31\uC2E0\uD574 \uB2E4\uC74C push \uC5D0\uC11C \uB85C\uCEEC\uBCF8\uC774 \uC5C5\uB85C\uB4DC\uB428. resolve \uC790\uCCB4\uB294 \uC5C5\uB85C\uB4DC\uD558\uC9C0 \uC54A\uC74C. manual: \uCDA9\uB3CC \uBAA9\uB85D\uB9CC \uBC18\uD658\uD558\uACE0 \uC790\uB3D9 \uCC98\uB9AC\uD558\uC9C0 \uC54A\uC74C. merge: settings.json \uB9CC 3-way \uC790\uB3D9 \uBA38\uC9C0. leaf \uCDA9\uB3CC\xB7\uC0AD\uC81C\xB7\uBE44settings \uB294 preserve-both \uD3F4\uBC31. \uC0DD\uB7B5 \uC2DC config \uC758 conflictPolicy \uB97C \uB530\uB978\uB2E4."
         ).optional(),
         keys: external_exports.array(external_exports.string()).optional(),
         confirm: external_exports.boolean().optional().default(false)
@@ -33588,6 +33588,7 @@ var DEFAULT_INCLUDE = [
   ".claude/statusline/**",
   ".claude/hud/**"
 ];
+var DEFAULT_SETTINGS_EXCLUDE = ["model"];
 var DEFAULT_EXCLUDE = [
   ".claude/.credentials.json",
   ".claude/settings.local.json",
@@ -33648,6 +33649,8 @@ var RawConfigSchema = external_exports.object({
   lock: LockConfigSchema.partial().default({}),
   // home-root 파일(예: .claude.json)의 머지 서브키와 보존모드 맵.
   homeRootTargets: external_exports.record(HomeRootTargetSchema).optional(),
+  // settings.json 에서 제외할 키 경로. DEFAULT_SETTINGS_EXCLUDE 에 가산한다.
+  settingsExclude: external_exports.array(external_exports.string()).optional(),
   skills_keyword: external_exports.string().optional()
 });
 var FullConfigSchema = external_exports.object({
@@ -33814,7 +33817,11 @@ function resolvePaths(parsed, home, stateDir) {
     syncMcpServers: parsed.syncMcpServers,
     conflictPolicy: parsed.conflictPolicy,
     lock: LockConfigSchema.parse(parsed.lock),
-    homeRootTargets: parsed.homeRootTargets
+    homeRootTargets: parsed.homeRootTargets,
+    settingsExclude: dedupe([
+      ...DEFAULT_SETTINGS_EXCLUDE,
+      ...parsed.settingsExclude ?? []
+    ])
   };
 }
 function parseCommaList(v) {
@@ -51145,20 +51152,38 @@ function detokenizeHome(value, home) {
   }
   return value;
 }
-function pruneLocal(obj) {
+function isExcludedPath(segments, excludes) {
+  for (const pattern of excludes) {
+    const pat = pattern.split(".");
+    if (pat.length !== segments.length) continue;
+    let hit = true;
+    for (let i2 = 0; i2 < pat.length; i2++) {
+      if (pat[i2] === "*") continue;
+      if (pat[i2] !== segments[i2]) {
+        hit = false;
+        break;
+      }
+    }
+    if (hit) return true;
+  }
+  return false;
+}
+function pruneLocal(obj, excludes, prefix) {
   const out = {};
   for (const [k, v] of Object.entries(obj)) {
     if (isForbiddenKey(k)) continue;
+    const segments = [...prefix, k];
+    if (excludes.length > 0 && isExcludedPath(segments, excludes)) continue;
     if (isPlainObject4(v)) {
-      out[k] = pruneLocal(v);
+      out[k] = pruneLocal(v, excludes, segments);
     } else {
       out[k] = v;
     }
   }
   return out;
 }
-function extractSharedSubset(obj) {
-  return pruneLocal(obj);
+function extractSharedSubset(obj, excludes = []) {
+  return pruneLocal(obj, excludes, []);
 }
 function deepEqual2(a, b) {
   if (a === b) return true;
@@ -51230,13 +51255,13 @@ function mergeRecursive(local, remote, base, prefix, conflicts) {
   }
   return out;
 }
-function threeWayMerge(local, remoteShared, baseShared) {
-  const localShared = extractSharedSubset(local);
+function threeWayMerge(local, remoteShared, baseShared, excludes = []) {
+  const localShared = extractSharedSubset(local, excludes);
   const conflictKeys = [];
   const mergedShared = mergeRecursive(
     localShared,
-    remoteShared,
-    baseShared,
+    extractSharedSubset(remoteShared, excludes),
+    extractSharedSubset(baseShared, excludes),
     "",
     conflictKeys
   );
@@ -51268,7 +51293,7 @@ function stableNormalize(value) {
   }
   return value;
 }
-function normalizeSettingsForSync(rawText, home = "") {
+function normalizeSettingsForSync(rawText, home = "", excludes = []) {
   let parsed;
   try {
     parsed = JSON.parse(rawText);
@@ -51277,7 +51302,7 @@ function normalizeSettingsForSync(rawText, home = "") {
     return { text: rawText, hash: sha2563(buf2), size: buf2.byteLength };
   }
   const obj = isPlainObject4(parsed) ? parsed : {};
-  const shared = extractSharedSubset(obj);
+  const shared = extractSharedSubset(obj, excludes);
   const tokenized = home ? tokenizeHome(shared, home) : shared;
   const text = stableStringify(tokenized);
   const buf = Buffer.from(text, "utf-8");
@@ -51629,7 +51654,7 @@ var SyncEngine = class {
         } catch {
           continue;
         }
-        const norm = isSettingsKey(f3.logicalKey) ? normalizeSettingsForSync(raw, this.config.home) : normalizeClaudeJsonForSync(raw, this.config.syncMcpServers, this.config.home);
+        const norm = isSettingsKey(f3.logicalKey) ? normalizeSettingsForSync(raw, this.config.home, this.settingsExclude()) : normalizeClaudeJsonForSync(raw, this.config.syncMcpServers, this.config.home);
         contentHash = norm.hash;
         size = norm.size;
       } else {
@@ -51893,7 +51918,7 @@ var SyncEngine = class {
       } catch {
         continue;
       }
-      const norm = isSettingsKey(key) ? normalizeSettingsForSync(rawText, this.config.home) : normalizeClaudeJsonForSync(rawText, this.config.syncMcpServers, this.config.home);
+      const norm = isSettingsKey(key) ? normalizeSettingsForSync(rawText, this.config.home, this.settingsExclude()) : normalizeClaudeJsonForSync(rawText, this.config.syncMcpServers, this.config.home);
       const content = Buffer.from(norm.text, "utf-8");
       out.set(key, { content, contentHash: norm.hash, size: norm.size });
     }
@@ -52155,7 +52180,7 @@ var SyncEngine = class {
     const localReal = await this.readJsonFile(absPath) ?? {};
     const localObj = home ? tokenizeHome(localReal, home) : localReal;
     const baseShared = await this.readBaseSnapshotJson(key) ?? {};
-    const result = threeWayMerge(localObj, remoteShared, baseShared);
+    const result = threeWayMerge(localObj, remoteShared, baseShared, this.settingsExclude());
     const mergedReal = home ? detokenizeHome(result.merged, home) : result.merged;
     const mergedText = JSON.stringify(mergedReal, null, 2);
     await this.atomicWriteFile(absPath, mergedText);
@@ -52171,11 +52196,15 @@ var SyncEngine = class {
     const remoteShared = this.parseJson(remotePlain.toString("utf-8")) ?? {};
     const localReal = await this.readJsonFile(absPath) ?? {};
     const localObj = home ? tokenizeHome(localReal, home) : localReal;
-    const baseShared = extractSharedSubset(localObj);
-    const result = threeWayMerge(localObj, remoteShared, baseShared);
+    const excludes = this.settingsExclude();
+    const baseShared = extractSharedSubset(localObj, excludes);
+    const result = threeWayMerge(localObj, remoteShared, baseShared, excludes);
     const mergedReal = home ? detokenizeHome(result.merged, home) : result.merged;
     await this.atomicWriteFile(absPath, JSON.stringify(mergedReal, null, 2));
-    await this.writeBaseSnapshot(key, JSON.stringify(remoteShared, null, 2));
+    await this.writeBaseSnapshot(
+      key,
+      JSON.stringify(extractSharedSubset(remoteShared, excludes), null, 2)
+    );
     nextState[key] = { syncedHash: entry.contentHash, syncedGeneration: entry.generation };
   }
   // .claude.json pull 적용: 원격 mcpServers 만 로컬에 머지하되 mcpServers 외 나머지 키는 로컬 보존.
@@ -52300,7 +52329,12 @@ var SyncEngine = class {
               const home = this.config.home;
               const localObj = home ? tokenizeHome(localReal, home) : localReal;
               const baseShared = await this.readBaseSnapshotJson(key) ?? {};
-              const mergeResult = threeWayMerge(localObj, remoteShared, baseShared);
+              const mergeResult = threeWayMerge(
+                localObj,
+                remoteShared,
+                baseShared,
+                this.settingsExclude()
+              );
               mergeable = !mergeResult.hasConflict;
               conflictKeys = mergeResult.conflictKeys;
               plannedCopyPath = mergeable ? null : sidecarPath;
@@ -52428,7 +52462,12 @@ var SyncEngine = class {
         const home = this.config.home;
         const localObj = home ? tokenizeHome(localReal, home) : localReal;
         const baseShared = await this.readBaseSnapshotJson(key) ?? {};
-        const mergeResult = threeWayMerge(localObj, remoteShared, baseShared);
+        const mergeResult = threeWayMerge(
+          localObj,
+          remoteShared,
+          baseShared,
+          this.settingsExclude()
+        );
         if (mergeResult.hasConflict) {
           await fallbackWithSidecar("leaf-conflict", mergeResult.conflictKeys, remotePlain);
           continue;
@@ -52513,12 +52552,18 @@ var SyncEngine = class {
           this.logger?.warn(`[engine] resolve(latest-wins): blob \uBD80\uC7AC ${key}`);
           continue;
         }
-        await this.atomicWriteFile(absPath, remotePlain);
-        await this.writeBaseSnapshot(key, remotePlain);
-        nextState[key] = {
-          syncedHash: entry.contentHash,
-          syncedGeneration: entry.generation
-        };
+        if (isClaudeJsonKey(key)) {
+          await this.applyPullClaudeJson(key, absPath, remotePlain, entry, nextState);
+        } else if (isSettingsKey(key)) {
+          await this.applyForceDownSettings(key, absPath, remotePlain, entry, nextState);
+        } else {
+          await this.atomicWriteFile(absPath, remotePlain);
+          await this.writeBaseSnapshot(key, remotePlain);
+          nextState[key] = {
+            syncedHash: entry.contentHash,
+            syncedGeneration: entry.generation
+          };
+        }
       }
       resolved.push(key);
       if (isConfigJsonKey(key)) anyAdopted = true;
@@ -52669,8 +52714,14 @@ var SyncEngine = class {
    * base 스냅샷은 기록 경로마다 직렬화가 미세하게 달라(예: pull 경로는 후행 개행 없음)
    * 로컬만 정규화하면 어긋난다 — 양쪽 모두 이 함수를 통과시킨다.
    */
+  /** settings.json 제외 키 경로. config 미지정 머신은 기본값을 쓴다. */
+  settingsExclude() {
+    return this.config.settingsExclude ?? DEFAULT_SETTINGS_EXCLUDE;
+  }
   normalizeForDiff(key, text) {
-    if (isSettingsKey(key)) return normalizeSettingsForSync(text, this.config.home).text;
+    if (isSettingsKey(key)) {
+      return normalizeSettingsForSync(text, this.config.home, this.settingsExclude()).text;
+    }
     if (isClaudeJsonKey(key)) {
       return normalizeClaudeJsonForSync(text, this.config.syncMcpServers, this.config.home).text;
     }

@@ -16619,6 +16619,7 @@ var DEFAULT_INCLUDE = [
   ".claude/statusline/**",
   ".claude/hud/**"
 ];
+var DEFAULT_SETTINGS_EXCLUDE = ["model"];
 var DEFAULT_EXCLUDE = [
   ".claude/.credentials.json",
   ".claude/settings.local.json",
@@ -16679,6 +16680,8 @@ var RawConfigSchema = external_exports.object({
   lock: LockConfigSchema.partial().default({}),
   // home-root 파일(예: .claude.json)의 머지 서브키와 보존모드 맵.
   homeRootTargets: external_exports.record(HomeRootTargetSchema).optional(),
+  // settings.json 에서 제외할 키 경로. DEFAULT_SETTINGS_EXCLUDE 에 가산한다.
+  settingsExclude: external_exports.array(external_exports.string()).optional(),
   skills_keyword: external_exports.string().optional()
 });
 var FullConfigSchema = external_exports.object({
@@ -16845,7 +16848,11 @@ function resolvePaths(parsed, home, stateDir) {
     syncMcpServers: parsed.syncMcpServers,
     conflictPolicy: parsed.conflictPolicy,
     lock: LockConfigSchema.parse(parsed.lock),
-    homeRootTargets: parsed.homeRootTargets
+    homeRootTargets: parsed.homeRootTargets,
+    settingsExclude: dedupe([
+      ...DEFAULT_SETTINGS_EXCLUDE,
+      ...parsed.settingsExclude ?? []
+    ])
   };
 }
 function parseCommaList(v) {
@@ -33399,20 +33406,38 @@ function detokenizeHome(value, home) {
   }
   return value;
 }
-function pruneLocal(obj) {
+function isExcludedPath(segments, excludes) {
+  for (const pattern of excludes) {
+    const pat = pattern.split(".");
+    if (pat.length !== segments.length) continue;
+    let hit = true;
+    for (let i2 = 0; i2 < pat.length; i2++) {
+      if (pat[i2] === "*") continue;
+      if (pat[i2] !== segments[i2]) {
+        hit = false;
+        break;
+      }
+    }
+    if (hit) return true;
+  }
+  return false;
+}
+function pruneLocal(obj, excludes, prefix) {
   const out = {};
   for (const [k, v] of Object.entries(obj)) {
     if (isForbiddenKey(k)) continue;
+    const segments = [...prefix, k];
+    if (excludes.length > 0 && isExcludedPath(segments, excludes)) continue;
     if (isPlainObject2(v)) {
-      out[k] = pruneLocal(v);
+      out[k] = pruneLocal(v, excludes, segments);
     } else {
       out[k] = v;
     }
   }
   return out;
 }
-function extractSharedSubset(obj) {
-  return pruneLocal(obj);
+function extractSharedSubset(obj, excludes = []) {
+  return pruneLocal(obj, excludes, []);
 }
 function deepEqual2(a, b) {
   if (a === b) return true;
@@ -33484,13 +33509,13 @@ function mergeRecursive(local, remote, base, prefix, conflicts) {
   }
   return out;
 }
-function threeWayMerge(local, remoteShared, baseShared) {
-  const localShared = extractSharedSubset(local);
+function threeWayMerge(local, remoteShared, baseShared, excludes = []) {
+  const localShared = extractSharedSubset(local, excludes);
   const conflictKeys = [];
   const mergedShared = mergeRecursive(
     localShared,
-    remoteShared,
-    baseShared,
+    extractSharedSubset(remoteShared, excludes),
+    extractSharedSubset(baseShared, excludes),
     "",
     conflictKeys
   );
@@ -33522,7 +33547,7 @@ function stableNormalize(value) {
   }
   return value;
 }
-function normalizeSettingsForSync(rawText, home = "") {
+function normalizeSettingsForSync(rawText, home = "", excludes = []) {
   let parsed;
   try {
     parsed = JSON.parse(rawText);
@@ -33531,7 +33556,7 @@ function normalizeSettingsForSync(rawText, home = "") {
     return { text: rawText, hash: sha2563(buf2), size: buf2.byteLength };
   }
   const obj = isPlainObject2(parsed) ? parsed : {};
-  const shared = extractSharedSubset(obj);
+  const shared = extractSharedSubset(obj, excludes);
   const tokenized = home ? tokenizeHome(shared, home) : shared;
   const text = stableStringify(tokenized);
   const buf = Buffer.from(text, "utf-8");
@@ -33883,7 +33908,7 @@ var SyncEngine = class {
         } catch {
           continue;
         }
-        const norm = isSettingsKey(f3.logicalKey) ? normalizeSettingsForSync(raw, this.config.home) : normalizeClaudeJsonForSync(raw, this.config.syncMcpServers, this.config.home);
+        const norm = isSettingsKey(f3.logicalKey) ? normalizeSettingsForSync(raw, this.config.home, this.settingsExclude()) : normalizeClaudeJsonForSync(raw, this.config.syncMcpServers, this.config.home);
         contentHash = norm.hash;
         size = norm.size;
       } else {
@@ -34147,7 +34172,7 @@ var SyncEngine = class {
       } catch {
         continue;
       }
-      const norm = isSettingsKey(key) ? normalizeSettingsForSync(rawText, this.config.home) : normalizeClaudeJsonForSync(rawText, this.config.syncMcpServers, this.config.home);
+      const norm = isSettingsKey(key) ? normalizeSettingsForSync(rawText, this.config.home, this.settingsExclude()) : normalizeClaudeJsonForSync(rawText, this.config.syncMcpServers, this.config.home);
       const content = Buffer.from(norm.text, "utf-8");
       out.set(key, { content, contentHash: norm.hash, size: norm.size });
     }
@@ -34409,7 +34434,7 @@ var SyncEngine = class {
     const localReal = await this.readJsonFile(absPath) ?? {};
     const localObj = home ? tokenizeHome(localReal, home) : localReal;
     const baseShared = await this.readBaseSnapshotJson(key) ?? {};
-    const result = threeWayMerge(localObj, remoteShared, baseShared);
+    const result = threeWayMerge(localObj, remoteShared, baseShared, this.settingsExclude());
     const mergedReal = home ? detokenizeHome(result.merged, home) : result.merged;
     const mergedText = JSON.stringify(mergedReal, null, 2);
     await this.atomicWriteFile(absPath, mergedText);
@@ -34425,11 +34450,15 @@ var SyncEngine = class {
     const remoteShared = this.parseJson(remotePlain.toString("utf-8")) ?? {};
     const localReal = await this.readJsonFile(absPath) ?? {};
     const localObj = home ? tokenizeHome(localReal, home) : localReal;
-    const baseShared = extractSharedSubset(localObj);
-    const result = threeWayMerge(localObj, remoteShared, baseShared);
+    const excludes = this.settingsExclude();
+    const baseShared = extractSharedSubset(localObj, excludes);
+    const result = threeWayMerge(localObj, remoteShared, baseShared, excludes);
     const mergedReal = home ? detokenizeHome(result.merged, home) : result.merged;
     await this.atomicWriteFile(absPath, JSON.stringify(mergedReal, null, 2));
-    await this.writeBaseSnapshot(key, JSON.stringify(remoteShared, null, 2));
+    await this.writeBaseSnapshot(
+      key,
+      JSON.stringify(extractSharedSubset(remoteShared, excludes), null, 2)
+    );
     nextState[key] = { syncedHash: entry.contentHash, syncedGeneration: entry.generation };
   }
   // .claude.json pull 적용: 원격 mcpServers 만 로컬에 머지하되 mcpServers 외 나머지 키는 로컬 보존.
@@ -34554,7 +34583,12 @@ var SyncEngine = class {
               const home = this.config.home;
               const localObj = home ? tokenizeHome(localReal, home) : localReal;
               const baseShared = await this.readBaseSnapshotJson(key) ?? {};
-              const mergeResult = threeWayMerge(localObj, remoteShared, baseShared);
+              const mergeResult = threeWayMerge(
+                localObj,
+                remoteShared,
+                baseShared,
+                this.settingsExclude()
+              );
               mergeable = !mergeResult.hasConflict;
               conflictKeys = mergeResult.conflictKeys;
               plannedCopyPath = mergeable ? null : sidecarPath;
@@ -34682,7 +34716,12 @@ var SyncEngine = class {
         const home = this.config.home;
         const localObj = home ? tokenizeHome(localReal, home) : localReal;
         const baseShared = await this.readBaseSnapshotJson(key) ?? {};
-        const mergeResult = threeWayMerge(localObj, remoteShared, baseShared);
+        const mergeResult = threeWayMerge(
+          localObj,
+          remoteShared,
+          baseShared,
+          this.settingsExclude()
+        );
         if (mergeResult.hasConflict) {
           await fallbackWithSidecar("leaf-conflict", mergeResult.conflictKeys, remotePlain);
           continue;
@@ -34767,12 +34806,18 @@ var SyncEngine = class {
           this.logger?.warn(`[engine] resolve(latest-wins): blob \uBD80\uC7AC ${key}`);
           continue;
         }
-        await this.atomicWriteFile(absPath, remotePlain);
-        await this.writeBaseSnapshot(key, remotePlain);
-        nextState[key] = {
-          syncedHash: entry.contentHash,
-          syncedGeneration: entry.generation
-        };
+        if (isClaudeJsonKey(key)) {
+          await this.applyPullClaudeJson(key, absPath, remotePlain, entry, nextState);
+        } else if (isSettingsKey(key)) {
+          await this.applyForceDownSettings(key, absPath, remotePlain, entry, nextState);
+        } else {
+          await this.atomicWriteFile(absPath, remotePlain);
+          await this.writeBaseSnapshot(key, remotePlain);
+          nextState[key] = {
+            syncedHash: entry.contentHash,
+            syncedGeneration: entry.generation
+          };
+        }
       }
       resolved.push(key);
       if (isConfigJsonKey(key)) anyAdopted = true;
@@ -34923,8 +34968,14 @@ var SyncEngine = class {
    * base 스냅샷은 기록 경로마다 직렬화가 미세하게 달라(예: pull 경로는 후행 개행 없음)
    * 로컬만 정규화하면 어긋난다 — 양쪽 모두 이 함수를 통과시킨다.
    */
+  /** settings.json 제외 키 경로. config 미지정 머신은 기본값을 쓴다. */
+  settingsExclude() {
+    return this.config.settingsExclude ?? DEFAULT_SETTINGS_EXCLUDE;
+  }
   normalizeForDiff(key, text) {
-    if (isSettingsKey(key)) return normalizeSettingsForSync(text, this.config.home).text;
+    if (isSettingsKey(key)) {
+      return normalizeSettingsForSync(text, this.config.home, this.settingsExclude()).text;
+    }
     if (isClaudeJsonKey(key)) {
       return normalizeClaudeJsonForSync(text, this.config.syncMcpServers, this.config.home).text;
     }
@@ -35345,7 +35396,7 @@ import * as nodePath from "node:path";
 import { readFileSync as readFileSync4 } from "node:fs";
 import { fileURLToPath } from "node:url";
 function resolveVersion() {
-  if (true) return "0.5.22";
+  if (true) return "0.5.23";
   try {
     const pkgPath = fileURLToPath(new URL("../package.json", import.meta.url));
     const pkg = JSON.parse(readFileSync4(pkgPath, "utf-8"));
