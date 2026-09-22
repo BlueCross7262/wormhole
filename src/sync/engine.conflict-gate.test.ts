@@ -245,7 +245,7 @@ describe("H4: settings.json/.claude.json 차단, wormhole-config.json 비차단"
   });
 });
 
-describe("H5: 사이드카 .conflict-* 파일 스캐너 제외", () => {
+describe("H5: 사이드카 .wormhole-conflict-* 파일 스캐너 제외", () => {
   test("H5a: preserve-both 생성 사이드카가 status().items 에 나타나지 않아야 함", async () => {
     const remote = new MockWebdavRemote();
     const a = makeReplica(remote, "h5a-a", "machine-a");
@@ -266,13 +266,24 @@ describe("H5: 사이드카 .conflict-* 파일 스캐너 제외", () => {
     const blockResult = await b.engine.syncAtomic({ pluginsDir: b.home, policy: "preserve-both" });
     assert.equal(blockResult.aborted, true, "precondition: must be blocked");
 
-    const sidecarKey = `${FILE_KEY}.conflict-machine-a-1`;
+    const sidecarKey = `${FILE_KEY}.wormhole-conflict-machine-a-1`;
+    assert.ok(
+      existsSync(path.join(b.home, ...sidecarKey.split("/"))),
+      `precondition: sidecar '${sidecarKey}' must exist on disk`,
+    );
+    const legacyKey = `${FILE_KEY}.conflict-machine-a-1`;
+    await writeHomeFile(b, legacyKey, "legacy-sidecar\n");
 
     const statusAfter = await b.engine.status();
     assert.equal(
       statusAfter.items.some((i) => i.logicalKey === sidecarKey),
       false,
-      `sidecar '${sidecarKey}' must NOT appear in status().items — scanner should exclude .conflict-* files`,
+      `sidecar '${sidecarKey}' must NOT appear in status().items — scanner should exclude .wormhole-conflict-* files`,
+    );
+    assert.equal(
+      statusAfter.items.some((i) => i.logicalKey === legacyKey),
+      false,
+      `legacy sidecar '${legacyKey}' must NOT appear in status().items`,
     );
   });
 
@@ -295,7 +306,13 @@ describe("H5: 사이드카 .conflict-* 파일 스캐너 제외", () => {
     const blockResult = await b.engine.syncAtomic({ pluginsDir: b.home, policy: "preserve-both" });
     assert.equal(blockResult.aborted, true, "precondition: preserve-both must block");
 
-    const sidecarKey = `${FILE_KEY}.conflict-machine-a-1`;
+    const sidecarKey = `${FILE_KEY}.wormhole-conflict-machine-a-1`;
+    assert.ok(
+      existsSync(path.join(b.home, ...sidecarKey.split("/"))),
+      `precondition: sidecar '${sidecarKey}' must exist on disk`,
+    );
+    const legacyKey = `${FILE_KEY}.conflict-machine-a-1`;
+    await writeHomeFile(b, legacyKey, "legacy-sidecar\n");
 
     const latestWinsResult = await b.engine.syncAtomic({ pluginsDir: b.home, policy: "latest-wins" });
     if (latestWinsResult.aborted) {
@@ -305,7 +322,12 @@ describe("H5: 사이드카 .conflict-* 파일 스캐너 제외", () => {
     assert.equal(
       latestWinsResult.push.pushed.some((k) => k === sidecarKey),
       false,
-      `sidecar '${sidecarKey}' must NOT appear in push.pushed — scanner should exclude .conflict-* files`,
+      `sidecar '${sidecarKey}' must NOT appear in push.pushed — scanner should exclude .wormhole-conflict-* files`,
+    );
+    assert.equal(
+      latestWinsResult.push.pushed.some((k) => k === legacyKey),
+      false,
+      `legacy sidecar '${legacyKey}' must NOT appear in push.pushed`,
     );
   });
 });
@@ -390,7 +412,7 @@ describe("H7: blocked.conflicts 필드 기대값 정확성(실 엔진)", () => {
     assert.equal(cDetail.remoteGeneration, 1, "remoteGeneration must be 1 (first push)");
 
     const expectedAbsPath = path.join(b.home, ...FILE_KEY.split("/"));
-    const expectedCopyPath = `${expectedAbsPath}.conflict-machine-a-1`;
+    const expectedCopyPath = `${expectedAbsPath}.wormhole-conflict-machine-a-1`;
     assert.equal(cDetail.copyPath, expectedCopyPath, "copyPath must match expected sidecar path");
     assert.ok(existsSync(cDetail.copyPath), "copyPath file must exist on disk");
 
@@ -402,7 +424,7 @@ describe("H7: blocked.conflicts 필드 기대값 정확성(실 엔진)", () => {
     assert.equal(cDetail.localChangeDiff?.contentHash, expectedLocalHash);
     assert.equal(
       cDetail.diffPath,
-      `${expectedAbsPath}.conflict-machine-a-1.diff`,
+      `${expectedAbsPath}.wormhole-conflict-machine-a-1.diff`,
       "diffPath must match expected diff sidecar path",
     );
     assert.ok(existsSync(cDetail.diffPath!), "diff sidecar file must exist on disk");
@@ -434,8 +456,8 @@ describe("H7: blocked.conflicts 필드 기대값 정확성(실 엔진)", () => {
     assert.ok(detail1, "conflict for KEY_1 must exist");
     assert.ok(detail2, "conflict for KEY_2 must exist");
 
-    const expectedPath1 = `${path.join(b.home, ...KEY_1.split("/"))}.conflict-machine-a-1`;
-    const expectedPath2 = `${path.join(b.home, ...KEY_2.split("/"))}.conflict-machine-a-1`;
+    const expectedPath1 = `${path.join(b.home, ...KEY_1.split("/"))}.wormhole-conflict-machine-a-1`;
+    const expectedPath2 = `${path.join(b.home, ...KEY_2.split("/"))}.wormhole-conflict-machine-a-1`;
 
     assert.equal(detail1.copyPath, expectedPath1, "KEY_1 copyPath must map to KEY_1 sidecar, not KEY_2");
     assert.equal(detail2.copyPath, expectedPath2, "KEY_2 copyPath must map to KEY_2 sidecar, not KEY_1");

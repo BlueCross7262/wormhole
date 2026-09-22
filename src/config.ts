@@ -3,6 +3,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 import type { Config } from "./types.js";
+import { CONFLICT_SIDECAR_GLOBS } from "./sync/paths.js";
 
 // ── 기본값 ────────────────────────────────────────────────────
 
@@ -32,7 +33,7 @@ export const DEFAULT_EXCLUDE: string[] = [
   ".claude/history/**",
   "**/*.log",
   "**/cache/**",
-  "**/*.conflict-*",
+  ...CONFLICT_SIDECAR_GLOBS,
 ];
 
 // ── zod 스키마 ────────────────────────────────────────────────

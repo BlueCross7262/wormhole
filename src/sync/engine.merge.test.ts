@@ -257,7 +257,7 @@ describe("M2: 같은 leaf 키 다른 값 -> leaf-conflict 폴백, 로컬/베이�
     assert.equal(afterLocal, A_CONTENT, "local bytes must be unchanged");
 
     const absPath = path.join(a.home, ...SETTINGS_KEY.split("/"));
-    const sidecarPath = `${absPath}.conflict-${conflictItem!.remoteMachineId}-${conflictItem!.remoteGeneration}`;
+    const sidecarPath = `${absPath}.wormhole-conflict-${conflictItem!.remoteMachineId}-${conflictItem!.remoteGeneration}`;
     assert.ok(await fs.access(sidecarPath).then(() => true).catch(() => false), "sidecar must exist");
     const sidecarBytes = await fs.readFile(sidecarPath, "utf-8");
     const remotePlain = await enginePrivate(a).downloadBlob(SETTINGS_KEY);
@@ -297,7 +297,7 @@ describe("M3: 비-settings 파일 충돌에 merge -> not-settings 폴백, 로컬
     assert.equal(afterLocal, "a-local\n");
 
     const absPath = path.join(a.home, ...FILE_KEY.split("/"));
-    const sidecarPath = `${absPath}.conflict-${conflictItem!.remoteMachineId}-${conflictItem!.remoteGeneration}`;
+    const sidecarPath = `${absPath}.wormhole-conflict-${conflictItem!.remoteMachineId}-${conflictItem!.remoteGeneration}`;
     assert.ok(await fs.access(sidecarPath).then(() => true).catch(() => false));
     assert.equal(await fs.readFile(sidecarPath, "utf-8"), "b-remote\n");
 
@@ -337,7 +337,7 @@ describe("M4: 원격삭제 vs 로컬수정 settings.json -> deleted 폴백, mark
     ]);
 
     const absPathA = path.join(a.home, ...SETTINGS_KEY.split("/"));
-    const markerPath = `${absPathA}.conflict-deleted-${conflictItem!.remoteMachineId}-${conflictItem!.remoteGeneration}`;
+    const markerPath = `${absPathA}.wormhole-conflict-deleted-${conflictItem!.remoteMachineId}-${conflictItem!.remoteGeneration}`;
     assert.ok(await fs.access(markerPath).then(() => true).catch(() => false), "deletion marker must exist");
 
     const afterLocal = await readHomeFile(a, SETTINGS_KEY);
@@ -402,7 +402,7 @@ describe("M6: 로컬 settings.json 깨진 JSON -> local-unparseable 폴백, 바�
     assert.equal(afterLocal, BROKEN);
 
     const absPath = path.join(a.home, ...SETTINGS_KEY.split("/"));
-    const sidecarPath = `${absPath}.conflict-${conflictItem!.remoteMachineId}-${conflictItem!.remoteGeneration}`;
+    const sidecarPath = `${absPath}.wormhole-conflict-${conflictItem!.remoteMachineId}-${conflictItem!.remoteGeneration}`;
     assert.ok(await fs.access(sidecarPath).then(() => true).catch(() => false));
 
     const stateAfter = await readStateFile(a);
@@ -679,7 +679,7 @@ describe("M16: 원격 blob 이상 — 부재/0바이트/JSON 배열", () => {
     assert.deepEqual(result.resolved, [], "blob-missing must not mark key resolved");
 
     const absPath = path.join(a.home, ...SETTINGS_KEY.split("/"));
-    const sidecarPath = `${absPath}.conflict-${conflictItem!.remoteMachineId}-${conflictItem!.remoteGeneration}`;
+    const sidecarPath = `${absPath}.wormhole-conflict-${conflictItem!.remoteMachineId}-${conflictItem!.remoteGeneration}`;
     assert.equal(
       await fs.access(sidecarPath).then(() => true).catch(() => false),
       false,
@@ -712,7 +712,7 @@ describe("M16: 원격 blob 이상 — 부재/0바이트/JSON 배열", () => {
     ]);
 
     const absPath = path.join(a.home, ...SETTINGS_KEY.split("/"));
-    const sidecarPath = `${absPath}.conflict-${conflictItem!.remoteMachineId}-${conflictItem!.remoteGeneration}`;
+    const sidecarPath = `${absPath}.wormhole-conflict-${conflictItem!.remoteMachineId}-${conflictItem!.remoteGeneration}`;
     const sidecarBytes = await fs.readFile(sidecarPath);
     assert.equal(sidecarBytes.length, 0, "sidecar must be exactly the 0-byte remote blob");
   });
@@ -739,7 +739,7 @@ describe("M16: 원격 blob 이상 — 부재/0바이트/JSON 배열", () => {
     ]);
 
     const absPath = path.join(a.home, ...SETTINGS_KEY.split("/"));
-    const sidecarPath = `${absPath}.conflict-${conflictItem!.remoteMachineId}-${conflictItem!.remoteGeneration}`;
+    const sidecarPath = `${absPath}.wormhole-conflict-${conflictItem!.remoteMachineId}-${conflictItem!.remoteGeneration}`;
     const sidecarText = await fs.readFile(sidecarPath, "utf-8");
     assert.equal(sidecarText, "[]");
   });
@@ -814,7 +814,7 @@ describe("M21: 원격 settings 가 미설치 플러그인 참조 + 로컬과 머
     assert.equal(afterLocal, A_CONTENT, "local file must remain unchanged on install-prereq fallback");
 
     const absPath = path.join(a.home, ...SETTINGS_KEY.split("/"));
-    const sidecarPath = `${absPath}.conflict-${conflictItem!.remoteMachineId}-${conflictItem!.remoteGeneration}`;
+    const sidecarPath = `${absPath}.wormhole-conflict-${conflictItem!.remoteMachineId}-${conflictItem!.remoteGeneration}`;
     assert.ok(await fs.access(sidecarPath).then(() => true).catch(() => false));
 
     const stateAfter = await readStateFile(a);
@@ -876,7 +876,7 @@ describe("M23: scope 밖 키가 충돌 목록에 있어도 runResolve 는 scope 
     assert.equal(result.mergeFallbacks?.[0]?.reason, "not-settings");
 
     const absPath = path.join(aHome, ...FILE_KEY.split("/"));
-    const sidecarPath = `${absPath}.conflict-${conflictItem!.remoteMachineId}-${conflictItem!.remoteGeneration}`;
+    const sidecarPath = `${absPath}.wormhole-conflict-${conflictItem!.remoteMachineId}-${conflictItem!.remoteGeneration}`;
     assert.ok(
       await fs.access(sidecarPath).then(() => true).catch(() => false),
       "sidecar created despite scope exclusion — no scope gate in runResolve",
@@ -971,7 +971,7 @@ describe("M26: 로컬 settings.json 파일 부재 상태에서 충돌 -> local-m
 
     assert.equal(await homeFileExists(a, SETTINGS_KEY), false, "local file must not be created");
 
-    const sidecarPath = `${absPathA}.conflict-${conflictItem!.remoteMachineId}-${conflictItem!.remoteGeneration}`;
+    const sidecarPath = `${absPathA}.wormhole-conflict-${conflictItem!.remoteMachineId}-${conflictItem!.remoteGeneration}`;
     assert.ok(await fs.access(sidecarPath).then(() => true).catch(() => false));
 
     const stateAfter = await readStateFile(a);
@@ -1021,7 +1021,7 @@ describe("M7: planResolve dryRun 의 merge preview 정확도 — M1/M2 상황 �
     const localBytesAfter = await readHomeFile(a, SETTINGS_KEY);
     assert.equal(localBytesAfter, localBytesBefore, "dryRun must not touch local file");
     const absPath = path.join(a.home, ...SETTINGS_KEY.split("/"));
-    const sidecarPath = `${absPath}.conflict-${conflictItem!.remoteMachineId}-${conflictItem!.remoteGeneration}`;
+    const sidecarPath = `${absPath}.wormhole-conflict-${conflictItem!.remoteMachineId}-${conflictItem!.remoteGeneration}`;
     assert.equal(
       await fs.access(sidecarPath).then(() => true).catch(() => false),
       false,
@@ -1063,7 +1063,7 @@ describe("M7: planResolve dryRun 의 merge preview 정확도 — M1/M2 상황 �
     assert.equal(item!.mergeable, false);
     assert.deepEqual(item!.conflictKeys, ["theme"]);
     const absPath = path.join(a.home, ...SETTINGS_KEY.split("/"));
-    const expectedSidecarPath = `${absPath}.conflict-${conflictItem!.remoteMachineId}-${conflictItem!.remoteGeneration}`;
+    const expectedSidecarPath = `${absPath}.wormhole-conflict-${conflictItem!.remoteMachineId}-${conflictItem!.remoteGeneration}`;
     assert.equal(item!.plannedCopyPath, expectedSidecarPath);
     assert.equal(item!.copyPathUncertain, false);
 
@@ -1148,7 +1148,7 @@ describe("M22: preview 정확도 — home 밖 사이드카 가드, blob 다운�
     const localAfter = await readHomeFile(a, SETTINGS_KEY);
     assert.equal(localAfter, A_CONTENT, "dryRun must not touch local file");
     const absPath = path.join(a.home, ...SETTINGS_KEY.split("/"));
-    const sidecarPath = `${absPath}.conflict-${conflictItem!.remoteMachineId}-${conflictItem!.remoteGeneration}`;
+    const sidecarPath = `${absPath}.wormhole-conflict-${conflictItem!.remoteMachineId}-${conflictItem!.remoteGeneration}`;
     assert.equal(
       await fs.access(sidecarPath).then(() => true).catch(() => false),
       false,

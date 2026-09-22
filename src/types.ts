@@ -425,7 +425,7 @@ export interface ResolveResult {
 export interface ConflictCopy {
   /** 원본 논리키. */
   logicalKey: LogicalKey;
-  /** 기록된 사본 OS 절대경로. "<path>.conflict-<remoteMachine>-<gen>". */
+  /** 기록된 사본 OS 절대경로. "<path>.wormhole-conflict-<remoteMachine>-<gen>". */
   copyPath: string;
 }
 

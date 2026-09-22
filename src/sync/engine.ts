@@ -48,7 +48,15 @@ import { computeStatus } from "./diff.js";
 import { DEFAULT_SETTINGS_EXCLUDE } from "../config.js";
 import { scanLocal, isKeyInScope, isSkillSubscribeKey } from "./scanner.js";
 import { hashFile, sha256, blobName } from "./hash.js";
-import { toOS, isSettingsKey, isClaudeJsonKey, isConfigJsonKey, isValidLogicalKey, isWithinHome } from "./paths.js";
+import {
+  toOS,
+  isSettingsKey,
+  isClaudeJsonKey,
+  isConfigJsonKey,
+  isValidLogicalKey,
+  isWithinHome,
+  CONFLICT_SIDECAR_INFIX,
+} from "./paths.js";
 
 import { AsyncMutex, RemoteLock, withLock } from "./lock.js";
 import {
@@ -1194,8 +1202,8 @@ export class SyncEngine {
       const mid = sanitizeToken(conflict.remoteMachineId);
       const gen = sanitizeToken(conflict.remoteGeneration);
       let sidecarPath: string | null = entry.deleted
-        ? `${absPath}.conflict-deleted-${mid}-${gen}`
-        : `${absPath}.conflict-${mid}-${gen}`;
+        ? `${absPath}${CONFLICT_SIDECAR_INFIX}deleted-${mid}-${gen}`
+        : `${absPath}${CONFLICT_SIDECAR_INFIX}${mid}-${gen}`;
       if (!isWithinHome(this.config.home, sidecarPath)) sidecarPath = null;
 
       let plannedCopyPath: string | null;
@@ -1742,7 +1750,7 @@ export class SyncEngine {
   ): Promise<string | null> {
     const mid = sanitizeToken(conflict.remoteMachineId);
     const gen = sanitizeToken(conflict.remoteGeneration);
-    const diffPath = `${absPath}.conflict-${mid}-${gen}.diff`;
+    const diffPath = `${absPath}${CONFLICT_SIDECAR_INFIX}${mid}-${gen}.diff`;
     if (!isWithinHome(this.config.home, diffPath)) {
       this.logger?.warn(`[engine] conflict diff 경로가 home 밖 — 건너뜀: ${conflict.logicalKey}`);
       return null;
@@ -1839,7 +1847,7 @@ export class SyncEngine {
     const mid = sanitizeToken(conflict.remoteMachineId);
     const gen = sanitizeToken(conflict.remoteGeneration);
     if (entry.deleted) {
-      const markerPath = `${absPath}.conflict-deleted-${mid}-${gen}`;
+      const markerPath = `${absPath}${CONFLICT_SIDECAR_INFIX}deleted-${mid}-${gen}`;
       if (!isWithinHome(this.config.home, markerPath)) {
         this.logger?.warn(`[engine] conflict 마커 경로가 home 밖 — 건너뜀: ${key}`);
         return null;
@@ -1856,7 +1864,7 @@ export class SyncEngine {
 
     const plain = remotePlain ?? (await this.downloadBlob(key));
     if (plain === null) return null;
-    const copyPath = `${absPath}.conflict-${mid}-${gen}`;
+    const copyPath = `${absPath}${CONFLICT_SIDECAR_INFIX}${mid}-${gen}`;
     if (!isWithinHome(this.config.home, copyPath)) {
       this.logger?.warn(`[engine] conflict 사본 경로가 home 밖 — 건너뜀: ${key}`);
       return null;

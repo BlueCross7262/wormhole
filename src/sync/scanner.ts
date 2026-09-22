@@ -3,7 +3,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import mm from "micromatch";
 import type { Config, ScannedFile } from "../types.js";
-import { toLogical, CLAUDE_JSON_LOGICAL_KEY, toOS } from "./paths.js";
+import { toLogical, CLAUDE_JSON_LOGICAL_KEY, toOS, CONFLICT_SIDECAR_GLOBS } from "./paths.js";
 
 // fast-glob 로 include/exclude 적용해 로컬 파일 열거 후 ScannedFile 배열 반환 (logicalKey 오름차순)
 type Targets = Config["targets"];
@@ -13,7 +13,7 @@ type Targets = Config["targets"];
  * scanLocal 과 동일한 dot:true 옵션 사용.
  */
 export function isKeyInScope(logicalKey: string, targets: Targets): boolean {
-  if (mm.isMatch(logicalKey, ["**/*.conflict-*"], { dot: true })) return false;
+  if (mm.isMatch(logicalKey, CONFLICT_SIDECAR_GLOBS, { dot: true })) return false;
   const inInclude = mm.isMatch(logicalKey, targets.include, { dot: true });
   if (!inInclude) return false;
   if (targets.exclude.length === 0) return true;
@@ -22,7 +22,7 @@ export function isKeyInScope(logicalKey: string, targets: Targets): boolean {
 
 export function isSkillSubscribeKey(logicalKey: string, targets: Targets): boolean {
   if (!logicalKey.startsWith(".claude/skills/")) return false;
-  if (mm.isMatch(logicalKey, ["**/*.conflict-*"], { dot: true })) return false;
+  if (mm.isMatch(logicalKey, CONFLICT_SIDECAR_GLOBS, { dot: true })) return false;
   if (targets.exclude.length === 0) return true;
   return !mm.isMatch(logicalKey, targets.exclude, { dot: true });
 }
@@ -30,7 +30,7 @@ export function isSkillSubscribeKey(logicalKey: string, targets: Targets): boole
 export async function scanLocal(config: Config): Promise<ScannedFile[]> {
   const { home, targets, stateDir } = config;
 
-  const ignore = [...targets.exclude, "**/*.conflict-*"];
+  const ignore = [...targets.exclude, ...CONFLICT_SIDECAR_GLOBS];
   // stateDir(~/.wormhole: 백업/base 스냅샷/age-key.txt/passphrase 등)가 home 하위면
   // 무조건 스캔 제외 — 동기화 상태 파일/비밀이 절대 sync 대상이 되지 않게 한다.
   const relState = path.relative(home, stateDir);

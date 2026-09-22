@@ -695,7 +695,7 @@ describe("M18: wormhole_sync dry-run — merge preview 기반 wouldBlock", () =>
         logicalKey: "b" as ResolvePreviewItem["logicalKey"],
         mergeable: false,
         conflictKeys: ["k"],
-        plannedCopyPath: "/x.conflict-m-1",
+        plannedCopyPath: "/x.wormhole-conflict-m-1",
       }),
     ];
     const { engine } = makeFakeEngine({
@@ -737,7 +737,7 @@ describe("M18: wormhole_sync dry-run — merge preview 기반 wouldBlock", () =>
     const server = new FakeServer();
     const conflict = { logicalKey: "c.txt" } as unknown as ConflictItem;
     const preview = [
-      fixturePreviewItem({ mergeable: null, copyPathUncertain: false, plannedCopyPath: "/x.conflict-m-1" }),
+      fixturePreviewItem({ mergeable: null, copyPathUncertain: false, plannedCopyPath: "/x.wormhole-conflict-m-1" }),
     ];
     const { engine } = makeFakeEngine({
       pull: () => Promise.resolve(fixturePull(true, [conflict])),

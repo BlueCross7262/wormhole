@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
-import { scanLocal, isSkillSubscribeKey } from "./scanner.js";
+import { scanLocal, isSkillSubscribeKey, isKeyInScope } from "./scanner.js";
 import type { Config } from "../types.js";
 
 function makeConfig(home: string, overrides?: Partial<Config["targets"]> & { stateDir?: string }): Config {
@@ -192,6 +192,21 @@ describe("scanLocal", () => {
     );
     assert.ok(keys.includes(".claude/CLAUDE.md"), ".claude/CLAUDE.md 는 포함됨");
   });
+
+  test("충돌 사이드카는 사용자 exclude 와 무관하게 제외 (신규·구 이름 모두)", async () => {
+    const home = path.join(tmpDir, "conflict-sidecar");
+    writeFile(path.join(home, ".claude", "CLAUDE.md"), "keep");
+    writeFile(path.join(home, ".claude", "CLAUDE.md.wormhole-conflict-m-1"), "remote");
+    writeFile(path.join(home, ".claude", "CLAUDE.md.wormhole-conflict-m-1.diff"), "diff");
+    writeFile(path.join(home, ".claude", "CLAUDE.md.wormhole-conflict-deleted-m-2"), "marker");
+    writeFile(path.join(home, ".claude", "CLAUDE.md.conflict-m-1"), "legacy");
+
+    const cfg = makeConfig(home, { include: [".claude/**"], exclude: [] });
+    const results = await scanLocal(cfg);
+    const keys = results.map((r) => r.logicalKey);
+
+    assert.deepEqual(keys, [".claude/CLAUDE.md"]);
+  });
 });
 
 describe("isSkillSubscribeKey", () => {
@@ -210,6 +225,8 @@ describe("isSkillSubscribeKey", () => {
   });
 
   test("conflict 파일은 제외", () => {
+    assert.equal(isSkillSubscribeKey(".claude/skills/foo/SKILL.md.wormhole-conflict-abc-1", targets()), false);
+    assert.equal(isSkillSubscribeKey(".claude/skills/foo/SKILL.md.wormhole-conflict-abc-1.diff", targets()), false);
     assert.equal(isSkillSubscribeKey(".claude/skills/foo/SKILL.conflict-abc.md", targets()), false);
   });
 
@@ -222,5 +239,20 @@ describe("isSkillSubscribeKey", () => {
       isSkillSubscribeKey(".claude/skills/bar/SKILL.md", targets([".claude/skills/foo/**"])),
       true,
     );
+  });
+});
+
+describe("isKeyInScope", () => {
+  const targets = { include: [".claude/**"], exclude: [] } as unknown as Config["targets"];
+
+  test("include 에 매치되는 일반 키는 범위 안", () => {
+    assert.equal(isKeyInScope(".claude/settings.json", targets), true);
+  });
+
+  test("충돌 사이드카는 include 에 매치돼도 범위 밖 (신규·구 이름 모두)", () => {
+    assert.equal(isKeyInScope(".claude/settings.json.wormhole-conflict-m-1", targets), false);
+    assert.equal(isKeyInScope(".claude/settings.json.wormhole-conflict-m-1.diff", targets), false);
+    assert.equal(isKeyInScope(".claude/settings.json.wormhole-conflict-deleted-m-1", targets), false);
+    assert.equal(isKeyInScope(".claude/settings.json.conflict-m-1", targets), false);
   });
 });

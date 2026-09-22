@@ -20,7 +20,7 @@ JSON 결과를 읽고 사용자에게 한국어로 요약한다.
 ### 값 수집
 
 - 로컬 값 — 로컬 파일을 그대로 읽는다.
-- 원격 값 — 충돌 sidecar (`<파일>.conflict-<machineId>-<generation>`) 를 읽는다.
+- 원격 값 — 충돌 sidecar (`<파일>.wormhole-conflict-<machineId>-<generation>`) 를 읽는다.
 - `base` 값 — `<stateDir>/base/<sha256(logicalKey)>` 를 읽는다.
   - `stateDir` 은 wormhole 설정값이다.
   - 파일명은 `logicalKey` 문자열의 sha256 hex 다.
@@ -29,7 +29,7 @@ JSON 결과를 읽고 사용자에게 한국어로 요약한다.
 - 변경 내용 — `--dry-run` 결과 `preview[]` 의 `remoteChangeDiff` 와 `localChangeDiff` 를 읽는다.
   - `remoteChangeDiff` 는 원격이 base 대비 무엇을 바꿨는지 담는다.
   - `localChangeDiff` 는 로컬이 base 대비 무엇을 바꿨는지 담는다.
-  - 이전 sync 는 같은 내용을 `<파일>.conflict-<machineId>-<generation>.diff` 에 사람이 읽는 형태로 남긴다.
+  - 이전 sync 는 같은 내용을 `<파일>.wormhole-conflict-<machineId>-<generation>.diff` 에 사람이 읽는 형태로 남긴다.
   - 어느 쪽이 `null` 이면 그 쪽 변경 내용을 구할 수 없다는 뜻이다.
     `null` 을 변경 없음으로 읽지 않는다.
   - `format` 이 `binary`·`deleted` 이거나 `pruned: true` 면 본문이 없다.
@@ -104,14 +104,15 @@ JSON 결과를 읽고 사용자에게 한국어로 요약한다.
   - `preview` 는 예측값이다.
     다운로드 시점과 실제 실행 시점 사이에 원격이 바뀌면 결과가 달라질 수 있다.
 
-충돌 sidecar 의 파일 이름은 `<파일>.conflict-<machineId>-<generation>` 이다.
-삭제 충돌의 sidecar 는 `.conflict-deleted-` 접두를 쓴다.
+충돌 sidecar 의 파일 이름은 `<파일>.wormhole-conflict-<machineId>-<generation>` 이다.
+삭제 충돌의 sidecar 는 `.wormhole-conflict-deleted-` 접두를 쓴다.
 sidecar 에 든 `settings.json` 원격 내용은 raw 파일이 아니다.
 그 내용은 정규화(키 정렬 + `${HOME}` 토큰화)를 거친 원문이다.
 그래서 로컬 `settings.json` 과 1:1 로 비교하면 키 순서와 홈 경로 표기가 다르게 보인다.
 이 차이는 정상이다.
 
-같은 위치의 `<파일>.conflict-<machineId>-<generation>.diff` 는 sync 가 충돌을 보고할 때 남기는 양쪽 변경 내용 기록이다.
+같은 위치의 `<파일>.wormhole-conflict-<machineId>-<generation>.diff` 는 sync 가 충돌을 보고할 때 남기는 양쪽 변경 내용 기록이다.
 원격 diff 는 그 머신이 push 할 때 manifest 에 저장한 값이다.
 로컬 diff 는 보고 시점에 base 스냅샷과 대조해 계산한 값이다.
 두 sidecar 는 모두 wormhole 동기화 범위 밖이라 push 에 섞이지 않는다.
+0.5.23 이하 버전이 만든 `<파일>.conflict-<machineId>-<generation>` 이름의 sidecar 도 동기화 범위 밖이다.

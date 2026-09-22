@@ -608,13 +608,17 @@ wormhole 은 **명시적 단발 동기화** 모델이다. 상주 서버·자동 
 
 | 정책 | 동작 |
 |---|---|
-| `preserve-both` (기본) | 로컬을 유지하고 원격본을 `<path>.conflict-<머신>-<세대>` 로 보존 (삭제 충돌은 `.conflict-deleted-*` 마커) |
+| `preserve-both` (기본) | 로컬을 유지하고 원격본을 `<path>.wormhole-conflict-<머신>-<세대>` 로 보존 (삭제 충돌은 `.wormhole-conflict-deleted-*` 마커) |
 | `latest-wins` | 원격 최신본 (매니페스트 generation = **마지막 push** 기준, 파일 mtime 아님) 으로 자동 덮어쓰기 |
 | `ours` | 로컬을 채택. resolve 는 업로드하지 않고 base 스냅샷만 원격본으로 갱신 — 다음 push 때 로컬본이 업로드됨 |
 | `merge` | `settings.json` 전용. 키 단위 3-way 자동 머지, 머지 불가 키가 있으면 그 파일 전체가 `preserve-both` 로 폴백 |
 | `manual` | 충돌 목록만 반환, 사용자가 직접 처리 |
 
 기본값이 `preserve-both` 인 이유: 설정 파일은 손실 위험을 0 으로 두는 게 안전하므로 양쪽을 보존하는 것이 적절한 기본값이다.
+
+0.5.23 이하 버전은 사본을 `<path>.conflict-<머신>-<세대>` 이름으로 만들었다.
+스캐너는 이 구 이름 사본도 계속 동기화에서 제외한다.
+wormhole 은 이미 디스크에 있는 구 이름 사본의 이름을 바꾸지 않는다.
 
 ### `merge` 정책 흐름
 
@@ -627,7 +631,7 @@ wormhole 은 **명시적 단발 동기화** 모델이다. 상주 서버·자동 
   - 머지 결과가 이 머신에 설치되지 않은 플러그인·마켓플레이스를 참조하면, 그 값을 실제로 반영하기 직전에 채택을 거부하고 `preserve-both` 로 폴백한다.
 - 머지를 채택하지 못한 키는 결과의 `mergeFallbacks` 필드에 사유(`not-settings` / `deleted` / `leaf-conflict` / `blob-missing` / `local-missing` / `local-unparseable` / `remote-unparseable` / `install-prereq` / `adopt-failed`)와 함께 담긴다.
 - `dry-run` (`confirm` 없이 호출, CLI 는 `--dry-run`)으로 먼저 미리보기를 받을 수 있다 — 결과의 `preview[].mergeable` 로 실제 실행 없이 머지 성공 여부를 가늠한다. 단 락 없이 읽기 전용으로 계산한 예측값이라, 미리보기와 실제 실행 사이 원격이 바뀌면 결과가 달라질 수 있다.
-- sidecar(`.conflict-*`)에 남는 원격 내용은 원격 raw 파일이 아니라 정규화(키 정렬 + `${HOME}` 토큰화)를 거친 원문이다. 로컬 `settings.json` 과 줄 단위로 직접 비교하면 키 순서와 홈 경로 표기가 달라 보일 수 있다.
+- sidecar(`.wormhole-conflict-*`)에 남는 원격 내용은 원격 raw 파일이 아니라 정규화(키 정렬 + `${HOME}` 토큰화)를 거친 원문이다. 로컬 `settings.json` 과 줄 단위로 직접 비교하면 키 순서와 홈 경로 표기가 달라 보일 수 있다.
 - `/wormhole-sync --policy merge` 로 sync 안에서도 쓸 수 있다. 폴백된 키가 하나라도 남으면 그 실행은 push 를 막고 종료코드 1 을 낸다 — merge 도 다른 정책과 마찬가지로 완전히 해소되지 않은 충돌로는 push 하지 않는다.
 - config 의 `conflictPolicy` 에 `"merge"` 를 지정하는 경우의 구버전 호환 주의는 §5 config.json 설정의 경고를 참조.
 
@@ -637,7 +641,7 @@ wormhole 은 **명시적 단발 동기화** 모델이다. 상주 서버·자동 
 
 - push 시 base 스냅샷과 업로드본을 비교해 unified diff 를 만들고 `FileEntry.changeDiff` 에 넣는다. 사람 개입이 없으므로 무인 sync·hook 실행에서도 항상 남는다.
 - `settings.json`·`.claude.json` 은 양쪽을 동기화 정규화폼으로 맞춘 뒤 비교한다 — 키 순서·들여쓰기·후행 개행 차이가 diff 잡음으로 새지 않는다.
-- 충돌이 push 를 막으면 `conflicts[]` 에 `remoteChangeDiff`(저장된 원격 변경)와 `localChangeDiff`(보고 시점에 계산한 로컬 변경)가 함께 실리고, `<파일>.conflict-<machineId>-<generation>.diff` 사이드카에도 사람이 읽는 형태로 기록된다. `resolve --dry-run` 의 `preview[]` 에도 같은 두 필드가 담긴다.
+- 충돌이 push 를 막으면 `conflicts[]` 에 `remoteChangeDiff`(저장된 원격 변경)와 `localChangeDiff`(보고 시점에 계산한 로컬 변경)가 함께 실리고, `<파일>.wormhole-conflict-<machineId>-<generation>.diff` 사이드카에도 사람이 읽는 형태로 기록된다. `resolve --dry-run` 의 `preview[]` 에도 같은 두 필드가 담긴다.
 - 크기 한도 — 키당 본문 4 KiB(초과 시 `truncated: true`, 줄수 통계는 전체값 유지), 매니페스트 총 본문 256 KiB(초과 시 오래된 것부터 본문만 비우고 `pruned: true`). 원격에서 받는 본문은 64 KiB 하드 상한으로 검증한다.
 - advisory 데이터다. 동기화 정확성 판정에 쓰지 않으며, 이 필드를 모르는 구버전 wormhole 이 매니페스트를 다시 쓰면 기록이 사라진다 — 이후 push 가 다시 채운다.
 - `pruneChangeDiffs` 는 push 하는 머신에서만 돈다. 오래 pull 만 하는 머신은 예산을 넘긴 매니페스트를 그대로 받을 수 있고, 누구든 다음 push 에서 정리된다.

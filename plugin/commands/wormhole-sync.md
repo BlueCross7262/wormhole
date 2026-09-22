@@ -78,7 +78,7 @@ JSON 결과를 읽고 사용자에게 한국어로 요약한다.
 - 해소 후 남는 충돌 sidecar 는 wormhole 관리 대상이 아니라 push 에 섞이지 않는다.
   sidecar 경로를 보고한다.
   삭제 여부는 사용자가 정한다.
-  같은 위치의 `<파일>.conflict-<machineId>-<generation>.diff`(양쪽 변경 내용 기록, `conflicts[].diffPath`)도 같은 대상이므로 함께 보고한다.
+  같은 위치의 `<파일>.wormhole-conflict-<machineId>-<generation>.diff`(양쪽 변경 내용 기록, `conflicts[].diffPath`)도 같은 대상이므로 함께 보고한다.
 - `reason: "missing-plugins"` 차단은 이 질문 대상이 아니다.
   이때는 `missing` 목록을 보고하고 플러그인 설치를 안내한다.
 

@@ -276,7 +276,7 @@ function revertRemote(args) {
 function cleanup() {
   const sidecars = fs
     .readdirSync(`${REAL_HOME}/.claude`)
-    .filter((f) => f.startsWith("settings.json.conflict-"))
+    .filter((f) => f.startsWith("settings.json.wormhole-conflict-") || f.startsWith("settings.json.conflict-"))
     .map((f) => `${REAL_HOME}/.claude/${f}`);
   fs.rmSync(TEMP, { recursive: true, force: true });
   console.log(

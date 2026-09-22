@@ -123,7 +123,7 @@
 | F-ENGINE-17 | pull all-or-nothing 롤백: 적용 중 예외 발생 시 backedUp 으로 rollback(백업본 복원, 신규생성 파일 삭제… | mcp-boundary | ELC-07, TMB-08 | direct |
 | F-ENGINE-18 | resolve(dryRun) → planResolve: status 충돌을 keys 로 필터해 resolved 키 목록만 반환, conf… | mcp-boundary | CGW-02, CFL-02 | direct |
 | F-ENGINE-19 | resolve 실제 실행: policy 미지정 시 config.conflictPolicy 사용, manual 정책은 자동처리 없이 빈 r… | mcp-boundary | CFL-04, CFL-06, SCH-05 | direct |
-| F-ENGINE-20 | resolve preserve-both: 로컬 유지 + 원격을 .conflict-<mid>-<gen> 사본(삭제충돌은 .conflict-… | mcp-boundary | CFL-02, CFL-07, CFL-08, CGW-05 | direct |
+| F-ENGINE-20 | resolve preserve-both: 로컬 유지 + 원격을 .wormhole-conflict-<mid>-<gen> 사본(삭제충돌은 .wormhole-conflict-… | mcp-boundary | CFL-02, CFL-07, CFL-08, CGW-05 | direct |
 | F-ENGINE-21 | resolve latest-wins: 백업 후 원격 채택(tombstone→로컬삭제+base제거, 아니면 원격 blob 로 덮어쓰기+ba… | mcp-boundary | CFL-03, CFL-05, CFL-06 | direct |
 | F-ENGINE-22 | preserve-both 사본/마커 경로가 isWithinHome 밖이면 경고 후 건너뜀(경로탈출 방어), 원격 유래 machineId/… | mcp-boundary | CFL-02, CFL-07 | partial |
 | F-ENGINE-23 | advanceConverged: 양측동시삭제(localHash null)면 base/state 추적해제, 동일콘텐츠 수렴이면 로컬콘텐츠로… | mcp-boundary | TMB-03, TMB-07 | direct |

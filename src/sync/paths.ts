@@ -67,3 +67,7 @@ export const CONFIG_JSON_LOGICAL_KEY: LogicalKey = ".claude/wormhole-config.json
 export function isConfigJsonKey(logicalKey: LogicalKey): boolean {
   return logicalKey === CONFIG_JSON_LOGICAL_KEY;
 }
+
+export const CONFLICT_SIDECAR_INFIX = ".wormhole-conflict-";
+
+export const CONFLICT_SIDECAR_GLOBS: string[] = [`**/*${CONFLICT_SIDECAR_INFIX}*`, "**/*.conflict-*"];

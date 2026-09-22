@@ -209,7 +209,7 @@ describe("충돌 노출 — 양쪽 diff", () => {
     const status = await b.engine.status();
     const diffKeys = status.items
       .map((i) => i.logicalKey)
-      .filter((k) => k.includes(".conflict-"));
+      .filter((k) => k.includes(".wormhole-conflict-"));
     assert.deepEqual(diffKeys, [], "사이드카·diff 는 동기화 범위 밖이어야 한다");
   });
 

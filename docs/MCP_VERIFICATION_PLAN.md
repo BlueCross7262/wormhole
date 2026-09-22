@@ -692,7 +692,7 @@
   - `GEN_AFTER_DRY === GEN_BEFORE`
   - step3 `structuredContent.dryRun === true` AND note 존재 AND `conflictCopies.length === 0`
   - **preserve-both 성공 판정** (critic 교정 반영):
-    1. `ResolveResult.conflictCopies` 각 항목 `copyPath = '<absPath>.conflict-{sanitizeToken(remoteMachineId)}-{sanitizeToken(remoteGeneration)}'` 파일이 디스크에 존재
+    1. `ResolveResult.conflictCopies` 각 항목 `copyPath = '<absPath>.wormhole-conflict-{sanitizeToken(remoteMachineId)}-{sanitizeToken(remoteGeneration)}'` 파일이 디스크에 존재
     2. 로컬 원본(logicalKey 실파일) 바이트 무변경
     3. `ResolveResult.backupDir === null` (preserve-both 는 hadBackup 미설정)
     4. 직후 `wormhole_status.summary.conflicts` 가 resolve 이전과 동일 카운트
@@ -768,22 +768,22 @@
   3. 머신 B: tools/call `wormhole_status {}` → `GEN_AFTER_DRY` 확인(불변 기대)
   4. 머신 B: tools/call `wormhole_sync {"policy": "preserve-both", "confirm": true}` → 응답 캡처
   5. 머신 B: tools/call `wormhole_status {}` → `GEN_FINAL`, conflicts 확인
-  6. 머신 B: OS 파일시스템에서 `.conflict-*` 사본 파일 존재 확인(`ls ~/.claude/*.conflict-*`)
+  6. 머신 B: OS 파일시스템에서 `.wormhole-conflict-*` 사본 파일 존재 확인(`ls ~/.claude/*.wormhole-conflict-*`)
 - **기대 결과**:
   - step2 응답: `structuredContent.pull.dryRun===true`, `structuredContent.push.dryRun===true`, note 존재, resolve 키 없음(dry 에서는 resolve 단계 없음)
   - step3: `GEN_AFTER_DRY === GEN_BEFORE`
   - step4 응답: `structuredContent.pull.dryRun===false`, `structuredContent.resolve` 키 존재(conflicts.length>0 이므로), `structuredContent.push.dryRun===false`, isError 없음
   - step4 응답: `structuredContent.resolve.policy === 'preserve-both'`, resolved 배열 비어 있지 않음
   - **step5: `GEN_FINAL > GEN_BEFORE`. generation 전진 원인은 `wormhole_sync` 의 push 단계(resolve 아님)에 귀속된다.** 근거: `runResolve` preserve-both 는 manifestStore 미쓰기라 generation 미전진. sync confirm:true 흐름은 pull → (conflicts>0 면 resolve preserve-both) → push 이고, preserve-both 가 충돌 미해소 상태로 push 단계에 진입 → push 가 로컬 원본(충돌 미해소분 포함)을 원격 manifest 에 반영하며 generation 전진. push 가 무엇을 업로드하는지(로컬 현재 상태)는 별도 PROPFIND/manifest 점검으로 확인한다. (critic 교정 반영)
-  - step6: `.conflict-<machineId>-<gen>` 파일 존재(preserve-both 실행 증거)
+  - step6: `.wormhole-conflict-<machineId>-<gen>` 파일 존재(preserve-both 실행 증거)
 - **합격 기준**:
   - step2 structuredContent 에 pull·push 키 존재 및 각 dryRun:true, resolve 키 없음
   - `GEN_AFTER_DRY === GEN_BEFORE` (미리보기 후 불변)
   - step4 structuredContent 에 pull·resolve·push 세 키 모두 존재
-  - step6: OS 에 `.conflict-*` 파일 존재(preserve-both 정책이 실제로 실행됨을 물증으로 확인)
-  - **(교정)** `GEN_FINAL > GEN_BEFORE` 는 sync 의 push 단계 기여로만 단언(resolve 기여 0). 비삭제 충돌 마커는 `'<absPath>.conflict-{sanitizeToken(mid)}-{sanitizeToken(gen)}'` 패턴(삭제 충돌은 `.conflict-deleted-{mid}-{gen}`). sync ResolveResult 단계의 `backupDir` 은 null(preserve-both). (critic 교정 반영)
-- **신선도**: (a)는 sync tool 의 confirm 분기를 mock 에서만, (b)는 충돌 경로·sync 복합 실행 미검증이었으나, 본 시나리오는 충돌 존재 시 sync confirm:true 가 pull→resolve→push 세 단계를 실제 실행하고 `.conflict-*` 사본이 물리적으로 생성됨을 MCP 도구 경계에서 end-to-end 검증한다.
-- **자동화 힌트**: step6 은 Bash 도구로 `ls ~/.claude/*.conflict-* 2>/dev/null | wc -l` 실행 후 > 0 판정.
+  - step6: OS 에 `.wormhole-conflict-*` 파일 존재(preserve-both 정책이 실제로 실행됨을 물증으로 확인)
+  - **(교정)** `GEN_FINAL > GEN_BEFORE` 는 sync 의 push 단계 기여로만 단언(resolve 기여 0). 비삭제 충돌 마커는 `'<absPath>.wormhole-conflict-{sanitizeToken(mid)}-{sanitizeToken(gen)}'` 패턴(삭제 충돌은 `.wormhole-conflict-deleted-{mid}-{gen}`). sync ResolveResult 단계의 `backupDir` 은 null(preserve-both). (critic 교정 반영)
+- **신선도**: (a)는 sync tool 의 confirm 분기를 mock 에서만, (b)는 충돌 경로·sync 복합 실행 미검증이었으나, 본 시나리오는 충돌 존재 시 sync confirm:true 가 pull→resolve→push 세 단계를 실제 실행하고 `.wormhole-conflict-*` 사본이 물리적으로 생성됨을 MCP 도구 경계에서 end-to-end 검증한다.
+- **자동화 힌트**: step6 은 Bash 도구로 `ls ~/.claude/*.wormhole-conflict-* 2>/dev/null | wc -l` 실행 후 > 0 판정.
 
 #### CGW-06 · wormhole_sync confirm:true 비충돌 발산 실적용 — pull·push 실행, resolve 키 부재  `P1`
 
@@ -1075,7 +1075,7 @@
   - `structuredContent.resolved` 배열에 '.claude/CLAUDE.md' 포함
   - `structuredContent.conflictCopies` 길이 >= 1
   - `conflictCopies[0].logicalKey === '.claude/CLAUDE.md'`
-  - `conflictCopies[0].copyPath` 가 `.conflict-<machineId_B>-<gen>` 접미사 포함
+  - `conflictCopies[0].copyPath` 가 `.wormhole-conflict-<machineId_B>-<gen>` 접미사 포함
   - `HOME_A/.claude/CLAUDE.md` 내용 === 'content-A-modified' (로컬 원본 무변경)
   - `conflictCopies[0].copyPath` 파일 내용 === 'content-B' (원격본 보존)
   - `backupDir === null` (preserve-both 는 백업 안 만듦 — 코드상 latest-wins 만 backupDir 채움)
@@ -1083,7 +1083,7 @@
   - dryRun 시 conflictCopies=[] 이고 note 필드 존재
   - confirm:true 시 로컬 CLAUDE.md 바이트가 변경 전과 동일
   - 원격 사본 파일이 disk 에 실존하고 content-B 내용
-  - copyPath 파일명이 sanitizeToken 패턴(`.conflict-{alphanumeric_}-{alphanumeric_}`) 으로 구성됨
+  - copyPath 파일명이 sanitizeToken 패턴(`.wormhole-conflict-{alphanumeric_}-{alphanumeric_}`) 으로 구성됨
   - `backupDir === null`
 - **신선도**: (a)는 mock 이므로 실제 disk 사본 생성 미검증, (b)는 충돌 시나리오 없음 — preserve-both 의 실제 파일시스템 사이드이펙트가 최초 검증.
 
@@ -1205,19 +1205,19 @@
   2. 머신A: tools/call `wormhole_resolve {"policy": "preserve-both", "confirm": true}`
   3. 응답 structuredContent 검사
   4. `HOME_A/.claude/CLAUDE.md` 존재 여부 및 내용 확인
-  5. 마커 파일(`.conflict-deleted-<machineId_B>-<gen>`) 존재 확인
+  5. 마커 파일(`.wormhole-conflict-deleted-<machineId_B>-<gen>`) 존재 확인
 - **기대 결과**:
   - `wormhole_status`: `conflicts[0].isDeletionConflict === true`
   - `wormhole_status`: `conflicts[0].remoteHash === null` (tombstone 이므로)
   - `wormhole_status`: `conflicts[0].localHash !== null` (로컬 수정본 존재)
   - `wormhole_resolve` 응답: `structuredContent.resolved` 에 '.claude/CLAUDE.md' 포함
-  - `conflictCopies[0].copyPath` 가 `.conflict-deleted-<sanitizedMachineId>-<gen>` 패턴
+  - `conflictCopies[0].copyPath` 가 `.wormhole-conflict-deleted-<sanitizedMachineId>-<gen>` 패턴
   - `HOME_A/.claude/CLAUDE.md` 내용 === 'content-A-modified' (로컬 보존)
   - 마커 파일 내용에 '원격' + '삭제' 관련 텍스트 포함
 - **합격 기준**:
   - isDeletionConflict=true 가 `wormhole_status` JSON 에 올바르게 노출
   - preserve-both 하에서 로컬 파일 보존됨 (삭제 안 됨)
-  - 마커 파일이 `.conflict-deleted-` 접두사로 disk 에 생성됨
+  - 마커 파일이 `.wormhole-conflict-deleted-` 접두사로 disk 에 생성됨
   - 마커 파일 경로가 HOME 내부임 (경로 탈출 방어 통과)
 - **신선도**: (a)(b)(c) 어느 쪽도 isDeletionConflict 경로를 다루지 않음 — tombstone vs 로컬 수정 발산 시 flags + 마커 파일 생성의 최초 도구 경계 검증.
 
@@ -1231,19 +1231,19 @@
   - `STDIO_RPC_CLIENT` 또는 `MCP_INSPECTOR`
 - **대상 도구**: `wormhole_resolve`, `wormhole_status`
 - **절차**:
-  1. 1차: tools/call `wormhole_resolve {policy:'preserve-both', confirm:true}` 호출 → conflictCopies 1건 생성(`copyPath = '<absPath>.conflict-{mid}-{gen}'`)
+  1. 1차: tools/call `wormhole_resolve {policy:'preserve-both', confirm:true}` 호출 → conflictCopies 1건 생성(`copyPath = '<absPath>.wormhole-conflict-{mid}-{gen}'`)
   2. 생성된 copyPath 파일의 mtime/inode 또는 바이트 스냅샷 기록
   3. preserve-both 는 watermark 미전진(runResolve 753-867)이라 충돌 잔존 → status 로 conflicts 동일 확인
   4. 2차: 동일 `wormhole_resolve {policy:'preserve-both', confirm:true}` 재호출
   5. runResolve 의 `fs.access(copyPath)` 존재검사 가드 → 이미 존재하면 atomicWriteFile 생략, conflictCopies 에는 동일 copyPath push
-  6. copyPath 파일이 재기록되지 않았는지(mtime 불변) + 추가 사본 파일(`.conflict-...-2` 등) 미생성 확인
+  6. copyPath 파일이 재기록되지 않았는지(mtime 불변) + 추가 사본 파일(`.wormhole-conflict-...-2` 등) 미생성 확인
 - **기대 결과**:
   - 1차 후 conflictCopies 1건, copyPath 파일 존재, backupDir null
   - 1차/2차 사이 `wormhole_status.summary.conflicts` 동일(preserve-both watermark 미전진)
   - 2차 ResolveResult.conflictCopies 가 동일 copyPath 반환(중복 경로 없음, 새 인덱스 접미사 미생성)
   - copyPath 파일 mtime/바이트 1차와 동일(재기록 생략) — atomicWriteFile 미호출
 - **합격 기준**:
-  - 2차 호출 후 디스크상 `.conflict-{mid}-{gen}` 파일이 정확히 1개(중복 사본 0)
+  - 2차 호출 후 디스크상 `.wormhole-conflict-{mid}-{gen}` 파일이 정확히 1개(중복 사본 0)
   - copyPath mtime 1차 == 2차(재기록 없음, fs.access 가드 발동)
   - 양 호출 모두 isError 없음 + backupDir null
   - conflicts 카운트가 두 호출 전후 불변(멱등 = 부작용 누적 없음)
@@ -1297,9 +1297,9 @@
   2. 머신A: tools/call `wormhole_resolve {"policy": "merge", "confirm": true}`
   3. 응답 structuredContent 검사
   4. `HOME_A/.claude/settings.json` 내용 확인(무변경)
-  5. 생성된 사본 파일(`.conflict-<machineId_B>-<gen>`) 내용 확인
+  5. 생성된 사본 파일(`.wormhole-conflict-<machineId_B>-<gen>`) 내용 확인
 - **기대 결과**:
-  - step1: `preview[0].mergeable === false`, `preview[0].conflictKeys` 에 `'env.SHARED'` 포함, `preview[0].plannedCopyPath` 가 `.conflict-{mid}-{gen}` 절대경로
+  - step1: `preview[0].mergeable === false`, `preview[0].conflictKeys` 에 `'env.SHARED'` 포함, `preview[0].plannedCopyPath` 가 `.wormhole-conflict-{mid}-{gen}` 절대경로
   - step3: `mergeFallbacks[0].logicalKey === '.claude/settings.json'`, `mergeFallbacks[0].reason === 'leaf-conflict'`, `mergeFallbacks[0].conflictKeys` 에 `'env.SHARED'` 포함
   - step3: `structuredContent.resolved` 에 `.claude/settings.json` 포함(폴백도 resolved 로 집계), `structuredContent.backupDir === null`(채택 없이 폴백만 발생)
   - step4: 머신A 로컬 settings.json 바이트 무변경(`env.SHARED === 'a-value'` 그대로)
