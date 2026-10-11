@@ -237,22 +237,22 @@ var require_url_parse = __commonJS({
     }
     function resolve2(relative3, base) {
       if (relative3 === "") return base;
-      var path12 = (base || "/").split("/").slice(0, -1).concat(relative3.split("/")), i2 = path12.length, last = path12[i2 - 1], unshift = false, up = 0;
+      var path13 = (base || "/").split("/").slice(0, -1).concat(relative3.split("/")), i2 = path13.length, last = path13[i2 - 1], unshift = false, up = 0;
       while (i2--) {
-        if (path12[i2] === ".") {
-          path12.splice(i2, 1);
-        } else if (path12[i2] === "..") {
-          path12.splice(i2, 1);
+        if (path13[i2] === ".") {
+          path13.splice(i2, 1);
+        } else if (path13[i2] === "..") {
+          path13.splice(i2, 1);
           up++;
         } else if (up) {
           if (i2 === 0) unshift = true;
-          path12.splice(i2, 1);
+          path13.splice(i2, 1);
           up--;
         }
       }
-      if (unshift) path12.unshift("");
-      if (last === "." || last === "..") path12.push("");
-      return path12.join("/");
+      if (unshift) path13.unshift("");
+      if (last === "." || last === "..") path13.push("");
+      return path13.join("/");
     }
     function Url(address, location, parser) {
       address = trimLeft(address);
@@ -468,14 +468,14 @@ var require_path_posix = __commonJS({
     posix.resolve = function() {
       var resolvedPath = "", resolvedAbsolute = false;
       for (var i2 = arguments.length - 1; i2 >= -1 && !resolvedAbsolute; i2--) {
-        var path12 = i2 >= 0 ? arguments[i2] : process.cwd();
-        if (!isString(path12)) {
+        var path13 = i2 >= 0 ? arguments[i2] : process.cwd();
+        if (!isString(path13)) {
           throw new TypeError("Arguments to path.resolve must be strings");
-        } else if (!path12) {
+        } else if (!path13) {
           continue;
         }
-        resolvedPath = path12 + "/" + resolvedPath;
-        resolvedAbsolute = path12.charAt(0) === "/";
+        resolvedPath = path13 + "/" + resolvedPath;
+        resolvedAbsolute = path13.charAt(0) === "/";
       }
       resolvedPath = normalizeArray(
         resolvedPath.split("/"),
@@ -483,36 +483,36 @@ var require_path_posix = __commonJS({
       ).join("/");
       return (resolvedAbsolute ? "/" : "") + resolvedPath || ".";
     };
-    posix.normalize = function(path12) {
-      var isAbsolute4 = posix.isAbsolute(path12), trailingSlash = path12.substr(-1) === "/";
-      path12 = normalizeArray(path12.split("/"), !isAbsolute4).join("/");
-      if (!path12 && !isAbsolute4) {
-        path12 = ".";
+    posix.normalize = function(path13) {
+      var isAbsolute4 = posix.isAbsolute(path13), trailingSlash = path13.substr(-1) === "/";
+      path13 = normalizeArray(path13.split("/"), !isAbsolute4).join("/");
+      if (!path13 && !isAbsolute4) {
+        path13 = ".";
       }
-      if (path12 && trailingSlash) {
-        path12 += "/";
+      if (path13 && trailingSlash) {
+        path13 += "/";
       }
-      return (isAbsolute4 ? "/" : "") + path12;
+      return (isAbsolute4 ? "/" : "") + path13;
     };
-    posix.isAbsolute = function(path12) {
-      return path12.charAt(0) === "/";
+    posix.isAbsolute = function(path13) {
+      return path13.charAt(0) === "/";
     };
     posix.join = function() {
-      var path12 = "";
+      var path13 = "";
       for (var i2 = 0; i2 < arguments.length; i2++) {
         var segment = arguments[i2];
         if (!isString(segment)) {
           throw new TypeError("Arguments to path.join must be strings");
         }
         if (segment) {
-          if (!path12) {
-            path12 += segment;
+          if (!path13) {
+            path13 += segment;
           } else {
-            path12 += "/" + segment;
+            path13 += "/" + segment;
           }
         }
       }
-      return posix.normalize(path12);
+      return posix.normalize(path13);
     };
     posix.relative = function(from, to) {
       from = posix.resolve(from).substr(1);
@@ -546,11 +546,11 @@ var require_path_posix = __commonJS({
       outputParts = outputParts.concat(toParts.slice(samePartsLength));
       return outputParts.join("/");
     };
-    posix._makeLong = function(path12) {
-      return path12;
+    posix._makeLong = function(path13) {
+      return path13;
     };
-    posix.dirname = function(path12) {
-      var result = posixSplitPath(path12), root = result[0], dir = result[1];
+    posix.dirname = function(path13) {
+      var result = posixSplitPath(path13), root = result[0], dir = result[1];
       if (!root && !dir) {
         return ".";
       }
@@ -559,15 +559,15 @@ var require_path_posix = __commonJS({
       }
       return root + dir;
     };
-    posix.basename = function(path12, ext2) {
-      var f3 = posixSplitPath(path12)[2];
+    posix.basename = function(path13, ext2) {
+      var f3 = posixSplitPath(path13)[2];
       if (ext2 && f3.substr(-1 * ext2.length) === ext2) {
         f3 = f3.substr(0, f3.length - ext2.length);
       }
       return f3;
     };
-    posix.extname = function(path12) {
-      return posixSplitPath(path12)[3];
+    posix.extname = function(path13) {
+      return posixSplitPath(path13)[3];
     };
     posix.format = function(pathObject) {
       if (!util2.isObject(pathObject)) {
@@ -6473,10 +6473,10 @@ var require_nested_property = __commonJS({
         return false;
       }
     }
-    function traverse(object, path12) {
+    function traverse(object, path13) {
       var callback = arguments.length > 2 && arguments[2] !== void 0 ? arguments[2] : function() {
       };
-      var segments = path12.split(PATH_DELIMITER);
+      var segments = path13.split(PATH_DELIMITER);
       var length = segments.length;
       var _loop = function _loop2(idx2) {
         var currentSegment = segments[idx2];
@@ -6617,7 +6617,7 @@ var require_path = __commonJS({
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.convertPosixPathToPattern = exports2.convertWindowsPathToPattern = exports2.convertPathToPattern = exports2.escapePosixPath = exports2.escapeWindowsPath = exports2.escape = exports2.removeLeadingDotSegment = exports2.makeAbsolute = exports2.unixify = void 0;
     var os3 = __require("os");
-    var path12 = __require("path");
+    var path13 = __require("path");
     var IS_WINDOWS_PLATFORM = os3.platform() === "win32";
     var LEADING_DOT_SEGMENT_CHARACTERS_COUNT = 2;
     var POSIX_UNESCAPED_GLOB_SYMBOLS_RE = /(\\?)([()*?[\]{|}]|^!|[!+@](?=\()|\\(?![!()*+?@[\]{|}]))/g;
@@ -6629,7 +6629,7 @@ var require_path = __commonJS({
     }
     exports2.unixify = unixify;
     function makeAbsolute(cwd, filepath) {
-      return path12.resolve(cwd, filepath);
+      return path13.resolve(cwd, filepath);
     }
     exports2.makeAbsolute = makeAbsolute;
     function removeLeadingDotSegment(entry) {
@@ -7926,7 +7926,7 @@ var require_braces = __commonJS({
 var require_constants2 = __commonJS({
   "node_modules/picomatch/lib/constants.js"(exports2, module) {
     "use strict";
-    var path12 = __require("path");
+    var path13 = __require("path");
     var WIN_SLASH = "\\\\/";
     var WIN_NO_SLASH = `[^${WIN_SLASH}]`;
     var DEFAULT_MAX_EXTGLOB_RECURSION = 0;
@@ -8100,7 +8100,7 @@ var require_constants2 = __commonJS({
       /* | */
       CHAR_ZERO_WIDTH_NOBREAK_SPACE: 65279,
       /* \uFEFF */
-      SEP: path12.sep,
+      SEP: path13.sep,
       /**
        * Create EXTGLOB_CHARS
        */
@@ -8127,7 +8127,7 @@ var require_constants2 = __commonJS({
 var require_utils2 = __commonJS({
   "node_modules/picomatch/lib/utils.js"(exports2) {
     "use strict";
-    var path12 = __require("path");
+    var path13 = __require("path");
     var win32 = process.platform === "win32";
     var {
       REGEX_BACKSLASH,
@@ -8156,7 +8156,7 @@ var require_utils2 = __commonJS({
       if (options && typeof options.windows === "boolean") {
         return options.windows;
       }
-      return win32 === true || path12.sep === "\\";
+      return win32 === true || path13.sep === "\\";
     };
     exports2.escapeLast = (input, char, lastIdx) => {
       const idx = input.lastIndexOf(char, lastIdx);
@@ -9520,7 +9520,7 @@ var require_parse2 = __commonJS({
 var require_picomatch = __commonJS({
   "node_modules/picomatch/lib/picomatch.js"(exports2, module) {
     "use strict";
-    var path12 = __require("path");
+    var path13 = __require("path");
     var scan = require_scan();
     var parse = require_parse2();
     var utils = require_utils2();
@@ -9605,7 +9605,7 @@ var require_picomatch = __commonJS({
     };
     picomatch.matchBase = (input, glob, options, posix = utils.isWindows(options)) => {
       const regex = glob instanceof RegExp ? glob : picomatch.makeRe(glob, options);
-      return regex.test(path12.basename(input));
+      return regex.test(path13.basename(input));
     };
     picomatch.isMatch = (str, patterns, options) => picomatch(patterns, options)(str);
     picomatch.parse = (pattern, options) => {
@@ -9832,7 +9832,7 @@ var require_pattern = __commonJS({
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.isAbsolute = exports2.partitionAbsoluteAndRelative = exports2.removeDuplicateSlashes = exports2.matchAny = exports2.convertPatternsToRe = exports2.makeRe = exports2.getPatternParts = exports2.expandBraceExpansion = exports2.expandPatternsWithBraceExpansion = exports2.isAffectDepthOfReadingPattern = exports2.endsWithSlashGlobStar = exports2.hasGlobStar = exports2.getBaseDirectory = exports2.isPatternRelatedToParentDirectory = exports2.getPatternsOutsideCurrentDirectory = exports2.getPatternsInsideCurrentDirectory = exports2.getPositivePatterns = exports2.getNegativePatterns = exports2.isPositivePattern = exports2.isNegativePattern = exports2.convertToNegativePattern = exports2.convertToPositivePattern = exports2.isDynamicPattern = exports2.isStaticPattern = void 0;
-    var path12 = __require("path");
+    var path13 = __require("path");
     var globParent = require_glob_parent();
     var micromatch = require_micromatch();
     var GLOBSTAR2 = "**";
@@ -9927,7 +9927,7 @@ var require_pattern = __commonJS({
     }
     exports2.endsWithSlashGlobStar = endsWithSlashGlobStar;
     function isAffectDepthOfReadingPattern(pattern) {
-      const basename2 = path12.basename(pattern);
+      const basename2 = path13.basename(pattern);
       return endsWithSlashGlobStar(pattern) || isStaticPattern(basename2);
     }
     exports2.isAffectDepthOfReadingPattern = isAffectDepthOfReadingPattern;
@@ -9985,7 +9985,7 @@ var require_pattern = __commonJS({
     }
     exports2.partitionAbsoluteAndRelative = partitionAbsoluteAndRelative;
     function isAbsolute4(pattern) {
-      return path12.isAbsolute(pattern);
+      return path13.isAbsolute(pattern);
     }
     exports2.isAbsolute = isAbsolute4;
   }
@@ -10162,8 +10162,8 @@ var require_utils3 = __commonJS({
     exports2.errno = errno;
     var fs9 = require_fs();
     exports2.fs = fs9;
-    var path12 = require_path();
-    exports2.path = path12;
+    var path13 = require_path();
+    exports2.path = path13;
     var pattern = require_pattern();
     exports2.pattern = pattern;
     var stream2 = require_stream();
@@ -10275,8 +10275,8 @@ var require_async = __commonJS({
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.read = void 0;
-    function read2(path12, settings, callback) {
-      settings.fs.lstat(path12, (lstatError, lstat) => {
+    function read2(path13, settings, callback) {
+      settings.fs.lstat(path13, (lstatError, lstat) => {
         if (lstatError !== null) {
           callFailureCallback(callback, lstatError);
           return;
@@ -10285,7 +10285,7 @@ var require_async = __commonJS({
           callSuccessCallback(callback, lstat);
           return;
         }
-        settings.fs.stat(path12, (statError, stat3) => {
+        settings.fs.stat(path13, (statError, stat3) => {
           if (statError !== null) {
             if (settings.throwErrorOnBrokenSymbolicLink) {
               callFailureCallback(callback, statError);
@@ -10317,13 +10317,13 @@ var require_sync = __commonJS({
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.read = void 0;
-    function read2(path12, settings) {
-      const lstat = settings.fs.lstatSync(path12);
+    function read2(path13, settings) {
+      const lstat = settings.fs.lstatSync(path13);
       if (!lstat.isSymbolicLink() || !settings.followSymbolicLink) {
         return lstat;
       }
       try {
-        const stat3 = settings.fs.statSync(path12);
+        const stat3 = settings.fs.statSync(path13);
         if (settings.markSymbolicLink) {
           stat3.isSymbolicLink = () => true;
         }
@@ -10394,17 +10394,17 @@ var require_out = __commonJS({
     var sync = require_sync();
     var settings_1 = require_settings();
     exports2.Settings = settings_1.default;
-    function stat3(path12, optionsOrSettingsOrCallback, callback) {
+    function stat3(path13, optionsOrSettingsOrCallback, callback) {
       if (typeof optionsOrSettingsOrCallback === "function") {
-        async.read(path12, getSettings(), optionsOrSettingsOrCallback);
+        async.read(path13, getSettings(), optionsOrSettingsOrCallback);
         return;
       }
-      async.read(path12, getSettings(optionsOrSettingsOrCallback), callback);
+      async.read(path13, getSettings(optionsOrSettingsOrCallback), callback);
     }
     exports2.stat = stat3;
-    function statSync2(path12, optionsOrSettings) {
+    function statSync2(path13, optionsOrSettings) {
       const settings = getSettings(optionsOrSettings);
-      return sync.read(path12, settings);
+      return sync.read(path13, settings);
     }
     exports2.statSync = statSync2;
     function getSettings(settingsOrOptions = {}) {
@@ -10620,16 +10620,16 @@ var require_async2 = __commonJS({
           return;
         }
         const tasks = names.map((name) => {
-          const path12 = common.joinPathSegments(directory, name, settings.pathSegmentSeparator);
+          const path13 = common.joinPathSegments(directory, name, settings.pathSegmentSeparator);
           return (done) => {
-            fsStat.stat(path12, settings.fsStatSettings, (error, stats) => {
+            fsStat.stat(path13, settings.fsStatSettings, (error, stats) => {
               if (error !== null) {
                 done(error);
                 return;
               }
               const entry = {
                 name,
-                path: path12,
+                path: path13,
                 dirent: utils.fs.createDirentFromStats(name, stats)
               };
               if (settings.stats) {
@@ -10747,7 +10747,7 @@ var require_settings2 = __commonJS({
   "node_modules/@nodelib/fs.scandir/out/settings.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
-    var path12 = __require("path");
+    var path13 = __require("path");
     var fsStat = require_out();
     var fs9 = require_fs4();
     var Settings = class {
@@ -10755,7 +10755,7 @@ var require_settings2 = __commonJS({
         this._options = _options;
         this.followSymbolicLinks = this._getValue(this._options.followSymbolicLinks, false);
         this.fs = fs9.createFileSystemAdapter(this._options.fs);
-        this.pathSegmentSeparator = this._getValue(this._options.pathSegmentSeparator, path12.sep);
+        this.pathSegmentSeparator = this._getValue(this._options.pathSegmentSeparator, path13.sep);
         this.stats = this._getValue(this._options.stats, false);
         this.throwErrorOnBrokenSymbolicLink = this._getValue(this._options.throwErrorOnBrokenSymbolicLink, true);
         this.fsStatSettings = new fsStat.Settings({
@@ -10782,17 +10782,17 @@ var require_out2 = __commonJS({
     var sync = require_sync2();
     var settings_1 = require_settings2();
     exports2.Settings = settings_1.default;
-    function scandir(path12, optionsOrSettingsOrCallback, callback) {
+    function scandir(path13, optionsOrSettingsOrCallback, callback) {
       if (typeof optionsOrSettingsOrCallback === "function") {
-        async.read(path12, getSettings(), optionsOrSettingsOrCallback);
+        async.read(path13, getSettings(), optionsOrSettingsOrCallback);
         return;
       }
-      async.read(path12, getSettings(optionsOrSettingsOrCallback), callback);
+      async.read(path13, getSettings(optionsOrSettingsOrCallback), callback);
     }
     exports2.scandir = scandir;
-    function scandirSync(path12, optionsOrSettings) {
+    function scandirSync(path13, optionsOrSettings) {
       const settings = getSettings(optionsOrSettings);
-      return sync.read(path12, settings);
+      return sync.read(path13, settings);
     }
     exports2.scandirSync = scandirSync;
     function getSettings(settingsOrOptions = {}) {
@@ -11439,7 +11439,7 @@ var require_settings3 = __commonJS({
   "node_modules/@nodelib/fs.walk/out/settings.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
-    var path12 = __require("path");
+    var path13 = __require("path");
     var fsScandir = require_out2();
     var Settings = class {
       constructor(_options = {}) {
@@ -11449,7 +11449,7 @@ var require_settings3 = __commonJS({
         this.deepFilter = this._getValue(this._options.deepFilter, null);
         this.entryFilter = this._getValue(this._options.entryFilter, null);
         this.errorFilter = this._getValue(this._options.errorFilter, null);
-        this.pathSegmentSeparator = this._getValue(this._options.pathSegmentSeparator, path12.sep);
+        this.pathSegmentSeparator = this._getValue(this._options.pathSegmentSeparator, path13.sep);
         this.fsScandirSettings = new fsScandir.Settings({
           followSymbolicLinks: this._options.followSymbolicLinks,
           fs: this._options.fs,
@@ -11511,7 +11511,7 @@ var require_reader2 = __commonJS({
   "node_modules/fast-glob/out/readers/reader.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
-    var path12 = __require("path");
+    var path13 = __require("path");
     var fsStat = require_out();
     var utils = require_utils3();
     var Reader = class {
@@ -11524,7 +11524,7 @@ var require_reader2 = __commonJS({
         });
       }
       _getFullEntryPath(filepath) {
-        return path12.resolve(this._settings.cwd, filepath);
+        return path13.resolve(this._settings.cwd, filepath);
       }
       _makeEntry(stats, pattern) {
         const entry = {
@@ -11940,7 +11940,7 @@ var require_provider = __commonJS({
   "node_modules/fast-glob/out/providers/provider.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
-    var path12 = __require("path");
+    var path13 = __require("path");
     var deep_1 = require_deep();
     var entry_1 = require_entry();
     var error_1 = require_error();
@@ -11954,7 +11954,7 @@ var require_provider = __commonJS({
         this.entryTransformer = new entry_2.default(this._settings);
       }
       _getRootDirectory(task) {
-        return path12.resolve(this._settings.cwd, task.base);
+        return path13.resolve(this._settings.cwd, task.base);
       }
       _getReaderOptions(task) {
         const basePath = task.base === "." ? "" : task.base;
@@ -13042,8 +13042,8 @@ function getErrorMap() {
 
 // node_modules/zod/v3/helpers/parseUtil.js
 var makeIssue = (params) => {
-  const { data, path: path12, errorMaps, issueData } = params;
-  const fullPath = [...path12, ...issueData.path || []];
+  const { data, path: path13, errorMaps, issueData } = params;
+  const fullPath = [...path13, ...issueData.path || []];
   const fullIssue = {
     ...issueData,
     path: fullPath
@@ -13159,11 +13159,11 @@ var errorUtil;
 
 // node_modules/zod/v3/types.js
 var ParseInputLazyPath = class {
-  constructor(parent, value, path12, key) {
+  constructor(parent, value, path13, key) {
     this._cachedPath = [];
     this.parent = parent;
     this.data = value;
-    this._path = path12;
+    this._path = path13;
     this._key = key;
   }
   get path() {
@@ -28298,16 +28298,16 @@ var MatcherView = class {
    * @returns {string|undefined}
    */
   getCurrentTag() {
-    const path12 = this._matcher.path;
-    return path12.length > 0 ? path12[path12.length - 1].tag : void 0;
+    const path13 = this._matcher.path;
+    return path13.length > 0 ? path13[path13.length - 1].tag : void 0;
   }
   /**
    * Get current namespace.
    * @returns {string|undefined}
    */
   getCurrentNamespace() {
-    const path12 = this._matcher.path;
-    return path12.length > 0 ? path12[path12.length - 1].namespace : void 0;
+    const path13 = this._matcher.path;
+    return path13.length > 0 ? path13[path13.length - 1].namespace : void 0;
   }
   /**
    * Get current node's attribute value.
@@ -28315,9 +28315,9 @@ var MatcherView = class {
    * @returns {*}
    */
   getAttrValue(attrName) {
-    const path12 = this._matcher.path;
-    if (path12.length === 0) return void 0;
-    return path12[path12.length - 1].values?.[attrName];
+    const path13 = this._matcher.path;
+    if (path13.length === 0) return void 0;
+    return path13[path13.length - 1].values?.[attrName];
   }
   /**
    * Check if current node has an attribute.
@@ -28325,9 +28325,9 @@ var MatcherView = class {
    * @returns {boolean}
    */
   hasAttr(attrName) {
-    const path12 = this._matcher.path;
-    if (path12.length === 0) return false;
-    const current = path12[path12.length - 1];
+    const path13 = this._matcher.path;
+    if (path13.length === 0) return false;
+    const current = path13[path13.length - 1];
     return current.values !== void 0 && attrName in current.values;
   }
   /**
@@ -28335,18 +28335,18 @@ var MatcherView = class {
    * @returns {number}
    */
   getPosition() {
-    const path12 = this._matcher.path;
-    if (path12.length === 0) return -1;
-    return path12[path12.length - 1].position ?? 0;
+    const path13 = this._matcher.path;
+    if (path13.length === 0) return -1;
+    return path13[path13.length - 1].position ?? 0;
   }
   /**
    * Get current node's repeat counter (occurrence count of this tag name).
    * @returns {number}
    */
   getCounter() {
-    const path12 = this._matcher.path;
-    if (path12.length === 0) return -1;
-    return path12[path12.length - 1].counter ?? 0;
+    const path13 = this._matcher.path;
+    if (path13.length === 0) return -1;
+    return path13[path13.length - 1].counter ?? 0;
   }
   /**
    * Get current node's sibling index (alias for getPosition).
@@ -30993,8 +30993,8 @@ function getParser({ attributeNamePrefix, attributeParsers, entityDecoder: entit
   }
   return new XMLParser(parserOptions);
 }
-function displaynameTagParser(path12, value) {
-  if (path12.endsWith("propstat.prop.displayname")) {
+function displaynameTagParser(path13, value) {
+  if (path13.endsWith("propstat.prop.displayname")) {
     return;
   }
   return value;
@@ -31152,11 +31152,11 @@ async function createDirectory(context, dirPath, options = {}) {
   const response = await request(requestOptions, context);
   handleResponseCode(context, response);
 }
-function ensureCollectionPath(path12) {
-  if (!path12.endsWith("/")) {
-    return path12 + "/";
+function ensureCollectionPath(path13) {
+  if (!path13.endsWith("/")) {
+    return path13 + "/";
   }
-  return path12;
+  return path13;
 }
 async function createDirectoryRecursively(context, dirPath, options = {}) {
   const paths = getAllDirectories(normalisePath(dirPath));
@@ -31459,7 +31459,7 @@ function parseGenericResponse(xml) {
 
 // node_modules/webdav/dist/node/operations/lock.js
 var DEFAULT_TIMEOUT = "Infinite, Second-4100000000";
-async function lock(context, path12, options = {}) {
+async function lock(context, path13, options = {}) {
   const { refreshToken, timeout = DEFAULT_TIMEOUT } = options;
   const headers = {
     Accept: "text/plain,application/xml",
@@ -31469,7 +31469,7 @@ async function lock(context, path12, options = {}) {
     headers.If = refreshToken;
   }
   const requestOptions = prepareRequestOptions({
-    url: joinURL(context.remoteURL, encodePath(path12)),
+    url: joinURL(context.remoteURL, encodePath(path13)),
     method: "LOCK",
     headers,
     data: generateLockXML(context.contactHref)
@@ -31489,9 +31489,9 @@ async function lock(context, path12, options = {}) {
     serverTimeout
   };
 }
-async function unlock(context, path12, token, options = {}) {
+async function unlock(context, path13, token, options = {}) {
   const requestOptions = prepareRequestOptions({
-    url: joinURL(context.remoteURL, encodePath(path12)),
+    url: joinURL(context.remoteURL, encodePath(path13)),
     method: "UNLOCK",
     headers: {
       "Lock-Token": token
@@ -31522,9 +31522,9 @@ function parseQuota(result) {
 
 // node_modules/webdav/dist/node/operations/getQuota.js
 async function getQuota(context, options = {}) {
-  const path12 = options.path || "/";
+  const path13 = options.path || "/";
   const requestOptions = prepareRequestOptions({
-    url: joinURL(context.remoteURL, path12),
+    url: joinURL(context.remoteURL, path13),
     method: "PROPFIND",
     headers: {
       Accept: "text/plain,application/xml",
@@ -31770,29 +31770,29 @@ function createClient(remoteURL, options = {}) {
   setupAuth(context, username, password, token, ha1);
   return {
     copyFile: (filename, destination, options2) => copyFile(context, filename, destination, options2),
-    createDirectory: (path12, options2) => createDirectory(context, path12, options2),
+    createDirectory: (path13, options2) => createDirectory(context, path13, options2),
     createReadStream: (filename, options2) => createReadStream2(context, filename, options2),
     createWriteStream: (filename, options2, callback) => createWriteStream(context, filename, options2, callback),
-    customRequest: (path12, requestOptions) => customRequest(context, path12, requestOptions),
+    customRequest: (path13, requestOptions) => customRequest(context, path13, requestOptions),
     deleteFile: (filename, options2) => deleteFile(context, filename, options2),
-    exists: (path12, options2) => exists(context, path12, options2),
-    getDirectoryContents: (path12, options2) => getDirectoryContents(context, path12, options2),
+    exists: (path13, options2) => exists(context, path13, options2),
+    getDirectoryContents: (path13, options2) => getDirectoryContents(context, path13, options2),
     getFileContents: (filename, options2) => getFileContents(context, filename, options2),
     getFileDownloadLink: (filename) => getFileDownloadLink(context, filename),
     getFileUploadLink: (filename) => getFileUploadLink(context, filename),
     getHeaders: () => Object.assign({}, context.headers),
     getQuota: (options2) => getQuota(context, options2),
-    lock: (path12, options2) => lock(context, path12, options2),
+    lock: (path13, options2) => lock(context, path13, options2),
     moveFile: (filename, destinationFilename, options2) => moveFile(context, filename, destinationFilename, options2),
     putFileContents: (filename, data, options2) => putFileContents(context, filename, data, options2),
     partialUpdateFileContents: (filePath, start, end, data, options2) => partialUpdateFileContents(context, filePath, start, end, data, options2),
-    getDAVCompliance: (path12) => getDAVCompliance(context, path12),
-    search: (path12, options2) => getSearch2(context, path12, options2),
+    getDAVCompliance: (path13) => getDAVCompliance(context, path13),
+    search: (path13, options2) => getSearch2(context, path13, options2),
     setHeaders: (headers2) => {
       context.headers = Object.assign({}, headers2);
     },
-    stat: (path12, options2) => getStat(context, path12, options2),
-    unlock: (path12, token2, options2) => unlock(context, path12, token2, options2),
+    stat: (path13, options2) => getStat(context, path13, options2),
+    unlock: (path13, token2, options2) => unlock(context, path13, token2, options2),
     registerAttributeParser: (parser) => {
       context.parsing.attributeParsers.push(parser);
     },
@@ -31835,18 +31835,18 @@ var RemoteStore = class {
     }
   }
   // 경로를 baseDir 기준으로 결합. 절대경로면 그대로, 아니면 baseDir 접두.
-  resolvePath(path12) {
-    if (path12.startsWith("/") && !path12.startsWith(this.baseDir)) {
-      return path12;
+  resolvePath(path13) {
+    if (path13.startsWith("/") && !path13.startsWith(this.baseDir)) {
+      return path13;
     }
-    if (path12.startsWith(this.baseDir)) {
-      return path12;
+    if (path13.startsWith(this.baseDir)) {
+      return path13;
     }
-    return `${this.baseDir}/${path12}`.replace(/\/+/g, "/");
+    return `${this.baseDir}/${path13}`.replace(/\/+/g, "/");
   }
   // 디렉터리 보장(recursive). 이미 있으면 no-op.
-  async ensureDir(path12) {
-    const resolved = this.resolvePath(path12);
+  async ensureDir(path13) {
+    const resolved = this.resolvePath(path13);
     try {
       const exists2 = await this.client.exists(resolved);
       if (!exists2) {
@@ -31858,8 +31858,8 @@ var RemoteStore = class {
     }
   }
   // 파일/디렉터리 존재 여부.
-  async exists(path12) {
-    const resolved = this.resolvePath(path12);
+  async exists(path13) {
+    const resolved = this.resolvePath(path13);
     try {
       return await this.client.exists(resolved);
     } catch {
@@ -31870,8 +31870,8 @@ var RemoteStore = class {
   // 원자적 업로드: tmp 파일에 쓴 후 최종 경로로 이동.
   // tmp 이름에 머신ID + 모듈 카운터를 붙여 동시/연속 호출 간 충돌을 방지한다.
   // moveFile 실패 시 남은 tmp(orphan)를 삭제한 뒤 원인 에러를 재throw.
-  async putAtomic(path12, data, machineId) {
-    const resolved = this.resolvePath(path12);
+  async putAtomic(path13, data, machineId) {
+    const resolved = this.resolvePath(path13);
     const token = `${machineId}.${atomicTmpCounter++}`;
     const tmpPath = `${resolved}.tmp.${token}`;
     await this.client.putFileContents(tmpPath, data, { overwrite: true });
@@ -31890,21 +31890,21 @@ var RemoteStore = class {
     }
   }
   // 단순 업로드(원자성 불필요한 경우: lock.json 등).
-  async put(path12, data) {
-    const resolved = this.resolvePath(path12);
+  async put(path13, data) {
+    const resolved = this.resolvePath(path13);
     await this.client.putFileContents(resolved, data, { overwrite: true });
     this.logger?.debug(`[RemoteStore] \uC5C5\uB85C\uB4DC \uC644\uB8CC: ${resolved}`);
   }
   // 텍스트로 읽기. 없으면 throw.
-  async getText(path12) {
-    const resolved = this.resolvePath(path12);
+  async getText(path13) {
+    const resolved = this.resolvePath(path13);
     const result = await this.client.getFileContents(resolved, { format: "text" });
     return result;
   }
   // 본문 + ETag 동시 회수. 없으면(404) null.
   // ETag 는 낙관적 잠금(조건부 PUT)에 사용. 서버가 ETag 를 안 주면 etag=null.
-  async getTextWithETag(path12) {
-    const resolved = this.resolvePath(path12);
+  async getTextWithETag(path13) {
+    const resolved = this.resolvePath(path13);
     try {
       const result = await this.client.getFileContents(resolved, {
         format: "text",
@@ -31922,8 +31922,8 @@ var RemoteStore = class {
   // 서버측 원자 비교-후-쓰기(CAS)이므로 read→put 사이 경쟁이 끼어들 수 없다.
   // 불일치(412/405/409)면 PreconditionFailedError throw.
   // expectedEtag 가 null(서버가 ETag 미지원)이면 best-effort 로 무조건 PUT(경고 로깅).
-  async putIfMatch(path12, data, etag, machineId) {
-    const resolved = this.resolvePath(path12);
+  async putIfMatch(path13, data, etag, machineId) {
+    const resolved = this.resolvePath(path13);
     if (etag === null) {
       this.logger?.warn(
         `[RemoteStore] putIfMatch: ETag \uC5C6\uC74C(\uC11C\uBC84 \uBBF8\uC9C0\uC6D0?) \u2014 best-effort PUT \uC73C\uB85C \uD3F4\uBC31: ${resolved} (machineId=${machineId})`
@@ -31952,8 +31952,8 @@ var RemoteStore = class {
   // If-None-Match:* 조건부 PUT: 원격에 리소스가 "없을 때만" 생성한다.
   // 동시에 여러 머신이 생성을 시도해도 서버측에서 한쪽만 성공시킨다(원자적 생성).
   // 이미 존재(412/405/409)면 PreconditionFailedError throw.
-  async putIfNoneMatch(path12, data, machineId) {
-    const resolved = this.resolvePath(path12);
+  async putIfNoneMatch(path13, data, machineId) {
+    const resolved = this.resolvePath(path13);
     try {
       await this.client.customRequest(resolved, {
         method: "PUT",
@@ -31973,14 +31973,14 @@ var RemoteStore = class {
     }
   }
   // 바이너리로 읽기.
-  async getBinary(path12) {
-    const resolved = this.resolvePath(path12);
+  async getBinary(path13) {
+    const resolved = this.resolvePath(path13);
     const result = await this.client.getFileContents(resolved, { format: "binary" });
     return result;
   }
   // 텍스트 읽되 없으면(404) null 반환.
-  async getTextIfExists(path12) {
-    const resolved = this.resolvePath(path12);
+  async getTextIfExists(path13) {
+    const resolved = this.resolvePath(path13);
     try {
       const exists2 = await this.client.exists(resolved);
       if (!exists2) return null;
@@ -31995,8 +31995,8 @@ var RemoteStore = class {
   // 디렉터리 항목 열거. 없거나 에러면 빈 배열.
   // 디렉터리 항목 열거. 디렉터리 부재(404)만 빈 배열, 그 외 에러(401/403/5xx)는 재throw.
   // 기존엔 catch{} 로 모든 에러를 빈 배열로 흡수해 인증/서버 오류를 "빈 디렉터리"로 오인했다.
-  async list(path12) {
-    const resolved = this.resolvePath(path12);
+  async list(path13) {
+    const resolved = this.resolvePath(path13);
     try {
       const contents = await this.client.getDirectoryContents(resolved);
       const items = Array.isArray(contents) ? contents : contents.data;
@@ -32012,8 +32012,8 @@ var RemoteStore = class {
     }
   }
   // 파일 삭제. 없으면 무시(멱등).
-  async deleteFile(path12) {
-    const resolved = this.resolvePath(path12);
+  async deleteFile(path13) {
+    const resolved = this.resolvePath(path13);
     try {
       const exists2 = await this.client.exists(resolved);
       if (!exists2) return;
@@ -32078,8 +32078,8 @@ async function readMachineIdIfExists(stateDir) {
 }
 
 // src/sync/engine.ts
-import { promises as fs7, readFileSync as readFileSync3, existsSync as existsSync3 } from "node:fs";
-import * as path10 from "node:path";
+import { promises as fs7, readFileSync as readFileSync4 } from "node:fs";
+import * as path11 from "node:path";
 import { gzip, gunzip } from "node:zlib";
 import { promisify as promisify2 } from "node:util";
 
@@ -32183,16 +32183,16 @@ var Diff = class {
       }
     }
   }
-  addToPath(path12, added, removed, oldPosInc, options) {
-    const last = path12.lastComponent;
+  addToPath(path13, added, removed, oldPosInc, options) {
+    const last = path13.lastComponent;
     if (last && !options.oneChangePerToken && last.added === added && last.removed === removed) {
       return {
-        oldPos: path12.oldPos + oldPosInc,
+        oldPos: path13.oldPos + oldPosInc,
         lastComponent: { count: last.count + 1, added, removed, previousComponent: last.previousComponent }
       };
     } else {
       return {
-        oldPos: path12.oldPos + oldPosInc,
+        oldPos: path13.oldPos + oldPosInc,
         lastComponent: { count: 1, added, removed, previousComponent: last }
       };
     }
@@ -33471,7 +33471,7 @@ function mergeRecursive(local, remote, base, prefix, conflicts) {
   ]);
   for (const k of keys) {
     if (isForbiddenKey(k)) continue;
-    const path12 = prefix ? `${prefix}.${k}` : k;
+    const path13 = prefix ? `${prefix}.${k}` : k;
     const hasLocal = Object.prototype.hasOwnProperty.call(local, k);
     const hasRemote = Object.prototype.hasOwnProperty.call(remote, k);
     const hasBase = Object.prototype.hasOwnProperty.call(base, k);
@@ -33501,12 +33501,12 @@ function mergeRecursive(local, remote, base, prefix, conflicts) {
         lv,
         rv,
         isPlainObject2(bv) ? bv : {},
-        path12,
+        path13,
         conflicts
       );
       continue;
     }
-    conflicts.push(path12);
+    conflicts.push(path13);
     if (hasLocal) out[k] = lv;
   }
   return out;
@@ -33711,6 +33711,88 @@ function deepAssign(target, src) {
   }
 }
 
+// src/sync/plugin-install.ts
+import { existsSync as existsSync3, readFileSync as readFileSync3 } from "node:fs";
+import * as path10 from "node:path";
+var SAFE_PLUGIN_KEY = /^[A-Za-z0-9._-]+@[A-Za-z0-9._-]+$/;
+var SAFE_GITHUB_REPO = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/;
+var SAFE_GIT_URL = /^(https:\/\/|git@)[A-Za-z0-9._~:/@+%-]+$/;
+var BUILTIN_MARKETPLACE_REPOS = {
+  "claude-plugins-official": "anthropics/claude-plugins-official"
+};
+function isRecord(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function ownValue(obj, key) {
+  return Object.prototype.hasOwnProperty.call(obj, key) ? obj[key] : void 0;
+}
+function readKnownMarketplaces(pluginsDir) {
+  try {
+    const raw = readFileSync3(path10.join(pluginsDir, "known_marketplaces.json"), "utf-8");
+    const parsed = JSON.parse(raw);
+    return isRecord(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+function isMarketplaceRegistered(marketplace, known) {
+  const entry = ownValue(known, marketplace);
+  return !!entry && !!entry.installLocation && existsSync3(entry.installLocation);
+}
+function addCommandFromSource(source) {
+  if (!isRecord(source)) return null;
+  const keys = Object.keys(source).sort().join(",");
+  if (source.source === "github" && keys === "repo,source") {
+    const repo = source.repo;
+    return typeof repo === "string" && SAFE_GITHUB_REPO.test(repo) ? `/plugin marketplace add ${repo}` : null;
+  }
+  if (source.source === "git" && keys === "source,url") {
+    const url = source.url;
+    return typeof url === "string" && SAFE_GIT_URL.test(url) ? `/plugin marketplace add ${url}` : null;
+  }
+  return null;
+}
+function resolveAddCommand(marketplace, settings) {
+  if (isRecord(settings) && isRecord(settings.extraKnownMarketplaces)) {
+    const entry = ownValue(settings.extraKnownMarketplaces, marketplace);
+    if (isRecord(entry)) return addCommandFromSource(entry.source);
+  }
+  const builtinRepo = ownValue(BUILTIN_MARKETPLACE_REPOS, marketplace);
+  return typeof builtinRepo === "string" ? `/plugin marketplace add ${builtinRepo}` : null;
+}
+function buildPluginInstallGuidance(missing, settings, pluginsDir) {
+  const known = readKnownMarketplaces(pluginsDir);
+  const addCommands = [];
+  const installCommands = [];
+  const unresolved = [];
+  const resolvedAdds = /* @__PURE__ */ new Map();
+  for (const key of missing) {
+    if (!SAFE_PLUGIN_KEY.test(key)) continue;
+    const marketplace = key.slice(key.lastIndexOf("@") + 1);
+    let usable = resolvedAdds.get(marketplace);
+    if (usable === void 0) {
+      if (isMarketplaceRegistered(marketplace, known)) {
+        usable = true;
+      } else {
+        const addCommand = resolveAddCommand(marketplace, settings);
+        if (addCommand === null) {
+          unresolved.push(marketplace);
+          usable = false;
+        } else {
+          addCommands.push(addCommand);
+          usable = true;
+        }
+      }
+      resolvedAdds.set(marketplace, usable);
+    }
+    if (usable) installCommands.push(`/plugin install ${key}`);
+  }
+  return {
+    installCommands: [...addCommands, ...installCommands],
+    unresolvedMarketplaces: unresolved
+  };
+}
+
 // src/sync/engine.ts
 function enabledPluginKeys(settings) {
   const obj = settings;
@@ -33733,18 +33815,13 @@ function checkInstallPrereqs(pulledSettings, pluginsDir, opts) {
   if (required.length === 0) return { ok: true, missing: [] };
   let installedPlugins = {};
   try {
-    const raw = readFileSync3(path10.join(pluginsDir, "installed_plugins.json"), "utf-8");
+    const raw = readFileSync4(path11.join(pluginsDir, "installed_plugins.json"), "utf-8");
     const parsed = JSON.parse(raw);
     installedPlugins = parsed.plugins ?? {};
   } catch {
     return { ok: false, missing: required };
   }
-  let knownMarketplaces = {};
-  try {
-    const raw = readFileSync3(path10.join(pluginsDir, "known_marketplaces.json"), "utf-8");
-    knownMarketplaces = JSON.parse(raw);
-  } catch {
-  }
+  const knownMarketplaces = readKnownMarketplaces(pluginsDir);
   const missing = [];
   for (const key of required) {
     const entries = installedPlugins[key];
@@ -33755,8 +33832,7 @@ function checkInstallPrereqs(pulledSettings, pluginsDir, opts) {
     const atIdx = key.lastIndexOf("@");
     if (atIdx > 0) {
       const marketplace = key.slice(atIdx + 1);
-      const marketEntry = knownMarketplaces[marketplace];
-      if (!marketEntry || !marketEntry.installLocation || !existsSync3(marketEntry.installLocation)) {
+      if (!isMarketplaceRegistered(marketplace, knownMarketplaces)) {
         missing.push(key);
       }
     }
@@ -33834,9 +33910,9 @@ var SyncEngine = class {
     );
     this.lock = new RemoteLock(this.remote, this.config, this.machineId, this.logger);
     this.mutex = new AsyncMutex();
-    this.statePath = path10.join(this.config.stateDir, "state.json");
-    this.baseDir = path10.join(this.config.stateDir, "base");
-    this.backupsDir = path10.join(this.config.stateDir, "backups");
+    this.statePath = path11.join(this.config.stateDir, "state.json");
+    this.baseDir = path11.join(this.config.stateDir, "base");
+    this.backupsDir = path11.join(this.config.stateDir, "backups");
   }
   // ── 공개 API ────────────────────────────────────────────────
   /** 현재 동기화 상태 계산. 부수효과 없음. */
@@ -34253,7 +34329,7 @@ var SyncEngine = class {
       };
     }
     const runTs = this.makeRunTs();
-    const backupRoot = path10.join(this.backupsDir, runTs);
+    const backupRoot = path11.join(this.backupsDir, runTs);
     const applied = [];
     const removed = [];
     const nextState = { ...state };
@@ -34364,7 +34440,7 @@ var SyncEngine = class {
     const remoteManifest = await this.manifestStore.read();
     const local = await this.scanWithHashes();
     const runTs = this.makeRunTs();
-    const backupRoot = path10.join(this.backupsDir, runTs);
+    const backupRoot = path11.join(this.backupsDir, runTs);
     const applied = [];
     const removed = [];
     const nextState = {};
@@ -34657,7 +34733,7 @@ var SyncEngine = class {
       };
     }
     const runTs = this.makeRunTs();
-    const backupRoot = path10.join(this.backupsDir, runTs);
+    const backupRoot = path11.join(this.backupsDir, runTs);
     const resolved = [];
     const conflictCopies = [];
     const mergeFallbacks = [];
@@ -34730,7 +34806,7 @@ var SyncEngine = class {
         }
         const prereq = checkInstallPrereqs(
           mergeResult.merged,
-          path10.join(this.config.home, ".claude", "plugins")
+          path11.join(this.config.home, ".claude", "plugins")
         );
         if (!prereq.ok) {
           await fallbackWithSidecar("install-prereq", [], remotePlain, prereq.missing);
@@ -34844,11 +34920,11 @@ var SyncEngine = class {
   // ── 파일 입출력 유틸 ────────────────────────────────────────
   /** 로컬 원자적 쓰기: 같은 디렉터리에 tmp 작성 → rename. 부모 mkdir -p. */
   async atomicWriteFile(absPath, data) {
-    const dir = path10.dirname(absPath);
+    const dir = path11.dirname(absPath);
     await fs7.mkdir(dir, { recursive: true });
-    const tmpPath = path10.join(
+    const tmpPath = path11.join(
       dir,
-      `.${path10.basename(absPath)}.tmp.${this.machineId}.${process.pid}.${atomicWriteSeq++}`
+      `.${path11.basename(absPath)}.tmp.${this.machineId}.${process.pid}.${atomicWriteSeq++}`
     );
     const fh = await fs7.open(tmpPath, "w");
     try {
@@ -34942,7 +35018,7 @@ var SyncEngine = class {
   // ── base 스냅샷 ─────────────────────────────────────────────
   /** base 스냅샷 경로: <stateDir>/base/<sha256(logicalKey)>. */
   baseSnapshotPath(key) {
-    return path10.join(this.baseDir, sha2563(key));
+    return path11.join(this.baseDir, sha2563(key));
   }
   /** base 스냅샷 기록(마지막 동기화 평문 보관). */
   async writeBaseSnapshot(key, data) {
@@ -35039,7 +35115,7 @@ var SyncEngine = class {
   async readPrereqScope() {
     const key = ".claude/settings.json";
     const localSettings = await this.readJsonFile(
-      path10.join(this.config.home, ".claude", "settings.json")
+      path11.join(this.config.home, ".claude", "settings.json")
     );
     if (localSettings === null) return void 0;
     const baseSettings = await this.readBaseSnapshotJson(key);
@@ -35058,8 +35134,8 @@ var SyncEngine = class {
   async backupFile(absPath, key, backupRoot, data) {
     try {
       const content = data ?? await fs7.readFile(absPath);
-      const backupPath = path10.join(backupRoot, ...key.split("/"));
-      await fs7.mkdir(path10.dirname(backupPath), { recursive: true });
+      const backupPath = path11.join(backupRoot, ...key.split("/"));
+      await fs7.mkdir(path11.dirname(backupPath), { recursive: true });
       await fs7.writeFile(backupPath, content);
       return backupPath;
     } catch (err) {
@@ -35146,14 +35222,24 @@ var SyncEngine = class {
     const prereqScope = await this.readPrereqScope();
     const prereq = checkInstallPrereqs(pulledSettings, pluginsDir, prereqScope);
     if (!prereq.ok) {
-      return { aborted: true, reason: "missing-plugins", missing: prereq.missing };
+      return {
+        aborted: true,
+        reason: "missing-plugins",
+        missing: prereq.missing,
+        ...buildPluginInstallGuidance(prereq.missing, pulledSettings, pluginsDir)
+      };
     }
     return this.mutex.runExclusive(
       async () => withLock(this.lock, async () => {
         const { pulledSettings: freshSettings } = await this.fetchRemote();
         const recheck = checkInstallPrereqs(freshSettings, pluginsDir, await this.readPrereqScope());
         if (!recheck.ok) {
-          return { aborted: true, reason: "missing-plugins", missing: recheck.missing };
+          return {
+            aborted: true,
+            reason: "missing-plugins",
+            missing: recheck.missing,
+            ...buildPluginInstallGuidance(recheck.missing, freshSettings, pluginsDir)
+          };
         }
         const pull = await this.runPull();
         let resolveResult = null;
@@ -35395,13 +35481,13 @@ async function buildEngine(logger2) {
 import * as nodePath from "node:path";
 
 // src/version.ts
-import { readFileSync as readFileSync4 } from "node:fs";
+import { readFileSync as readFileSync5 } from "node:fs";
 import { fileURLToPath } from "node:url";
 function resolveVersion() {
-  if (true) return "0.5.25";
+  if (true) return "0.5.26";
   try {
     const pkgPath = fileURLToPath(new URL("../package.json", import.meta.url));
-    const pkg = JSON.parse(readFileSync4(pkgPath, "utf-8"));
+    const pkg = JSON.parse(readFileSync5(pkgPath, "utf-8"));
     return pkg.version ?? "unknown";
   } catch {
     return "unknown";
@@ -35776,10 +35862,10 @@ function parsePolicy(value) {
 }
 
 // src/cli-sync.ts
-import * as path11 from "node:path";
+import * as path12 from "node:path";
 async function runSyncCommand(engine, opts) {
   const engineCfg = engine.config;
-  const pluginsDir = path11.join(engineCfg.home, ".claude", "plugins");
+  const pluginsDir = path12.join(engineCfg.home, ".claude", "plugins");
   const result = await engine.syncAtomic({ pluginsDir, policy: opts.policy });
   const payload = result;
   const exitCode = result.aborted ? 1 : 0;
