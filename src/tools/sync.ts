@@ -89,13 +89,23 @@ export function registerSyncTool(server: McpServer, engine: SyncEngine): void {
             } as CallToolResult;
           }
 
-          const installCommands = result.missing.map((key) => `/plugin install ${key}`);
+          const { installCommands, unresolvedMarketplaces } = result;
+          const noteLines = [
+            `미설치 플러그인 ${result.missing.length}개로 동기화 중단됨. 아래 명령을 순서대로 입력해 설치한 뒤 재시도하세요:`,
+            ...installCommands,
+          ];
+          if (unresolvedMarketplaces.length > 0) {
+            noteLines.push(
+              `소스를 알 수 없는 마켓플레이스: ${unresolvedMarketplaces.join(", ")}. 이 마켓플레이스를 등록한 머신에서 소스를 확인해 직접 등록하세요.`,
+            );
+          }
           const payload: Record<string, unknown> = {
             aborted: true,
             reason: "missing-plugins",
             missing: result.missing,
             installCommands,
-            note: `미설치 플러그인 ${result.missing.length}개로 동기화 중단됨. 아래 명령으로 설치 후 재시도하세요:\n${installCommands.join("\n")}`,
+            unresolvedMarketplaces,
+            note: noteLines.join("\n"),
           };
           return {
             content: [{ type: "text", text: JSON.stringify(payload) }],

@@ -68,6 +68,12 @@ import {
   detokenizeHome,
   extractSharedSubset,
 } from "./settings-merge.js";
+import {
+  buildPluginInstallGuidance,
+  isMarketplaceRegistered,
+  readKnownMarketplaces,
+  type PluginInstallGuidance,
+} from "./plugin-install.js";
 
 /** 의존성 주입 묶음. */
 export interface EngineDeps {
@@ -146,13 +152,7 @@ export function checkInstallPrereqs(
   }
 
   // known_marketplaces.json: marketplace 등록 여부 + installLocation 디렉터리 존재.
-  let knownMarketplaces: Record<string, { installLocation?: string }> = {};
-  try {
-    const raw = readFileSync(path.join(pluginsDir, "known_marketplaces.json"), "utf-8");
-    knownMarketplaces = JSON.parse(raw) as Record<string, { installLocation?: string }>;
-  } catch {
-    // 파일 부재/파싱 실패 시 marketplace 체크 생략(보수적으로는 plugin-level 체크만 사용).
-  }
+  const knownMarketplaces = readKnownMarketplaces(pluginsDir);
 
   const missing: string[] = [];
   for (const key of required) {
@@ -168,12 +168,7 @@ export function checkInstallPrereqs(
     const atIdx = key.lastIndexOf("@");
     if (atIdx > 0) {
       const marketplace = key.slice(atIdx + 1);
-      const marketEntry = knownMarketplaces[marketplace];
-      if (
-        !marketEntry ||
-        !marketEntry.installLocation ||
-        !existsSync(marketEntry.installLocation)
-      ) {
+      if (!isMarketplaceRegistered(marketplace, knownMarketplaces)) {
         missing.push(key);
       }
     }
@@ -1913,7 +1908,7 @@ export class SyncEngine {
     pluginsDir: string;
     policy?: ResolvePolicy;
   }): Promise<
-    | { aborted: true; reason: "missing-plugins"; missing: string[] }
+    | ({ aborted: true; reason: "missing-plugins"; missing: string[] } & PluginInstallGuidance)
     | { aborted: true; reason: "conflicts"; conflicts: ConflictDetail[] }
     | { aborted: false; pull: PullResult; push: PushResult }
   > {
@@ -1924,7 +1919,12 @@ export class SyncEngine {
 
     const prereq = checkInstallPrereqs(pulledSettings, pluginsDir, prereqScope);
     if (!prereq.ok) {
-      return { aborted: true, reason: "missing-plugins", missing: prereq.missing };
+      return {
+        aborted: true,
+        reason: "missing-plugins",
+        missing: prereq.missing,
+        ...buildPluginInstallGuidance(prereq.missing, pulledSettings, pluginsDir),
+      };
     }
 
     return this.mutex.runExclusive(async () =>
@@ -1932,7 +1932,12 @@ export class SyncEngine {
         const { pulledSettings: freshSettings } = await this.fetchRemote();
         const recheck = checkInstallPrereqs(freshSettings, pluginsDir, await this.readPrereqScope());
         if (!recheck.ok) {
-          return { aborted: true as const, reason: "missing-plugins" as const, missing: recheck.missing };
+          return {
+            aborted: true as const,
+            reason: "missing-plugins" as const,
+            missing: recheck.missing,
+            ...buildPluginInstallGuidance(recheck.missing, freshSettings, pluginsDir),
+          };
         }
 
         const pull = await this.runPull();

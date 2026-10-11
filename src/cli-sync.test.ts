@@ -109,6 +109,33 @@ describe("M20: CLI sync 설치 배리어 — installed_plugins.json 이 참조�
     assert.equal(bLocalExists, false, "설치 배리어에 걸리면 pull 도 실행되지 않아 로컬 파일이 생기지 않는다");
   });
 
+  test("M20: 원격 settings 의 extraKnownMarketplaces 로 add→install 순서의 설치 안내를 낸다", async () => {
+    const remote = new MockWebdavRemote();
+    const a = makeReplica(remote, "m20g-a", "machine-a");
+    const b = makeReplica(remote, "m20g-b", "machine-b");
+
+    await writeHomeFile(
+      a,
+      SETTINGS_KEY,
+      JSON.stringify({
+        enabledPlugins: { "foo@bar": true, "baz@unknown": true },
+        extraKnownMarketplaces: { bar: { source: { source: "github", repo: "o/r" } } },
+      }),
+    );
+    await a.engine.push();
+
+    const { payload, exitCode } = await runSyncCommand(b.engine, { policy: "preserve-both" });
+
+    assert.equal(exitCode, 1);
+    assert.equal(payload.reason, "missing-plugins");
+    assert.deepEqual(payload.missing, ["baz@unknown", "foo@bar"]);
+    assert.deepEqual(payload.installCommands, [
+      "/plugin marketplace add o/r",
+      "/plugin install foo@bar",
+    ]);
+    assert.deepEqual(payload.unresolvedMarketplaces, ["unknown"]);
+  });
+
   test("M20: 설치 배리어·충돌이 모두 없으면 exitCode 0, aborted:false", async () => {
     const remote = new MockWebdavRemote();
     const a = makeReplica(remote, "m20h-a", "machine-a");

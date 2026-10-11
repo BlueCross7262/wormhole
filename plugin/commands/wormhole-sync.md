@@ -140,7 +140,15 @@ force 모드는 해당 블록 하나만 적는다.
   삭제 여부는 사용자가 정한다.
   같은 위치의 `<파일>.wormhole-conflict-<machineId>-<generation>.diff`(양쪽 변경 내용 기록, `conflicts[].diffPath`)도 같은 대상이므로 함께 보고한다.
 - `reason: "missing-plugins"` 차단은 이 질문 대상이 아니다.
-  이때는 `missing` 목록을 보고하고 플러그인 설치를 안내한다.
+  이때는 `missing` 목록을 보고하고 `installCommands` 를 배열 순서 그대로 사용자에게 보여 준다.
+  - 각 항목은 사용자가 Claude Code 입력창에 직접 입력하는 슬래시 명령이다.
+    Bash 로 실행하지 않는다.
+  - `/plugin marketplace add` 항목이 `/plugin install` 항목보다 앞에 있다.
+    순서를 바꾸지 않는다.
+  - `unresolvedMarketplaces` 는 소스를 알 수 없는 마켓플레이스다.
+    `installCommands` 에 그 마켓플레이스의 명령은 없다.
+    별도 줄로 보고하고, 그 마켓플레이스를 등록한 머신에서 소스를 확인해 직접 등록하도록 안내한다.
+  - 명령을 입력한 뒤 sync 를 다시 실행하도록 안내한다.
 
 ## Force 모드 (파괴적 — 주의)
 

@@ -87,7 +87,13 @@ interface FakeEngineOpts {
     o?: SyncRunOptions,
   ) => Promise<ResolveResult>;
   syncAtomic?: (opts: { pluginsDir: string; policy?: ResolvePolicy }) => Promise<
-    | { aborted: true; reason: "missing-plugins"; missing: string[] }
+    | {
+        aborted: true;
+        reason: "missing-plugins";
+        missing: string[];
+        installCommands: string[];
+        unresolvedMarketplaces: string[];
+      }
     | { aborted: true; reason: "conflicts"; conflicts: ConflictDetail[] }
     | { aborted: false; pull: PullResult; push: PushResult }
   >;
@@ -568,6 +574,41 @@ describe("wormhole_sync — handler confirm-gate", () => {
     assert.equal(out.conflicts[0].logicalKey, "c.txt", "conflict logicalKey must match");
     assert.equal(out.conflicts[0].remoteGeneration, 2, "conflict remoteGeneration must match");
     assert.ok(out.note && out.note.length > 0, "note must be present");
+  });
+
+  test("confirm:true + missing-plugins → tool relays engine installCommands in order and lists unresolved marketplaces", async () => {
+    const server = new FakeServer();
+    const { engine } = makeFakeEngine({
+      syncAtomic: () =>
+        Promise.resolve({
+          aborted: true as const,
+          reason: "missing-plugins" as const,
+          missing: ["foo@bar", "baz@qux"],
+          installCommands: ["/plugin marketplace add o/r", "/plugin install foo@bar"],
+          unresolvedMarketplaces: ["qux"],
+        }),
+    });
+    registerSyncTool(server as unknown as McpServer, engine);
+
+    const res = await server.call("wormhole_sync", { confirm: true });
+    assert.notEqual(res.isError, true);
+    const out = parseStructured<{
+      aborted: boolean;
+      reason: string;
+      missing: string[];
+      installCommands: string[];
+      unresolvedMarketplaces: string[];
+      note: string;
+    }>(res);
+    assert.equal(out.reason, "missing-plugins");
+    assert.deepEqual(out.missing, ["foo@bar", "baz@qux"]);
+    assert.deepEqual(out.installCommands, ["/plugin marketplace add o/r", "/plugin install foo@bar"]);
+    assert.deepEqual(out.unresolvedMarketplaces, ["qux"]);
+    assert.ok(
+      out.note.indexOf("/plugin marketplace add o/r") < out.note.indexOf("/plugin install foo@bar"),
+      "note keeps add before install",
+    );
+    assert.ok(out.note.includes("qux"), "note mentions unresolved marketplace");
   });
 
   test("confirm:true with conflicts and explicit policy=latest-wins", async () => {
