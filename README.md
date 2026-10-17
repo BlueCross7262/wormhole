@@ -251,6 +251,7 @@ WORMHOLE_PASSPHRASE=your-strong-passphrase
 | `/wormhole-status` | 추가/수정/삭제/원격변경/충돌/수렴 요약 (변경 없음) |
 | `/wormhole-resolve` | 충돌을 명시적으로 해소 |
 | `/wormhole-sync` | **원샷** — pull → 충돌 시 자동 해소(`preserve-both`) → push |
+| `/wormhole-reasons` | 이미 올라간 버전에 수정 이유만 추가 업로드 |
 | `/wormhole-doctor` | 설정·WebDAV 연결·passphrase 정합·vault 상태 6단계 진단 (읽기전용) |
 
 일상적으로는 `/wormhole-sync` 하나면 충분하다. pull 후 충돌이 있으면 기본 정책 (`preserve-both`) 으로 해소한 뒤 push 까지 한 번에 처리한다 (커맨드 상세는 **§7 슬래시 커맨드** 참조). 연결·설정 문제는 `/wormhole-doctor` 로 진단한다.
@@ -271,7 +272,8 @@ Claude Code 가 직접 호출하는 도구로, 슬래시 커맨드 없이 AI 흐
 |---|---|---|---|
 | `wormhole_status` | 읽기 전용 | 자율 호출 가능 | 추가/수정/삭제/충돌/수렴 요약 반환 (변경 없음) |
 | `wormhole_resolve` | 쓰기 | 기본값 = 미리보기 | 충돌을 명시적으로 해소 |
-| `wormhole_sync` | 쓰기 | 기본값 = 미리보기 | pull → resolve → push 원샷 동기화 |
+| `wormhole_sync` | 쓰기 | 기본값 = 미리보기 | pull → resolve → push 원샷 동기화. 선택 입력 `reasons` 로 push 하는 파일의 수정 이유를 함께 저장 |
+| `wormhole_reasons` | 쓰기 | 기본값 = 미리보기 | 이미 올라간 버전에 수정 이유만 추가 업로드 |
 | `wormhole_doctor` | 읽기 전용 | 자율 호출 가능 | 설정·WebDAV·passphrase·vault 6단계 진단 (변경 없음) |
 
 > **네이밍 규칙**: 슬래시 커맨드는 hyphen(`wormhole-status` / `-resolve` / `-sync` / `-doctor` / `-setup`), MCP 도구 id 는 underscore(`wormhole_status` / `_resolve` / `_sync` / `_doctor`) 를 사용한다. 생태계 관행(MCP = snake_case)과 Claude Code 슬래시 커맨드 네임스페이싱 제약을 각각 반영한 의도적 분리다.
@@ -280,7 +282,7 @@ Claude Code 가 직접 호출하는 도구로, 슬래시 커맨드 없이 AI 흐
 
 **읽기 전용 도구** (`wormhole_status`, `wormhole_doctor`) 는 로컬·원격을 변경하지 않으므로 Claude 가 자율적으로 호출할 수 있다.
 
-**쓰기 도구** (`wormhole_resolve`, `wormhole_sync`) 는 `confirm` 파라미터(기본값 `false`)로 작동을 제어한다.
+**쓰기 도구** (`wormhole_resolve`, `wormhole_sync`, `wormhole_reasons`) 는 `confirm` 파라미터(기본값 `false`)로 작동을 제어한다.
 
 - `confirm: false` (기본) — 실제 변경 없이 **미리보기** 결과만 반환한다. 어떤 파일이 영향을 받는지 확인할 수 있다.
 - `confirm: true` — 실제로 적용한다.
@@ -572,6 +574,21 @@ wormhole doctor
 - **stop-on-error** — pull / resolve 가 실패하면 push 전에 중단한다.
 - `--policy manual` 은 **금지** 다 (sync 안에서는 자동 해소가 전제이므로 에러 — 수동 해소가 필요하면 `/wormhole-resolve` 를 따로 쓴다).
 - 일상 동기화는 이 커맨드 하나면 충분하다.
+- 수정 이유 저장 — `--reasons-file <path>` 로 push 하는 파일마다 왜 고쳤는지를 원격에 함께 저장한다. 다른 머신은 pull·충돌 해소·삭제 반영 때 그 이유를 보고 병합 방향을 정한다.
+  - 슬래시 커맨드는 `wormhole pending` 으로 push 후보와 변경 diff 를 읽기 전용으로 얻어 이유 초안을 만들고, 사용자 확인 뒤 `--reasons-file` 로 실행한다. 일반 `sync --dry-run` 은 미리보기가 아니라 실제 sync 이므로 후보 조회에 쓰지 않는다.
+  - 이유는 파일(`logicalKey`)마다 이력으로 쌓이고 개수 제한이 없다. 이력은 원격 `blobs/r-*` 에 저장되고 매니페스트 엔트리의 `reasonsRef` 가 가리킨다. 항목 하나는 2000자 이하다.
+  - pull 결과의 `reasons` 는 이 머신이 아직 못 본 generation 의 이유만 담는다. 키당 최신 5건과 전체 64 KiB 안에서 보이고 넘친 건수는 `omitted` 로 센다.
+  - 구버전 wormhole 이 push 하면 `reasonsRef` 가 지워진다. `--force-up` 도 이력을 지운다.
+
+### `/wormhole-reasons` (`reasons --file <path> [--dry-run]`)
+
+이미 원격에 올라간 버전에 수정 이유만 덧붙인다. 로컬 파일을 바꾸지 않고 pull 도 하지 않는다.
+
+- 입력은 `{logicalKey, reason, contentHash}` 배열이다. `contentHash` 는 `status` 의 `remoteHash` 이며 원격 엔트리와 다르면 `stale-hash` 로 거부한다.
+- `--dry-run` 은 원격에 쓰지 않고 수락·거부 예정만 반환한다.
+- 같은 이유를 다시 올리면 `unchanged` 로 건너뛴다.
+- 기록되거나 변경 없는 항목이 없고 거부만 있으면 종료 코드 1 이다.
+- 이미 그 버전을 pull 한 머신에는 나중에 덧붙인 이유가 보이지 않는다.
 
 ### `/wormhole-doctor` (`doctor`)
 

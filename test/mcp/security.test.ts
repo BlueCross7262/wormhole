@@ -145,3 +145,35 @@ test("SMR-09: 악성 원격 settings blob(__proto__) → pull Object.prototype �
   }
   assert.equal(parseToolResult(await b.callTool("wormhole_status")).isError, false, "B 생존");
 });
+
+test("REASONS-SEC: 변조된 reasonsRef 는 pull 을 막지 않고 이유만 빠진다", async (t) => {
+  const dav = await startWebdav();
+  const homeA = makeHome({
+    label: "rsecA", remoteUrl: dav.url,
+    files: { ".claude/CLAUDE.md": "legit\n", ".claude/commands/other.md": "other\n" },
+  });
+  t.after(async () => { await dav.close(); rmrf(homeA.homeDir); });
+  const a = new McpClient(childEnv(homeA.homeDir, homeA.configPath, dav.url)).spawn();
+  await a.initialize();
+  await a.callTool("wormhole_sync", { confirm: true });
+  await a.close();
+
+  const { crypto, manifest } = await openManifest(dav.store);
+  manifest.entries[".claude/CLAUDE.md"].reasonsRef = { hash: "zz", count: -5, lastGeneration: "x" };
+  manifest.entries[".claude/commands/other.md"].reasonsRef = { hash: "a".repeat(64), count: 999999, lastGeneration: 7 };
+  manifest.manifestGeneration += 1;
+  await writeManifest(dav.store, crypto, manifest);
+
+  const homeB = makeHome({ label: "rsecB", remoteUrl: dav.url });
+  const b = new McpClient(childEnv(homeB.homeDir, homeB.configPath, dav.url)).spawn();
+  t.after(async () => { await b.close(); rmrf(homeB.homeDir); });
+  await b.initialize();
+
+  const pull = parseToolResult(await b.callTool("wormhole_sync", { confirm: true }));
+
+  assert.equal(pull.isError, false, "sync graceful");
+  assert.ok(pull.structured.pull.applied.includes(".claude/CLAUDE.md"), "변조 ref 파일도 적용");
+  assert.ok(pull.structured.pull.applied.includes(".claude/commands/other.md"), "존재하지 않는 이력을 가리켜도 적용");
+  assert.equal(pull.structured.pull.reasons, undefined, "읽을 수 없는 이유는 결과에서 빠진다");
+  assert.equal(parseToolResult(await b.callTool("wormhole_status")).isError, false, "B 생존");
+});

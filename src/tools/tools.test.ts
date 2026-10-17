@@ -9,6 +9,7 @@ import { registerAllTools } from "./index.js";
 import { registerStatusTool } from "./status.js";
 import { registerResolveTool } from "./resolve.js";
 import { registerSyncTool } from "./sync.js";
+import { registerReasonsTool } from "./reasons.js";
 import { registerDoctorTool } from "./doctor.js";
 import type { SyncEngine } from "../sync/engine.js";
 import type {
@@ -21,6 +22,8 @@ import type {
   ConflictItem,
   ConflictDetail,
   ResolvePreviewItem,
+  ReasonInput,
+  ReasonsResult,
 } from "../types.js";
 
 // ----------------------------------------------------------------------------
@@ -74,7 +77,8 @@ interface EngineCalls {
   push: SyncRunOptions[];
   pull: SyncRunOptions[];
   resolve: Array<{ policy?: ResolvePolicy; keys?: string[]; options?: SyncRunOptions }>;
-  syncAtomic: Array<{ pluginsDir: string; policy?: ResolvePolicy }>;
+  syncAtomic: Array<{ pluginsDir: string; policy?: ResolvePolicy; reasons?: ReasonInput[] }>;
+  pushReasons: Array<{ inputs: ReasonInput[]; options?: SyncRunOptions }>;
 }
 
 interface FakeEngineOpts {
@@ -86,7 +90,12 @@ interface FakeEngineOpts {
     k?: string[],
     o?: SyncRunOptions,
   ) => Promise<ResolveResult>;
-  syncAtomic?: (opts: { pluginsDir: string; policy?: ResolvePolicy }) => Promise<
+  pushReasons?: (inputs: ReasonInput[], o?: SyncRunOptions) => Promise<ReasonsResult>;
+  syncAtomic?: (opts: {
+    pluginsDir: string;
+    policy?: ResolvePolicy;
+    reasons?: ReasonInput[];
+  }) => Promise<
     | {
         aborted: true;
         reason: "missing-plugins";
@@ -167,7 +176,14 @@ function makeFakeEngine(opts: FakeEngineOpts = {}): {
   engine: SyncEngine;
   calls: EngineCalls;
 } {
-  const calls: EngineCalls = { status: 0, push: [], pull: [], resolve: [], syncAtomic: [] };
+  const calls: EngineCalls = {
+    status: 0,
+    push: [],
+    pull: [],
+    resolve: [],
+    syncAtomic: [],
+    pushReasons: [],
+  };
   const engine = {
     config: { home: "/fake-home" },
     async status(): Promise<SyncStatus> {
@@ -190,7 +206,18 @@ function makeFakeEngine(opts: FakeEngineOpts = {}): {
       calls.resolve.push({ policy: p, keys: k, options: o });
       return opts.resolve ? opts.resolve(p, k, o) : fixtureResolve(p ?? "latest-wins");
     },
-    async syncAtomic(o: { pluginsDir: string; policy?: ResolvePolicy }) {
+    async pushReasons(inputs: ReasonInput[], options?: SyncRunOptions): Promise<ReasonsResult> {
+      calls.pushReasons.push({ inputs, options });
+      if (opts.pushReasons) return opts.pushReasons(inputs, options);
+      return {
+        dryRun: options?.dryRun ?? false,
+        recorded: inputs.map((i) => i.logicalKey),
+        unchanged: [],
+        rejected: [],
+        manifestGeneration: 9,
+      };
+    },
+    async syncAtomic(o: { pluginsDir: string; policy?: ResolvePolicy; reasons?: ReasonInput[] }) {
       calls.syncAtomic.push(o);
       if (opts.syncAtomic) return opts.syncAtomic(o);
       const pull = await engine.pull();
@@ -216,7 +243,7 @@ function parseStructured<T>(res: CallToolResult): T {
 // ============================================================================
 
 describe("registerAllTools", () => {
-  test("registers exactly the 4 wormhole tools with expected names", () => {
+  test("registers exactly the 5 wormhole tools with expected names", () => {
     const server = new FakeServer();
     const { engine } = makeFakeEngine();
     registerAllTools(server as unknown as McpServer, engine);
@@ -224,11 +251,12 @@ describe("registerAllTools", () => {
     const names = server.tools.map((t) => t.name).sort();
     assert.deepEqual(names, [
       "wormhole_doctor",
+      "wormhole_reasons",
       "wormhole_resolve",
       "wormhole_status",
       "wormhole_sync",
     ]);
-    assert.equal(server.tools.length, 4);
+    assert.equal(server.tools.length, 5);
   });
 
   test("each registered tool has a title and description", () => {
@@ -250,6 +278,7 @@ describe("registerAllTools", () => {
     for (const name of [
       "wormhole_resolve",
       "wormhole_sync",
+      "wormhole_reasons",
     ]) {
       const desc = server.get(name).config.description ?? "";
       assert.match(desc, /confirm:true/);
@@ -500,6 +529,137 @@ describe("wormhole_sync — input schema", () => {
       () => server.parse("wormhole_sync", { policy: "manual" }),
       (e: unknown) => e instanceof z.ZodError,
     );
+  });
+});
+
+describe("wormhole_sync — reasons", () => {
+  test("reasons 입력을 받아들이고 형식이 틀리면 거부한다", () => {
+    const server = new FakeServer();
+    const { engine } = makeFakeEngine();
+    registerSyncTool(server as unknown as McpServer, engine);
+    const parsed = server.parse("wormhole_sync", {
+      reasons: [{ logicalKey: ".claude/a.md", reason: "why" }],
+    });
+    assert.deepEqual(parsed, {
+      confirm: false,
+      reasons: [{ logicalKey: ".claude/a.md", reason: "why" }],
+    });
+    assert.throws(
+      () => server.parse("wormhole_sync", { reasons: [{ logicalKey: "a" }] }),
+      (e: unknown) => e instanceof z.ZodError,
+    );
+  });
+
+  test("confirm:true 에서 reasons 를 syncAtomic 에 넘긴다", async () => {
+    const server = new FakeServer();
+    const { engine, calls } = makeFakeEngine();
+    registerSyncTool(server as unknown as McpServer, engine);
+
+    await server.call("wormhole_sync", {
+      confirm: true,
+      reasons: [{ logicalKey: ".claude/a.md", reason: "why" }],
+    });
+
+    assert.deepEqual(calls.syncAtomic[0]!.reasons, [{ logicalKey: ".claude/a.md", reason: "why" }]);
+  });
+
+  test("reasons 가 없으면 syncAtomic 인자에 reasons 키가 없다", async () => {
+    const server = new FakeServer();
+    const { engine, calls } = makeFakeEngine();
+    registerSyncTool(server as unknown as McpServer, engine);
+
+    await server.call("wormhole_sync", { confirm: true });
+
+    assert.equal("reasons" in calls.syncAtomic[0]!, false);
+  });
+
+  test("미리보기는 reasons 와 pending 을 쓰지 않는다", async () => {
+    const server = new FakeServer();
+    const { engine, calls } = makeFakeEngine();
+    registerSyncTool(server as unknown as McpServer, engine);
+
+    await server.call("wormhole_sync", { reasons: [{ logicalKey: "a", reason: "why" }] });
+
+    assert.deepEqual(calls.push, [{ dryRun: true }]);
+    assert.equal(calls.syncAtomic.length, 0);
+  });
+});
+
+describe("wormhole_reasons", () => {
+  test("입력 스키마: reasons 필수, confirm 기본 false", () => {
+    const server = new FakeServer();
+    const { engine } = makeFakeEngine();
+    registerReasonsTool(server as unknown as McpServer, engine);
+    assert.throws(() => server.parse("wormhole_reasons", {}), (e: unknown) => e instanceof z.ZodError);
+    assert.throws(
+      () => server.parse("wormhole_reasons", { reasons: [] }),
+      (e: unknown) => e instanceof z.ZodError,
+    );
+    const parsed = server.parse("wormhole_reasons", {
+      reasons: [{ logicalKey: "a.md", reason: "why", contentHash: "a".repeat(64) }],
+    });
+    assert.equal((parsed as { confirm: boolean }).confirm, false);
+  });
+
+  test("contentHash 형식이 틀리면 거부한다", () => {
+    const server = new FakeServer();
+    const { engine } = makeFakeEngine();
+    registerReasonsTool(server as unknown as McpServer, engine);
+    assert.throws(
+      () =>
+        server.parse("wormhole_reasons", {
+          reasons: [{ logicalKey: "a.md", reason: "why", contentHash: "zz" }],
+        }),
+      (e: unknown) => e instanceof z.ZodError,
+    );
+  });
+
+  test("confirm 없으면 dry-run 으로만 부르고 미리보기 안내를 낸다", async () => {
+    const server = new FakeServer();
+    const { engine, calls } = makeFakeEngine();
+    registerReasonsTool(server as unknown as McpServer, engine);
+
+    const res = await server.call("wormhole_reasons", {
+      reasons: [{ logicalKey: "a.md", reason: "why", contentHash: "a".repeat(64) }],
+    });
+
+    assert.deepEqual(calls.pushReasons[0]!.options, { dryRun: true });
+    const out = parseStructured<{ dryRun: boolean; note: string }>(res);
+    assert.equal(out.dryRun, true);
+    assert.match(out.note, /미리보기/);
+  });
+
+  test("confirm:true 면 실제로 기록한다", async () => {
+    const server = new FakeServer();
+    const { engine, calls } = makeFakeEngine();
+    registerReasonsTool(server as unknown as McpServer, engine);
+
+    const res = await server.call("wormhole_reasons", {
+      confirm: true,
+      reasons: [{ logicalKey: "a.md", reason: "why", contentHash: "a".repeat(64) }],
+    });
+
+    assert.deepEqual(calls.pushReasons[0]!.options, { dryRun: false });
+    const out = parseStructured<{ dryRun: boolean; note?: string }>(res);
+    assert.equal(out.dryRun, false);
+    assert.equal(out.note, undefined);
+  });
+
+  test("엔진 오류는 isError 로 돌려준다", async () => {
+    const server = new FakeServer();
+    const { engine } = makeFakeEngine({
+      pushReasons: async () => {
+        throw new Error("boom");
+      },
+    });
+    registerReasonsTool(server as unknown as McpServer, engine);
+
+    const res = await server.call("wormhole_reasons", {
+      confirm: true,
+      reasons: [{ logicalKey: "a.md", reason: "why", contentHash: "a".repeat(64) }],
+    });
+
+    assert.equal(res.isError, true);
   });
 });
 

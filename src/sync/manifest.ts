@@ -14,6 +14,7 @@ import type { AgeCrypto } from "../crypto/age.js";
 import type { RemoteStore } from "../webdav/client.js";
 import { PreconditionFailedError } from "../webdav/client.js";
 import { z } from "zod";
+import { ReasonsRefSchema } from "./reasons.js";
 
 // 원격(타 머신/타 OS 작성) 매니페스트는 신뢰 불가 입력 — 복호 성공만으로 구조를 믿지 않고 zod 로 검증.
 // changeDiff 본문은 원격이 채우는 값이라 상한을 강제한다. 상한이 없으면 피어 하나가
@@ -39,6 +40,7 @@ const FileEntrySchema = z.object({
   deletedAt: z.number().nullable(),
   scopeExcluded: z.boolean().optional(),
   changeDiff: ChangeDiffSchema.optional(),
+  reasonsRef: ReasonsRefSchema.optional().catch(undefined),
 });
 const ManifestSchema = z.object({
   schemaVersion: z.literal(1),
@@ -270,6 +272,7 @@ export class ManifestStore {
       deleted: false,
       deletedAt: null,
       ...(nextDiff ? { changeDiff: nextDiff } : {}),
+      ...(existing.reasonsRef ? { reasonsRef: existing.reasonsRef } : {}),
     };
     manifest.entries[logicalKey] = entry;
     return entry;

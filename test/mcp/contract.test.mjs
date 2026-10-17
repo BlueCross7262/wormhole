@@ -32,13 +32,13 @@ function rejected(res) {
 }
 
 // ── TRX-01: tools/list 입력스키마 계약 ───────────────────────
-test("TRX-01: tools/list 4개 도구 inputSchema 계약", async (t) => {
+test("TRX-01: tools/list 5개 도구 inputSchema 계약", async (t) => {
   const { client } = await bootClient(t);
   await client.initialize();
   const tools = (await client.listTools()).result.tools;
   const by = Object.fromEntries(tools.map((x) => [x.name, x]));
 
-  assert.equal(tools.length, 4, "정확히 4개");
+  assert.equal(tools.length, 5, "정확히 5개");
 
   // 음성 단언: push/pull/dry_run 은 더 이상 노출되지 않음.
   for (const removed of ["wormhole_push", "wormhole_pull", "wormhole_dry_run"]) {
@@ -68,6 +68,16 @@ test("TRX-01: tools/list 4개 도구 inputSchema 계약", async (t) => {
   assert.deepEqual(sp.policy.enum, ["preserve-both", "latest-wins", "merge"], "sync.policy 3종(manual/ours 없음)");
   assert.equal(sp.confirm.type, "boolean", "sync.confirm boolean");
   assert.ok(!(by.wormhole_sync.inputSchema.required ?? []).includes("confirm"), "sync.confirm optional");
+  assert.equal(sp.reasons.type, "array", "sync.reasons array");
+  assert.ok(!(by.wormhole_sync.inputSchema.required ?? []).includes("reasons"), "sync.reasons optional");
+
+  // reasons: 이미 올라간 버전에 이유만 덧붙임. reasons 필수 array, confirm optional
+  assert.ok(by.wormhole_reasons, "reasons 노출");
+  const rsp = by.wormhole_reasons.inputSchema.properties;
+  assert.equal(rsp.reasons.type, "array", "reasons.reasons array");
+  assert.equal(rsp.confirm.type, "boolean", "reasons.confirm boolean");
+  assert.ok((by.wormhole_reasons.inputSchema.required ?? []).includes("reasons"), "reasons.reasons required");
+  assert.ok(!(by.wormhole_reasons.inputSchema.required ?? []).includes("confirm"), "reasons.confirm optional");
 });
 
 // ── DOC-01: doctor 해피패스 — 정상 부팅 + vault 부트스트랩 후 진단 ok ──

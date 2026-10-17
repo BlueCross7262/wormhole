@@ -6,8 +6,8 @@ import { logger } from "./logger.js";
 import { maybeMigrateLegacyConfig } from "./migrate-config.js";
 import { buildEngine } from "./bootstrap.js";
 import { runDoctor } from "./doctor.js";
-import { USAGE, parsePolicy } from "./cli-args.js";
-import { runSyncCommand } from "./cli-sync.js";
+import { USAGE, parsePolicy, resolveReasonsArgs, resolveSyncReasonsFile } from "./cli-args.js";
+import { loadReasonInputs, runReasonsCommand, runSyncCommand } from "./cli-sync.js";
 
 interface ParsedArgs {
   flags: Record<string, string | boolean>;
@@ -84,6 +84,10 @@ async function run(): Promise<void> {
       if (forceUp && forceDown) throw new Error("--force-up 와 --force-down 동시 사용 불가");
       if ((forceUp || forceDown) && flags.policy !== undefined)
         throw new Error("force 모드는 --policy 와 함께 쓸 수 없음");
+      const reasonsFile = resolveSyncReasonsFile(flags);
+      if ((forceUp || forceDown) && reasonsFile !== undefined)
+        throw new Error("force 모드는 --reasons-file 과 함께 쓸 수 없음");
+      const reasons = reasonsFile !== undefined ? await loadReasonInputs(reasonsFile) : undefined;
       const { engine } = await buildEngine(logger);
       if (forceUp) { emit({ forceUpload: await engine.forceUpload({ dryRun: dryRunFlag }) }); return; }
       if (forceDown) { emit({ forceDownload: await engine.forceDownload({ dryRun: dryRunFlag }) }); return; }
@@ -93,7 +97,26 @@ async function run(): Promise<void> {
         throw new Error(`${policy} not allowed for sync; run /wormhole-resolve`);
       }
 
-      const { payload, exitCode } = await runSyncCommand(engine, { policy });
+      const { payload, exitCode } = await runSyncCommand(engine, {
+        policy,
+        ...(reasons ? { reasons } : {}),
+      });
+      emit(payload);
+      if (exitCode !== 0) process.exit(exitCode);
+      return;
+    }
+
+    case "pending": {
+      const { engine } = await buildEngine(logger);
+      emit(await engine.push({ dryRun: true, includePending: true }));
+      return;
+    }
+
+    case "reasons": {
+      const { file, dryRun } = resolveReasonsArgs(flags, positionals);
+      const inputs = await loadReasonInputs(file);
+      const { engine } = await buildEngine(logger);
+      const { payload, exitCode } = await runReasonsCommand(engine, { inputs, dryRun });
       emit(payload);
       if (exitCode !== 0) process.exit(exitCode);
       return;

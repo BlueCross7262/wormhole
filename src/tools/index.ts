@@ -3,11 +3,13 @@ import type { SyncEngine } from "../sync/engine.js";
 import { registerStatusTool } from "./status.js";
 import { registerResolveTool } from "./resolve.js";
 import { registerSyncTool } from "./sync.js";
+import { registerReasonsTool } from "./reasons.js";
 import { registerDoctorTool } from "./doctor.js";
 
 export function registerAllTools(server: McpServer, engine: SyncEngine): void {
   registerStatusTool(server, engine);
   registerResolveTool(server, engine);
   registerSyncTool(server, engine);
+  registerReasonsTool(server, engine);
   registerDoctorTool(server);
 }

@@ -22,6 +22,12 @@ export function registerSyncTool(server: McpServer, engine: SyncEngine): void {
             "충돌 해소 정책. preserve-both(기본): 양쪽 보존(무손실). latest-wins: 원격 최신본(매니페스트 generation = 마지막으로 push 된 쪽 기준, 파일 mtime/벽시계 시각 아님)으로 덮어쓰기. merge: settings.json 만 3-way 자동 머지, leaf 충돌·삭제·비settings 는 preserve-both 폴백(잔존 시 push 차단). 생략 시 preserve-both.",
           )
           .optional(),
+        reasons: z
+          .array(z.object({ logicalKey: z.string().min(1), reason: z.string() }))
+          .optional()
+          .describe(
+            "이번 push 로 올라가는 파일(logicalKey)별 수정 이유. 원격에 함께 저장돼 다른 머신이 pull·충돌 해소 때 본다. confirm:true 일 때만 쓰이며 미리보기에는 영향이 없다.",
+          ),
         confirm: z.boolean().optional().default(false),
       },
     },
@@ -67,7 +73,11 @@ export function registerSyncTool(server: McpServer, engine: SyncEngine): void {
         const policy: ResolvePolicy = args.policy ?? "preserve-both";
         const engineCfg = (engine as unknown as { config: { home: string } }).config;
         const pluginsDir = path.join(engineCfg.home, ".claude", "plugins");
-        const result = await engine.syncAtomic({ pluginsDir, policy });
+        const result = await engine.syncAtomic({
+          pluginsDir,
+          policy,
+          ...(args.reasons ? { reasons: args.reasons } : {}),
+        });
 
         if (result.aborted) {
           if (result.reason === "conflicts") {

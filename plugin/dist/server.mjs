@@ -33479,6 +33479,9 @@ function registerSyncTool(server, engine) {
         policy: external_exports.enum(["preserve-both", "latest-wins", "merge"]).describe(
           "\uCDA9\uB3CC \uD574\uC18C \uC815\uCC45. preserve-both(\uAE30\uBCF8): \uC591\uCABD \uBCF4\uC874(\uBB34\uC190\uC2E4). latest-wins: \uC6D0\uACA9 \uCD5C\uC2E0\uBCF8(\uB9E4\uB2C8\uD398\uC2A4\uD2B8 generation = \uB9C8\uC9C0\uB9C9\uC73C\uB85C push \uB41C \uCABD \uAE30\uC900, \uD30C\uC77C mtime/\uBCBD\uC2DC\uACC4 \uC2DC\uAC01 \uC544\uB2D8)\uC73C\uB85C \uB36E\uC5B4\uC4F0\uAE30. merge: settings.json \uB9CC 3-way \uC790\uB3D9 \uBA38\uC9C0, leaf \uCDA9\uB3CC\xB7\uC0AD\uC81C\xB7\uBE44settings \uB294 preserve-both \uD3F4\uBC31(\uC794\uC874 \uC2DC push \uCC28\uB2E8). \uC0DD\uB7B5 \uC2DC preserve-both."
         ).optional(),
+        reasons: external_exports.array(external_exports.object({ logicalKey: external_exports.string().min(1), reason: external_exports.string() })).optional().describe(
+          "\uC774\uBC88 push \uB85C \uC62C\uB77C\uAC00\uB294 \uD30C\uC77C(logicalKey)\uBCC4 \uC218\uC815 \uC774\uC720. \uC6D0\uACA9\uC5D0 \uD568\uAED8 \uC800\uC7A5\uB3FC \uB2E4\uB978 \uBA38\uC2E0\uC774 pull\xB7\uCDA9\uB3CC \uD574\uC18C \uB54C \uBCF8\uB2E4. confirm:true \uC77C \uB54C\uB9CC \uC4F0\uC774\uBA70 \uBBF8\uB9AC\uBCF4\uAE30\uC5D0\uB294 \uC601\uD5A5\uC774 \uC5C6\uB2E4."
+        ),
         confirm: external_exports.boolean().optional().default(false)
       }
     },
@@ -33522,7 +33525,11 @@ function registerSyncTool(server, engine) {
         const policy = args.policy ?? "preserve-both";
         const engineCfg = engine.config;
         const pluginsDir = path.join(engineCfg.home, ".claude", "plugins");
-        const result = await engine.syncAtomic({ pluginsDir, policy });
+        const result = await engine.syncAtomic({
+          pluginsDir,
+          policy,
+          ...args.reasons ? { reasons: args.reasons } : {}
+        });
         if (result.aborted) {
           if (result.reason === "conflicts") {
             const conflictLines = result.conflicts.map(
@@ -33566,6 +33573,46 @@ ${conflictLines}`
           };
         }
         const payload = { pull: result.pull, push: result.push };
+        return {
+          content: [{ type: "text", text: JSON.stringify(payload) }],
+          structuredContent: payload
+        };
+      } catch (err) {
+        return {
+          content: [{ type: "text", text: String(err.message) }],
+          isError: true
+        };
+      }
+    }
+  );
+}
+
+// src/tools/reasons.ts
+function registerReasonsTool(server, engine) {
+  server.registerTool(
+    "wormhole_reasons",
+    {
+      title: "Wormhole Reasons",
+      description: "\uC774\uBBF8 \uC6D0\uACA9\uC5D0 \uC62C\uB77C\uAC04 \uBC84\uC804\uC5D0 \uC218\uC815 \uC774\uC720\uB9CC \uB530\uB85C \uB367\uBD99\uC778\uB2E4(\uB85C\uCEEC \uD30C\uC77C \uBCC0\uACBD\xB7pull \uC5C6\uC74C). \uC548\uC804 \uAE30\uBCF8\uAC12: confirm \uC5C6\uC774 \uD638\uCD9C\uD558\uBA74 \uC2E4\uC81C \uAE30\uB85D \uC5C6\uC774 \uBBF8\uB9AC\uBCF4\uAE30(dry-run)\uB9CC \uBC18\uD658\uD55C\uB2E4. \uC2E4\uC81C \uAE30\uB85D\uC740 confirm:true \uAC00 \uD544\uC694\uD558\uBA70, \uC774\uB294 \uC0AC\uC6A9\uC790\uC758 \uBA85\uC2DC\uC801 \uD655\uC778\uC774 \uC788\uC744 \uB54C\uB9CC \uC804\uB2EC\uD55C\uB2E4 \u2014 \uC808\uB300 \uC790\uC728\uC801\uC73C\uB85C confirm:true \uB97C \uB118\uAE30\uC9C0 \uC54A\uB294\uB2E4. \uAC01 \uD56D\uBAA9\uC758 contentHash \uB294 wormhole_status \uAC00 \uC900 remoteHash \uC774\uBA70 \uC6D0\uACA9 \uC5D4\uD2B8\uB9AC\uC640 \uB2E4\uB974\uBA74 stale-hash \uB85C \uAC70\uBD80\uB41C\uB2E4.",
+      inputSchema: {
+        reasons: external_exports.array(
+          external_exports.object({
+            logicalKey: external_exports.string().min(1),
+            reason: external_exports.string(),
+            contentHash: external_exports.string().regex(/^[0-9a-f]{64}$/).optional()
+          })
+        ).min(1).describe("\uD30C\uC77C(logicalKey)\uBCC4 \uC218\uC815 \uC774\uC720. \uAC19\uC740 logicalKey \uB294 \uD55C \uBC88\uB9CC \uC4F4\uB2E4."),
+        confirm: external_exports.boolean().optional().default(false)
+      }
+    },
+    async (args, _extra) => {
+      try {
+        const dryRun = args.confirm !== true;
+        const result = await engine.pushReasons(args.reasons, { dryRun });
+        const payload = { ...result };
+        if (dryRun) {
+          payload.note = "\uBBF8\uB9AC\uBCF4\uAE30 \u2014 \uC2E4\uC81C \uAE30\uB85D\uD558\uB824\uBA74 confirm:true (\uC0AC\uC6A9\uC790 \uD655\uC778 \uD6C4)";
+        }
         return {
           content: [{ type: "text", text: JSON.stringify(payload) }],
           structuredContent: payload
@@ -49774,6 +49821,135 @@ function pruneChangeDiffs(manifest, maxTotalBytes) {
   }
 }
 
+// src/sync/hash.ts
+import * as crypto3 from "crypto";
+import * as fs5 from "fs/promises";
+function sha2563(data) {
+  return crypto3.createHash("sha256").update(data).digest("hex");
+}
+async function hashFile(absPath) {
+  try {
+    const buf = await fs5.readFile(absPath);
+    return sha2563(buf);
+  } catch {
+    return null;
+  }
+}
+function blobHash(logicalKey) {
+  return sha2563(logicalKey);
+}
+function blobName(logicalKey) {
+  return `${blobHash(logicalKey)}.age`;
+}
+
+// src/sync/reasons.ts
+var REASON_MAX_CHARS = 2e3;
+var REASON_LOG_MAX_BYTES = 4 * 1024 * 1024;
+var REASON_BLOB_MAX_ARMORED = 8 * 1024 * 1024;
+var REASON_VIEW_PER_KEY = 5;
+var REASON_VIEW_TOTAL_BYTES = 65536;
+var PENDING_DIFF_PER_KEY = 1024;
+var PENDING_DIFF_TOTAL = 32768;
+var HEX64 = /^[0-9a-f]{64}$/;
+var ReasonsRefSchema = external_exports.object({
+  hash: external_exports.string().regex(HEX64),
+  count: external_exports.number().int().nonnegative(),
+  lastGeneration: external_exports.number().int().nonnegative()
+});
+var ReasonItemSchema = external_exports.object({
+  generation: external_exports.number().int().nonnegative(),
+  machineId: external_exports.string().max(256),
+  at: external_exports.number(),
+  contentHash: external_exports.string().max(128),
+  reason: external_exports.string().max(REASON_MAX_CHARS)
+});
+var ReasonLogSchema = external_exports.object({
+  v: external_exports.literal(1),
+  items: external_exports.array(ReasonItemSchema)
+});
+var ReasonInputFileSchema = external_exports.array(
+  external_exports.object({
+    logicalKey: external_exports.string(),
+    reason: external_exports.string(),
+    contentHash: external_exports.string().regex(HEX64).optional()
+  })
+);
+function reasonBlobPath(logicalKey, hash) {
+  return `blobs/r-${blobHash(logicalKey)}-${hash}.age`;
+}
+function encodeReasonLog(items) {
+  const plain = Buffer.from(JSON.stringify({ v: 1, items }), "utf-8");
+  return { plain, hash: sha2563(plain) };
+}
+function decodeReasonLog(plain) {
+  let parsed;
+  try {
+    parsed = JSON.parse(plain.toString("utf-8"));
+  } catch {
+    return null;
+  }
+  const result = ReasonLogSchema.safeParse(parsed);
+  return result.success ? result.data.items : null;
+}
+function appendReasonItem(items, item) {
+  const duplicate = items.some(
+    (i2) => i2.generation === item.generation && i2.machineId === item.machineId && i2.reason === item.reason
+  );
+  if (duplicate) return { items, changed: false };
+  return { items: [...items, item], changed: true };
+}
+function validateReasonText(reason) {
+  if (reason.trim().length === 0) return "empty";
+  if (reason.length > REASON_MAX_CHARS) return "too-long";
+  return null;
+}
+function buildReasonView(items, baseGeneration) {
+  const fresh = items.filter((i2) => i2.generation > baseGeneration);
+  if (fresh.length === 0) return null;
+  const kept = fresh.slice(-REASON_VIEW_PER_KEY);
+  return { items: kept, omitted: fresh.length - kept.length };
+}
+function reasonViewBytes(view) {
+  let total = 0;
+  for (const i2 of view.items) total += Buffer.byteLength(i2.reason, "utf-8");
+  return total;
+}
+function prepareReasonInputs(inputs, requireHash) {
+  const wanted = /* @__PURE__ */ new Map();
+  const rejected = [];
+  const counts = /* @__PURE__ */ new Map();
+  for (const input of inputs) counts.set(input.logicalKey, (counts.get(input.logicalKey) ?? 0) + 1);
+  const seenDuplicate = /* @__PURE__ */ new Set();
+  for (const input of inputs) {
+    const key = input.logicalKey;
+    if ((counts.get(key) ?? 0) > 1) {
+      if (!seenDuplicate.has(key)) {
+        seenDuplicate.add(key);
+        rejected.push({ logicalKey: key, code: "duplicate-key" });
+      }
+      continue;
+    }
+    if (!isValidLogicalKey(key)) {
+      rejected.push({ logicalKey: key, code: "invalid-key" });
+      continue;
+    }
+    const textCode = validateReasonText(input.reason);
+    if (textCode) {
+      rejected.push({ logicalKey: key, code: textCode });
+      continue;
+    }
+    if (requireHash && input.contentHash === void 0) {
+      rejected.push({ logicalKey: key, code: "hash-required" });
+      continue;
+    }
+    wanted.set(key, {
+      reason: input.reason,
+      ...requireHash && input.contentHash !== void 0 ? { contentHash: input.contentHash } : {}
+    });
+  }
+  return { wanted, rejected };
+}
+
 // src/sync/manifest.ts
 var ChangeDiffSchema = external_exports.object({
   format: external_exports.enum(["unified", "binary", "added", "deleted"]),
@@ -49795,7 +49971,8 @@ var FileEntrySchema = external_exports.object({
   deleted: external_exports.boolean(),
   deletedAt: external_exports.number().nullable(),
   scopeExcluded: external_exports.boolean().optional(),
-  changeDiff: ChangeDiffSchema.optional()
+  changeDiff: ChangeDiffSchema.optional(),
+  reasonsRef: ReasonsRefSchema.optional().catch(void 0)
 });
 var ManifestSchema = external_exports.object({
   schemaVersion: external_exports.literal(1),
@@ -49961,7 +50138,8 @@ var ManifestStore = class {
       lastModifiedBy: changed ? machineId : existing.lastModifiedBy,
       deleted: false,
       deletedAt: null,
-      ...nextDiff ? { changeDiff: nextDiff } : {}
+      ...nextDiff ? { changeDiff: nextDiff } : {},
+      ...existing.reasonsRef ? { reasonsRef: existing.reasonsRef } : {}
     };
     manifest.entries[logicalKey] = entry;
     return entry;
@@ -50184,25 +50362,25 @@ function classifyLock(raw, now, selfId, defaultTtlMs) {
 }
 
 // src/sync/machine.ts
-import * as fs5 from "fs/promises";
+import * as fs6 from "fs/promises";
 import * as path8 from "path";
-import * as crypto3 from "crypto";
+import * as crypto4 from "crypto";
 async function loadOrCreateMachineId(stateDir) {
   const filePath = path8.join(stateDir, "machine-id");
   try {
-    const content = await fs5.readFile(filePath, "utf-8");
+    const content = await fs6.readFile(filePath, "utf-8");
     const id2 = content.trim();
     if (id2.length > 0) return id2;
   } catch {
   }
-  await fs5.mkdir(stateDir, { recursive: true });
-  const id = crypto3.randomUUID();
-  const tmpPath = `${filePath}.${crypto3.randomUUID()}.tmp`;
-  await fs5.writeFile(tmpPath, id, "utf-8");
+  await fs6.mkdir(stateDir, { recursive: true });
+  const id = crypto4.randomUUID();
+  const tmpPath = `${filePath}.${crypto4.randomUUID()}.tmp`;
+  await fs6.writeFile(tmpPath, id, "utf-8");
   try {
-    await fs5.rename(tmpPath, filePath);
+    await fs6.rename(tmpPath, filePath);
   } catch (err) {
-    await fs5.rm(tmpPath, { force: true }).catch(() => {
+    await fs6.rm(tmpPath, { force: true }).catch(() => {
     });
     throw err;
   }
@@ -50211,7 +50389,7 @@ async function loadOrCreateMachineId(stateDir) {
 async function readMachineIdIfExists(stateDir) {
   const filePath = path8.join(stateDir, "machine-id");
   try {
-    const content = await fs5.readFile(filePath, "utf-8");
+    const content = await fs6.readFile(filePath, "utf-8");
     const id = content.trim();
     return id.length > 0 ? id : null;
   } catch {
@@ -50591,6 +50769,7 @@ function registerAllTools(server, engine) {
   registerStatusTool(server, engine);
   registerResolveTool(server, engine);
   registerSyncTool(server, engine);
+  registerReasonsTool(server, engine);
   registerDoctorTool(server);
 }
 
@@ -50846,8 +51025,6 @@ async function maybeMigrateLegacyConfig(opts) {
 // src/sync/engine.ts
 import { promises as fs8, readFileSync as readFileSync5 } from "node:fs";
 import * as path12 from "node:path";
-import { gzip, gunzip } from "node:zlib";
-import { promisify as promisify3 } from "node:util";
 
 // src/sync/diff.ts
 function classifyKey(logicalKey, localHash, baseHash, remoteEntry, syncedGeneration) {
@@ -51018,7 +51195,7 @@ function summarize(items) {
 // src/sync/scanner.ts
 var import_fast_glob = __toESM(require_out4(), 1);
 var import_micromatch = __toESM(require_micromatch(), 1);
-import * as fs6 from "node:fs/promises";
+import * as fs7 from "node:fs/promises";
 import * as path10 from "node:path";
 function isKeyInScope(logicalKey, targets) {
   if (import_micromatch.default.isMatch(logicalKey, CONFLICT_SIDECAR_GLOBS, { dot: true })) return false;
@@ -51054,7 +51231,7 @@ async function scanLocal(config2) {
     const logicalKey = toLogical(home, absPath);
     let stat3;
     try {
-      stat3 = await fs6.stat(absPath);
+      stat3 = await fs7.stat(absPath);
     } catch {
       continue;
     }
@@ -51071,7 +51248,7 @@ async function scanLocal(config2) {
       const absPath = toOS(home, logicalKey);
       let stat3;
       try {
-        stat3 = await fs6.stat(absPath);
+        stat3 = await fs7.stat(absPath);
       } catch {
         continue;
       }
@@ -51088,26 +51265,224 @@ async function scanLocal(config2) {
   return results;
 }
 
-// src/sync/hash.ts
-import * as crypto4 from "crypto";
-import * as fs7 from "fs/promises";
-function sha2563(data) {
-  return crypto4.createHash("sha256").update(data).digest("hex");
-}
-async function hashFile(absPath) {
-  try {
-    const buf = await fs7.readFile(absPath);
-    return sha2563(buf);
-  } catch {
-    return null;
+// src/sync/blob-io.ts
+import { gzip, gunzip } from "node:zlib";
+import { promisify as promisify3 } from "node:util";
+var IO_CONCURRENCY = 8;
+var BLOB_MAGIC = Buffer.from("CSZ1", "ascii");
+var gzipAsync = promisify3(gzip);
+var gunzipAsync = promisify3(gunzip);
+async function mapLimit(items, limit, fn) {
+  if (items.length === 0) return;
+  let next = 0;
+  let aborted2 = false;
+  const n = Math.max(1, Math.min(limit, items.length));
+  const workers = [];
+  for (let w = 0; w < n; w++) {
+    workers.push(
+      (async () => {
+        while (true) {
+          if (aborted2) break;
+          const i2 = next++;
+          if (i2 >= items.length) break;
+          try {
+            await fn(items[i2], i2);
+          } catch (err) {
+            aborted2 = true;
+            throw err;
+          }
+        }
+      })()
+    );
   }
+  const settled = await Promise.allSettled(workers);
+  const rejected = settled.find((r2) => r2.status === "rejected");
+  if (rejected) throw rejected.reason;
 }
-function blobHash(logicalKey) {
-  return sha2563(logicalKey);
+async function sealBlob(crypto5, plaintext) {
+  const raw = typeof plaintext === "string" ? Buffer.from(plaintext, "utf-8") : plaintext;
+  const compressed = await gzipAsync(raw);
+  const tagged = Buffer.concat([BLOB_MAGIC, compressed]);
+  return crypto5.encrypt(new Uint8Array(tagged));
 }
-function blobName(logicalKey) {
-  return `${blobHash(logicalKey)}.age`;
+async function openBlob(crypto5, armored, limits) {
+  if (limits && armored.length > limits.maxArmored) {
+    throw new RangeError("blob armored size limit exceeded");
+  }
+  const plain = Buffer.from(await crypto5.decrypt(armored));
+  if (plain.length >= BLOB_MAGIC.length && plain.subarray(0, BLOB_MAGIC.length).equals(BLOB_MAGIC)) {
+    const body = plain.subarray(BLOB_MAGIC.length);
+    const out = limits ? await gunzipAsync(body, { maxOutputLength: limits.maxPlain }) : await gunzipAsync(body);
+    return Buffer.from(out);
+  }
+  if (limits && plain.length > limits.maxPlain) {
+    throw new RangeError("blob plain size limit exceeded");
+  }
+  return plain;
 }
+
+// src/sync/reasons-store.ts
+var LOG_LIMITS = {
+  maxArmored: REASON_BLOB_MAX_ARMORED,
+  maxPlain: REASON_LOG_MAX_BYTES
+};
+function byKey(a, b) {
+  return a.logicalKey < b.logicalKey ? -1 : a.logicalKey > b.logicalKey ? 1 : 0;
+}
+var ReasonStore = class {
+  remote;
+  crypto;
+  machineId;
+  logger;
+  constructor(deps) {
+    this.remote = deps.remote;
+    this.crypto = deps.crypto;
+    this.machineId = deps.machineId;
+    this.logger = deps.logger;
+  }
+  async loadLog(key, ref) {
+    const armored = await this.remote.getTextIfExists(reasonBlobPath(key, ref.hash));
+    if (armored === null) return { kind: "missing" };
+    try {
+      const plain = await openBlob(this.crypto, armored, LOG_LIMITS);
+      if (sha2563(plain) !== ref.hash) return { kind: "corrupt" };
+      const items = decodeReasonLog(plain);
+      return items === null ? { kind: "corrupt" } : { kind: "ok", items };
+    } catch {
+      return { kind: "corrupt" };
+    }
+  }
+  async apply(manifest, wanted, eligible, commit, now) {
+    const recorded = [];
+    const unchanged = [];
+    const rejected = [];
+    const replaced = [];
+    await mapLimit([...wanted], IO_CONCURRENCY, async ([key, w]) => {
+      const entry = manifest.entries[key];
+      if (!entry) {
+        rejected.push({ logicalKey: key, code: "no-entry" });
+        return;
+      }
+      const code = eligible(key, entry, w);
+      if (code) {
+        rejected.push({ logicalKey: key, code });
+        return;
+      }
+      let log = [];
+      if (entry.reasonsRef) {
+        const loaded = await this.loadLog(key, entry.reasonsRef);
+        if (loaded.kind === "ok") {
+          log = loaded.items;
+        } else {
+          this.logger?.warn(`[reasons] \uAE30\uC874 \uC774\uB825\uC744 \uC4F8 \uC218 \uC5C6\uC5B4 \uBE48 \uC774\uB825\uC5D0\uC11C \uC2DC\uC791 ${key} (${loaded.kind})`);
+        }
+      }
+      const item = {
+        generation: entry.generation,
+        machineId: this.machineId,
+        at: now,
+        contentHash: entry.contentHash,
+        reason: w.reason
+      };
+      const appended = appendReasonItem(log, item);
+      if (!appended.changed) {
+        unchanged.push(key);
+        return;
+      }
+      const { plain, hash } = encodeReasonLog(appended.items);
+      if (plain.length > REASON_LOG_MAX_BYTES) {
+        rejected.push({ logicalKey: key, code: "log-full" });
+        return;
+      }
+      if (commit) {
+        await this.putLog(reasonBlobPath(key, hash), plain);
+        const old = entry.reasonsRef;
+        manifest.entries[key] = {
+          ...entry,
+          reasonsRef: { hash, count: appended.items.length, lastGeneration: entry.generation }
+        };
+        if (old && old.hash !== hash) replaced.push(reasonBlobPath(key, old.hash));
+      }
+      recorded.push(key);
+    });
+    recorded.sort();
+    unchanged.sort();
+    rejected.sort(byKey);
+    replaced.sort();
+    return { outcome: { recorded, unchanged, rejected }, replaced };
+  }
+  async deleteReplaced(paths) {
+    for (const p of paths) {
+      try {
+        await this.remote.deleteFile(p);
+      } catch (err) {
+        this.logger?.warn(`[reasons] \uC61B \uC774\uB825 blob \uC0AD\uC81C \uC2E4\uD328 ${p}: ${String(err.message)}`);
+      }
+    }
+  }
+  async collect(manifest, keys, state) {
+    const sorted = [...new Set(keys)].sort();
+    const out = {};
+    let used = 0;
+    let exhausted = false;
+    for (let i2 = 0; i2 < sorted.length; i2 += IO_CONCURRENCY) {
+      const chunk = sorted.slice(i2, i2 + IO_CONCURRENCY);
+      if (exhausted) {
+        for (const key of chunk) {
+          const omitted = this.pendingCount(manifest, key, state);
+          if (omitted > 0) out[key] = { items: [], omitted };
+        }
+        continue;
+      }
+      const views = await Promise.all(chunk.map((key) => this.viewFor(manifest, key, state)));
+      chunk.forEach((key, j) => {
+        const view = views[j];
+        if (!view) return;
+        const total = view.items.length + view.omitted;
+        if (exhausted) {
+          out[key] = { items: [], omitted: total };
+          return;
+        }
+        const bytes = reasonViewBytes(view);
+        if (used + bytes > REASON_VIEW_TOTAL_BYTES) {
+          exhausted = true;
+          out[key] = { items: [], omitted: total };
+          return;
+        }
+        used += bytes;
+        out[key] = view;
+      });
+    }
+    return out;
+  }
+  async putLog(relPath, plain) {
+    const armored = await sealBlob(this.crypto, plain);
+    await this.remote.putAtomic(relPath, armored, this.machineId);
+  }
+  pendingCount(manifest, key, state) {
+    const ref = manifest.entries[key]?.reasonsRef;
+    if (!ref) return 0;
+    const base = state[key]?.syncedGeneration ?? 0;
+    return ref.lastGeneration > base ? ref.count : 0;
+  }
+  async viewFor(manifest, key, state) {
+    const ref = manifest.entries[key]?.reasonsRef;
+    if (!ref) return null;
+    const base = state[key]?.syncedGeneration ?? 0;
+    if (ref.lastGeneration <= base) return null;
+    try {
+      const loaded = await this.loadLog(key, ref);
+      if (loaded.kind !== "ok") {
+        this.logger?.warn(`[reasons] \uC774\uB825\uC744 \uC77D\uC9C0 \uBABB\uD574 \uC0DD\uB7B5 ${key} (${loaded.kind})`);
+        return null;
+      }
+      return buildReasonView(loaded.items, base);
+    } catch (err) {
+      this.logger?.warn(`[reasons] \uC774\uB825 \uC870\uD68C \uC2E4\uD328\uB85C \uC0DD\uB7B5 ${key}: ${String(err.message)}`);
+      return null;
+    }
+  }
+};
 
 // src/sync/settings-merge.ts
 function isPlainObject4(v) {
@@ -51599,37 +51974,6 @@ var atomicWriteSeq = 0;
 function delay3(ms) {
   return new Promise((resolve2) => setTimeout(resolve2, ms));
 }
-var IO_CONCURRENCY = 8;
-var BLOB_MAGIC = Buffer.from("CSZ1", "ascii");
-var gzipAsync = promisify3(gzip);
-var gunzipAsync = promisify3(gunzip);
-async function mapLimit(items, limit, fn) {
-  if (items.length === 0) return;
-  let next = 0;
-  let aborted2 = false;
-  const n = Math.max(1, Math.min(limit, items.length));
-  const workers = [];
-  for (let w = 0; w < n; w++) {
-    workers.push(
-      (async () => {
-        while (true) {
-          if (aborted2) break;
-          const i2 = next++;
-          if (i2 >= items.length) break;
-          try {
-            await fn(items[i2], i2);
-          } catch (err) {
-            aborted2 = true;
-            throw err;
-          }
-        }
-      })()
-    );
-  }
-  const settled = await Promise.allSettled(workers);
-  const rejected = settled.find((r2) => r2.status === "rejected");
-  if (rejected) throw rejected.reason;
-}
 function sanitizeToken(s2) {
   const t2 = String(s2).replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 64);
   return t2 === "" ? "unknown" : t2;
@@ -51644,6 +51988,7 @@ var SyncEngine = class {
   manifestStore;
   lock;
   mutex;
+  reasonStore;
   /** state.json 절대경로. */
   statePath;
   /** base 스냅샷 디렉터리. */
@@ -51665,6 +52010,12 @@ var SyncEngine = class {
     );
     this.lock = new RemoteLock(this.remote, this.config, this.machineId, this.logger);
     this.mutex = new AsyncMutex();
+    this.reasonStore = new ReasonStore({
+      remote: this.remote,
+      crypto: this.crypto,
+      machineId: this.machineId,
+      logger: this.logger
+    });
     this.statePath = path12.join(this.config.stateDir, "state.json");
     this.baseDir = path12.join(this.config.stateDir, "base");
     this.backupsDir = path12.join(this.config.stateDir, "backups");
@@ -51672,19 +52023,36 @@ var SyncEngine = class {
   // ── 공개 API ────────────────────────────────────────────────
   /** 현재 동기화 상태 계산. 부수효과 없음. */
   async status() {
+    return (await this.statusContext()).status;
+  }
+  async statusContext() {
     const manifest = await this.manifestStore.read();
     const local = await this.scanWithHashes();
     const state = await this.readState();
-    return computeStatus({ local, manifest, state, machineId: this.machineId });
+    const status = computeStatus({ local, manifest, state, machineId: this.machineId });
+    return { status, manifest, state };
+  }
+  async collectReasons(manifest, keys, state) {
+    if (manifest === null || keys.length === 0) return void 0;
+    const collected = await this.reasonStore.collect(manifest, keys, state);
+    return Object.keys(collected).length > 0 ? collected : void 0;
   }
   /** 로컬→원격 push. mutex+원격락 경유, CAS 재시도 내장. dryRun 시 계획만. */
   async push(options) {
     const dryRun = options?.dryRun ?? false;
     return this.mutex.runExclusive(async () => {
       if (dryRun) {
-        return this.planPush();
+        return this.planPush(options?.includePending ?? false);
       }
-      return withLock(this.lock, () => this.runPushWithRetry());
+      return withLock(this.lock, () => this.runPushWithRetry(options?.reasons));
+    });
+  }
+  /** 이미 원격에 올라간 버전에 이유만 덧붙인다. 로컬 파일은 건드리지 않고 pull 도 하지 않는다. */
+  async pushReasons(inputs, options) {
+    const dryRun = options?.dryRun ?? false;
+    return this.mutex.runExclusive(async () => {
+      if (dryRun) return this.runPushReasons(inputs, true);
+      return withLock(this.lock, () => this.pushReasonsWithRetry(inputs));
     });
   }
   /** 원격→로컬 pull. fast-forward + tombstone + 충돌 정책. 백업/롤백. dryRun 시 계획만. */
@@ -51785,7 +52153,7 @@ var SyncEngine = class {
   }
   // ── push ────────────────────────────────────────────────────
   /** dryRun push 계획 — purge 후 상태 분류(실제 원격 쓰기 없음). */
-  async planPush() {
+  async planPush(includePending = false) {
     const remoteManifest = await this.manifestStore.read();
     const manifest = remoteManifest ?? ManifestStore.empty(this.machineId);
     const local = await this.scanWithHashes();
@@ -51797,21 +52165,49 @@ var SyncEngine = class {
       ...status.summary.modified
     ];
     const deleted = [...status.summary.deleted];
+    const pending = includePending ? await this.buildPending(status.items) : void 0;
     return {
       dryRun: true,
       pushed,
       deleted,
       skipped: status.summary.unchanged.length,
       manifestGeneration: status.manifestGeneration,
-      conflicts: status.conflicts
+      conflicts: status.conflicts,
+      ...pending ? { pending } : {}
     };
   }
+  async buildPending(items) {
+    const targets = items.filter((i2) => i2.kind === "added" || i2.kind === "modified" || i2.kind === "deleted").sort((x2, y) => x2.logicalKey < y.logicalKey ? -1 : x2.logicalKey > y.logicalKey ? 1 : 0);
+    const out = [];
+    let used = 0;
+    for (const item of targets) {
+      const key = item.logicalKey;
+      const absPath = this.safeAbsPath(key);
+      let changeDiff = absPath === null ? null : await this.computeLocalChangeDiff(key, absPath, PENDING_DIFF_PER_KEY);
+      if (changeDiff && changeDiff.text.length > 0) {
+        const bytes = Buffer.byteLength(changeDiff.text, "utf-8");
+        if (used + bytes > PENDING_DIFF_TOTAL) {
+          changeDiff = { ...changeDiff, text: "", pruned: true };
+        } else {
+          used += bytes;
+        }
+      }
+      out.push({
+        logicalKey: key,
+        kind: item.kind,
+        contentHash: item.kind === "deleted" ? null : item.localHash,
+        changeDiff
+      });
+    }
+    return out;
+  }
   /** CAS 충돌 시 재시도하며 push 수행. */
-  async runPushWithRetry() {
+  async runPushWithRetry(reasons) {
     let lastErr;
+    const reasonsAt = Date.now();
     for (let attempt = 0; attempt < MAX_CAS_RETRIES; attempt++) {
       try {
-        return await this.runPush();
+        return await this.runPush(reasons, reasonsAt);
       } catch (err) {
         if (err instanceof ManifestConflictError) {
           lastErr = err;
@@ -51827,8 +52223,72 @@ var SyncEngine = class {
     }
     throw lastErr ?? new Error("push CAS \uC7AC\uC2DC\uB3C4 \uC18C\uC9C4");
   }
+  async pushReasonsWithRetry(inputs) {
+    let lastErr;
+    const at = Date.now();
+    for (let attempt = 0; attempt < MAX_CAS_RETRIES; attempt++) {
+      try {
+        return await this.runPushReasons(inputs, false, at);
+      } catch (err) {
+        if (err instanceof ManifestConflictError) {
+          lastErr = err;
+          const backoff = Math.min(2e3, 100 * 2 ** attempt) + Math.floor(Math.random() * 100);
+          this.logger?.warn(
+            `[engine] reasons CAS \uCDA9\uB3CC \u2014 ${backoff}ms \uD6C4 \uC7AC\uC2DC\uB3C4 ${attempt + 1}/${MAX_CAS_RETRIES}`
+          );
+          await delay3(backoff);
+          continue;
+        }
+        throw err;
+      }
+    }
+    throw lastErr ?? new Error("reasons CAS \uC7AC\uC2DC\uB3C4 \uC18C\uC9C4");
+  }
+  async runPushReasons(inputs, dryRun, at = Date.now()) {
+    const remoteManifest = await this.manifestStore.read();
+    const prepared = prepareReasonInputs(inputs, true);
+    if (remoteManifest === null) {
+      const missing = [...prepared.wanted.keys()].map((logicalKey) => ({
+        logicalKey,
+        code: "no-entry"
+      }));
+      return {
+        dryRun,
+        recorded: [],
+        unchanged: [],
+        rejected: [...prepared.rejected, ...missing].sort(
+          (x2, y) => x2.logicalKey < y.logicalKey ? -1 : x2.logicalKey > y.logicalKey ? 1 : 0
+        ),
+        manifestGeneration: null
+      };
+    }
+    const applied = await this.reasonStore.apply(
+      remoteManifest,
+      prepared.wanted,
+      (_key, entry, wanted) => wanted.contentHash === entry.contentHash ? null : "stale-hash",
+      !dryRun,
+      at
+    );
+    const outcome = {
+      recorded: applied.outcome.recorded,
+      unchanged: applied.outcome.unchanged,
+      rejected: [...prepared.rejected, ...applied.outcome.rejected].sort(
+        (x2, y) => x2.logicalKey < y.logicalKey ? -1 : x2.logicalKey > y.logicalKey ? 1 : 0
+      )
+    };
+    if (dryRun || outcome.recorded.length === 0) {
+      return { dryRun, ...outcome, manifestGeneration: remoteManifest.manifestGeneration };
+    }
+    const written = await this.manifestStore.write(
+      remoteManifest,
+      remoteManifest.manifestGeneration,
+      this.machineId
+    );
+    await this.reasonStore.deleteReplaced(applied.replaced);
+    return { dryRun, ...outcome, manifestGeneration: written.manifestGeneration };
+  }
   /** push 1회 시도. CAS 실패 시 ManifestConflictError throw → 재시도 루프가 처리. */
-  async runPush() {
+  async runPush(reasons, reasonsAt = Date.now()) {
     const remoteManifest = await this.manifestStore.read();
     const manifest = remoteManifest ?? ManifestStore.empty(this.machineId);
     const expectedGeneration = remoteManifest ? remoteManifest.manifestGeneration : null;
@@ -51924,8 +52384,10 @@ var SyncEngine = class {
       stateUpdates.push({ key, remove: false, syncedHash: contentHash, syncedGeneration: gen });
       pushed.push(key);
     });
+    const deletedEffective = /* @__PURE__ */ new Set();
     for (const item of deleteItems) {
       const key = item.logicalKey;
+      const generationBefore = manifest.entries[key]?.generation;
       const baseForDiff = await this.readBaseSnapshotBuffer(key);
       const deleteDiff = computeChangeDiff(
         baseForDiff === null ? null : this.normalizeForDiff(key, baseForDiff.toString("utf-8")),
@@ -51942,6 +52404,7 @@ var SyncEngine = class {
         await this.removeBaseSnapshot(key);
       });
       if (entry) {
+        if (entry.generation !== generationBefore) deletedEffective.add(key);
         stateUpdates.push({ key, remove: false, syncedHash: "", syncedGeneration: entry.generation });
       } else {
         stateUpdates.push({ key, remove: true, syncedHash: "", syncedGeneration: 0 });
@@ -51954,6 +52417,28 @@ var SyncEngine = class {
       });
       stateUpdates.push({ key, remove: true, syncedHash: "", syncedGeneration: 0 });
     }
+    let reasonsOutcome;
+    if (reasons !== void 0 && reasons.length > 0) {
+      const prepared = prepareReasonInputs(reasons, false);
+      const effective = /* @__PURE__ */ new Set([...pushed, ...deletedEffective]);
+      const applied = await this.reasonStore.apply(
+        manifest,
+        prepared.wanted,
+        (key) => effective.has(key) ? null : "not-pushed",
+        true,
+        reasonsAt
+      );
+      reasonsOutcome = {
+        recorded: applied.outcome.recorded,
+        unchanged: applied.outcome.unchanged,
+        rejected: [...prepared.rejected, ...applied.outcome.rejected].sort(
+          (x2, y) => x2.logicalKey < y.logicalKey ? -1 : x2.logicalKey > y.logicalKey ? 1 : 0
+        )
+      };
+      if (applied.replaced.length > 0) {
+        postCommit.push(() => this.reasonStore.deleteReplaced(applied.replaced));
+      }
+    }
     if (pushed.length === 0 && deleted.length === 0 && convergedItems.length === 0 && descoped.length === 0) {
       return {
         dryRun: false,
@@ -51961,7 +52446,8 @@ var SyncEngine = class {
         deleted,
         skipped,
         manifestGeneration: manifest.manifestGeneration,
-        conflicts: status.conflicts
+        conflicts: status.conflicts,
+        ...reasonsOutcome ? { reasons: reasonsOutcome } : {}
       };
     }
     pruneChangeDiffs(manifest, MAX_TOTAL_DIFF_BYTES);
@@ -51991,7 +52477,8 @@ var SyncEngine = class {
       deleted,
       skipped,
       manifestGeneration: writtenGeneration,
-      conflicts: status.conflicts
+      conflicts: status.conflicts,
+      ...reasonsOutcome ? { reasons: reasonsOutcome } : {}
     };
   }
   /** settings.json push 시 원격 반영분(shared subset)을 산출. 충돌은 호출부에서 보고. */
@@ -52013,37 +52500,36 @@ var SyncEngine = class {
   }
   /** blob 업로드: <base>/blobs/<sha256(logicalKey)>.age (armored 암호문). */
   async uploadBlob(key, plaintext) {
-    const raw = typeof plaintext === "string" ? Buffer.from(plaintext, "utf-8") : plaintext;
-    const compressed = await gzipAsync(raw);
-    const tagged = Buffer.concat([BLOB_MAGIC, compressed]);
-    const armored = await this.crypto.encrypt(new Uint8Array(tagged));
+    const armored = await sealBlob(this.crypto, plaintext);
     await this.remote.putAtomic(`blobs/${blobName(key)}`, armored, this.machineId);
   }
   /** blob 다운로드+복호 → 평문 Buffer. 없으면 null. */
   async downloadBlob(key) {
     const armored = await this.remote.getTextIfExists(`blobs/${blobName(key)}`);
     if (armored === null) return null;
-    const plain = Buffer.from(await this.crypto.decrypt(armored));
-    if (plain.length >= BLOB_MAGIC.length && plain.subarray(0, BLOB_MAGIC.length).equals(BLOB_MAGIC)) {
-      return Buffer.from(await gunzipAsync(plain.subarray(BLOB_MAGIC.length)));
-    }
-    return plain;
+    return openBlob(this.crypto, armored);
   }
   // ── pull ────────────────────────────────────────────────────
   /** dryRun pull 계획. */
   async planPull() {
-    const status = await this.status();
+    const { status, manifest, state } = await this.statusContext();
     const applied = [
       ...status.summary.remoteAdded,
       ...status.summary.remoteModified
     ];
     const removed = [...status.summary.remoteDeleted];
+    const reasons = await this.collectReasons(
+      manifest,
+      [...applied, ...removed, ...status.conflicts.map((c) => c.logicalKey)],
+      state
+    );
     return {
       dryRun: true,
       applied,
       removed,
       conflicts: status.conflicts,
-      backupDir: null
+      backupDir: null,
+      ...reasons ? { reasons } : {}
     };
   }
   /** pull 1회 — fast-forward 적용 + tombstone 삭제 + 충돌 정책. 백업/롤백. */
@@ -52075,12 +52561,18 @@ var SyncEngine = class {
       );
     }
     if (toApply.length === 0 && toRemove.length === 0 && convergedItems.length === 0) {
+      const conflictReasons = await this.collectReasons(
+        remoteManifest,
+        status.conflicts.map((c) => c.logicalKey),
+        state
+      );
       return {
         dryRun: false,
         applied: [],
         removed: [],
         conflicts: status.conflicts,
-        backupDir: null
+        backupDir: null,
+        ...conflictReasons ? { reasons: conflictReasons } : {}
       };
     }
     const runTs = this.makeRunTs();
@@ -52146,12 +52638,18 @@ var SyncEngine = class {
       throw err;
     }
     const hadBackup = backedUp.some((b) => b.backupPath !== null);
+    const reasons = await this.collectReasons(
+      remoteManifest,
+      [...applied, ...removed, ...status.conflicts.map((c) => c.logicalKey)],
+      state
+    );
     const result = {
       dryRun: false,
       applied,
       removed,
       conflicts: status.conflicts,
-      backupDir: hadBackup ? backupRoot : null
+      backupDir: hadBackup ? backupRoot : null,
+      ...reasons ? { reasons } : {}
     };
     if (!secondPass && this.reloadConfig && applied.some(
       (k) => isConfigJsonKey(k) || Boolean(this.config.skills_keyword) && k.startsWith(".claude/skills/")
@@ -52167,12 +52665,14 @@ var SyncEngine = class {
       }
       this.config = { ...this.config, targets: reloadedTargets };
       const second = await this.runPull(true);
+      const mergedReasons = { ...second.reasons, ...result.reasons };
       return {
         dryRun: false,
         applied: [...result.applied, ...second.applied],
         removed: [...result.removed, ...second.removed],
         conflicts: second.conflicts,
-        backupDir: result.backupDir ?? second.backupDir
+        backupDir: result.backupDir ?? second.backupDir,
+        ...Object.keys(mergedReasons).length > 0 ? { reasons: mergedReasons } : {}
       };
     }
     return result;
@@ -52370,9 +52870,14 @@ var SyncEngine = class {
     return { remoteManifest, state, status };
   }
   async planResolve(policy, keys) {
-    const { remoteManifest, status } = await this.loadConflictContext();
+    const { remoteManifest, state, status } = await this.loadConflictContext();
     const targets = this.selectConflicts(status.conflicts, keys);
     const preview = [];
+    const previewReasons = await this.collectReasons(
+      remoteManifest,
+      targets.map((c) => c.logicalKey),
+      state
+    );
     for (const conflict of targets) {
       const key = conflict.logicalKey;
       const entry = remoteManifest?.entries[key];
@@ -52446,7 +52951,8 @@ var SyncEngine = class {
         mergeable,
         conflictKeys,
         remoteChangeDiff: entry.changeDiff ?? null,
-        localChangeDiff: await this.computeLocalChangeDiff(key, absPath)
+        localChangeDiff: await this.computeLocalChangeDiff(key, absPath),
+        ...previewReasons?.[key] ? { remoteReasons: previewReasons[key] } : {}
       });
     }
     return {
@@ -52820,7 +53326,7 @@ var SyncEngine = class {
    * 키 순서·${HOME} 토큰 차이가 diff 로 새지 않는다.
    * 계산 불가(로컬 부재·base 부재·읽기 실패)면 null — 충돌 보고 자체를 막지 않는다.
    */
-  async computeLocalChangeDiff(key, absPath) {
+  async computeLocalChangeDiff(key, absPath, maxBytes = MAX_DIFF_BYTES_PER_KEY) {
     const base = await this.readBaseSnapshotBuffer(key);
     let nextText = null;
     try {
@@ -52832,7 +53338,7 @@ var SyncEngine = class {
     const baseText = base === null ? null : this.normalizeForDiff(key, base.toString("utf-8"));
     const baseHash = baseText === null ? null : sha2563(Buffer.from(baseText, "utf-8"));
     return computeChangeDiff(baseText, nextText, {
-      maxBytes: MAX_DIFF_BYTES_PER_KEY,
+      maxBytes,
       baseHash,
       // 삭제는 "그 콘텐츠가 사라짐" 이므로 contentHash 도 base 해시다(tombstone 쪽 규약과 동일).
       contentHash: nextText === null ? baseHash ?? "" : sha2563(Buffer.from(nextText, "utf-8")),
@@ -52972,7 +53478,7 @@ var SyncEngine = class {
    *  미설치 플러그인 참조 시 `{aborted: true, missing}` 반환.
    */
   async syncAtomic(opts) {
-    const { pluginsDir, policy } = opts;
+    const { pluginsDir, policy, reasons } = opts;
     const { pulledSettings } = await this.fetchRemote();
     const prereqScope = await this.readPrereqScope();
     const prereq = checkInstallPrereqs(pulledSettings, pluginsDir, prereqScope);
@@ -53002,8 +53508,14 @@ var SyncEngine = class {
           const effective = policy ?? this.config.conflictPolicy;
           resolveResult = await this.runResolve(effective);
         }
-        const afterStatus = await this.status();
+        const afterContext = await this.statusContext();
+        const afterStatus = afterContext.status;
         if (afterStatus.conflicts.length > 0) {
+          const conflictReasons = await this.collectReasons(
+            afterContext.manifest,
+            afterStatus.conflicts.map((c) => c.logicalKey),
+            afterContext.state
+          );
           const copyMap = new Map(
             (resolveResult?.conflictCopies ?? []).map((c) => [c.logicalKey, c.copyPath])
           );
@@ -53027,12 +53539,13 @@ var SyncEngine = class {
               copyPath: copyMap.get(c.logicalKey) ?? null,
               remoteChangeDiff,
               localChangeDiff,
-              diffPath
+              diffPath,
+              ...conflictReasons?.[c.logicalKey] ? { remoteReasons: conflictReasons[c.logicalKey] } : {}
             });
           }
           return { aborted: true, reason: "conflicts", conflicts };
         }
-        const push = await this.runPushWithRetry();
+        const push = await this.runPushWithRetry(reasons);
         return { aborted: false, pull, push };
       })
     );

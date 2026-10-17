@@ -6,8 +6,6 @@
 
 import { promises as fs, readFileSync, existsSync } from "node:fs";
 import * as path from "node:path";
-import { gzip, gunzip } from "node:zlib";
-import { promisify } from "node:util";
 import type {
   Config,
   MachineId,
@@ -33,6 +31,12 @@ import type {
   MergeFallback,
   MergeFallbackReason,
   ResolvePreviewItem,
+  DiffItem,
+  ReasonInput,
+  ReasonsOutcome,
+  ReasonsResult,
+  ReasonView,
+  PushPendingItem,
 } from "../types.js";
 import type { AgeCrypto } from "../crypto/age.js";
 import type { RemoteStore } from "../webdav/client.js";
@@ -48,6 +52,9 @@ import { computeStatus } from "./diff.js";
 import { DEFAULT_SETTINGS_EXCLUDE } from "../config.js";
 import { scanLocal, isKeyInScope, isSkillSubscribeKey } from "./scanner.js";
 import { hashFile, sha256, blobName } from "./hash.js";
+import { IO_CONCURRENCY, mapLimit, openBlob, sealBlob } from "./blob-io.js";
+import { ReasonStore } from "./reasons-store.js";
+import { PENDING_DIFF_PER_KEY, PENDING_DIFF_TOTAL, prepareReasonInputs } from "./reasons.js";
 import {
   toOS,
   isSettingsKey,
@@ -187,52 +194,6 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-// push/pull blob I/O 동시성 한계(외부 의존성 없음). 네트워크 왕복을 겹쳐 처리량 향상.
-const IO_CONCURRENCY = 8;
-
-// blob 포맷 버전 매직 — gzip 압축 blob 을 명시 식별(매직바이트 휴리스틱의 우연 충돌 방지).
-const BLOB_MAGIC = Buffer.from("CSZ1", "ascii");
-const gzipAsync = promisify(gzip);
-const gunzipAsync = promisify(gunzip);
-
-// 동시성 제한 병렬 실행. JS 단일 스레드라 동기 구간(매니페스트 갱신·배열 push)은 원자적이며,
-// await 경계(업/다운로드)만 겹친다. 결과는 사용하지 않으므로 순서 무관.
-async function mapLimit<T>(
-  items: T[],
-  limit: number,
-  fn: (item: T, index: number) => Promise<void>,
-): Promise<void> {
-  if (items.length === 0) return;
-  let next = 0;
-  let aborted = false;
-  const n = Math.max(1, Math.min(limit, items.length));
-  const workers: Array<Promise<void>> = [];
-  for (let w = 0; w < n; w++) {
-    workers.push(
-      (async () => {
-        while (true) {
-          // 한 워커가 실패하면 신규 항목 수령은 멈추되, 이미 진행 중인 fn 은 끝까지 완료시킨다.
-          if (aborted) break;
-          const i = next++;
-          if (i >= items.length) break;
-          try {
-            await fn(items[i], i);
-          } catch (err) {
-            aborted = true;
-            throw err;
-          }
-        }
-      })(),
-    );
-  }
-  // 조기 reject(Promise.all) 대신 모든 워커가 settle 될 때까지 대기 후 첫 실패를 전파한다.
-  // 이로써 호출부의 catch/rollback 진입 시점에 모든 워커의 디스크 부작용·backedUp 등록이 끝나 있어
-  // 롤백이 전체 집합을 복원한다(pull all-or-nothing 보존). detached 워커의 unhandledRejection 도 방지.
-  const settled = await Promise.allSettled(workers);
-  const rejected = settled.find((r) => r.status === "rejected");
-  if (rejected) throw (rejected as PromiseRejectedResult).reason;
-}
-
 // 원격 유래 값(machineId/generation 등)을 파일명 접미사로 쓸 때 경로 컴포넌트로 새지 않게 정제.
 // 경로 구분자/점/특수문자를 제거해 traversal·ADS·예약명 주입을 차단한다.
 function sanitizeToken(s: unknown): string {
@@ -251,6 +212,7 @@ export class SyncEngine {
   private readonly manifestStore: ManifestStore;
   private readonly lock: RemoteLock;
   private readonly mutex: AsyncMutex;
+  private readonly reasonStore: ReasonStore;
 
   /** state.json 절대경로. */
   private readonly statePath: string;
@@ -275,6 +237,12 @@ export class SyncEngine {
     );
     this.lock = new RemoteLock(this.remote, this.config, this.machineId, this.logger);
     this.mutex = new AsyncMutex();
+    this.reasonStore = new ReasonStore({
+      remote: this.remote,
+      crypto: this.crypto,
+      machineId: this.machineId,
+      logger: this.logger,
+    });
 
     this.statePath = path.join(this.config.stateDir, "state.json");
     this.baseDir = path.join(this.config.stateDir, "base");
@@ -285,10 +253,29 @@ export class SyncEngine {
 
   /** 현재 동기화 상태 계산. 부수효과 없음. */
   async status(): Promise<SyncStatus> {
+    return (await this.statusContext()).status;
+  }
+
+  private async statusContext(): Promise<{
+    status: SyncStatus;
+    manifest: Manifest | null;
+    state: SyncState;
+  }> {
     const manifest = await this.manifestStore.read();
     const local = await this.scanWithHashes();
     const state = await this.readState();
-    return computeStatus({ local, manifest, state, machineId: this.machineId });
+    const status = computeStatus({ local, manifest, state, machineId: this.machineId });
+    return { status, manifest, state };
+  }
+
+  private async collectReasons(
+    manifest: Manifest | null,
+    keys: LogicalKey[],
+    state: SyncState,
+  ): Promise<Record<LogicalKey, ReasonView> | undefined> {
+    if (manifest === null || keys.length === 0) return undefined;
+    const collected = await this.reasonStore.collect(manifest, keys, state);
+    return Object.keys(collected).length > 0 ? collected : undefined;
   }
 
   /** 로컬→원격 push. mutex+원격락 경유, CAS 재시도 내장. dryRun 시 계획만. */
@@ -296,9 +283,18 @@ export class SyncEngine {
     const dryRun = options?.dryRun ?? false;
     return this.mutex.runExclusive(async () => {
       if (dryRun) {
-        return this.planPush();
+        return this.planPush(options?.includePending ?? false);
       }
-      return withLock(this.lock, () => this.runPushWithRetry());
+      return withLock(this.lock, () => this.runPushWithRetry(options?.reasons));
+    });
+  }
+
+  /** 이미 원격에 올라간 버전에 이유만 덧붙인다. 로컬 파일은 건드리지 않고 pull 도 하지 않는다. */
+  async pushReasons(inputs: ReasonInput[], options?: SyncRunOptions): Promise<ReasonsResult> {
+    const dryRun = options?.dryRun ?? false;
+    return this.mutex.runExclusive(async () => {
+      if (dryRun) return this.runPushReasons(inputs, true);
+      return withLock(this.lock, () => this.pushReasonsWithRetry(inputs));
     });
   }
 
@@ -420,7 +416,7 @@ export class SyncEngine {
   // ── push ────────────────────────────────────────────────────
 
   /** dryRun push 계획 — purge 후 상태 분류(실제 원격 쓰기 없음). */
-  private async planPush(): Promise<PushResult> {
+  private async planPush(includePending = false): Promise<PushResult> {
     const remoteManifest = await this.manifestStore.read();
     const manifest: Manifest = remoteManifest ?? ManifestStore.empty(this.machineId);
     const local = await this.scanWithHashes();
@@ -434,6 +430,7 @@ export class SyncEngine {
       ...status.summary.modified,
     ];
     const deleted = [...status.summary.deleted];
+    const pending = includePending ? await this.buildPending(status.items) : undefined;
     return {
       dryRun: true,
       pushed,
@@ -441,15 +438,46 @@ export class SyncEngine {
       skipped: status.summary.unchanged.length,
       manifestGeneration: status.manifestGeneration,
       conflicts: status.conflicts,
+      ...(pending ? { pending } : {}),
     };
   }
 
+  private async buildPending(items: DiffItem[]): Promise<PushPendingItem[]> {
+    const targets = items
+      .filter((i) => i.kind === "added" || i.kind === "modified" || i.kind === "deleted")
+      .sort((x, y) => (x.logicalKey < y.logicalKey ? -1 : x.logicalKey > y.logicalKey ? 1 : 0));
+    const out: PushPendingItem[] = [];
+    let used = 0;
+    for (const item of targets) {
+      const key = item.logicalKey;
+      const absPath = this.safeAbsPath(key);
+      let changeDiff =
+        absPath === null ? null : await this.computeLocalChangeDiff(key, absPath, PENDING_DIFF_PER_KEY);
+      if (changeDiff && changeDiff.text.length > 0) {
+        const bytes = Buffer.byteLength(changeDiff.text, "utf-8");
+        if (used + bytes > PENDING_DIFF_TOTAL) {
+          changeDiff = { ...changeDiff, text: "", pruned: true };
+        } else {
+          used += bytes;
+        }
+      }
+      out.push({
+        logicalKey: key,
+        kind: item.kind as PushPendingItem["kind"],
+        contentHash: item.kind === "deleted" ? null : item.localHash,
+        changeDiff,
+      });
+    }
+    return out;
+  }
+
   /** CAS 충돌 시 재시도하며 push 수행. */
-  private async runPushWithRetry(): Promise<PushResult> {
+  private async runPushWithRetry(reasons?: ReasonInput[]): Promise<PushResult> {
     let lastErr: unknown;
+    const reasonsAt = Date.now();
     for (let attempt = 0; attempt < MAX_CAS_RETRIES; attempt++) {
       try {
-        return await this.runPush();
+        return await this.runPush(reasons, reasonsAt);
       } catch (err) {
         if (err instanceof ManifestConflictError) {
           lastErr = err;
@@ -467,8 +495,82 @@ export class SyncEngine {
     throw lastErr ?? new Error("push CAS 재시도 소진");
   }
 
+  private async pushReasonsWithRetry(inputs: ReasonInput[]): Promise<ReasonsResult> {
+    let lastErr: unknown;
+    const at = Date.now();
+    for (let attempt = 0; attempt < MAX_CAS_RETRIES; attempt++) {
+      try {
+        return await this.runPushReasons(inputs, false, at);
+      } catch (err) {
+        if (err instanceof ManifestConflictError) {
+          lastErr = err;
+          const backoff = Math.min(2000, 100 * 2 ** attempt) + Math.floor(Math.random() * 100);
+          this.logger?.warn(
+            `[engine] reasons CAS 충돌 — ${backoff}ms 후 재시도 ${attempt + 1}/${MAX_CAS_RETRIES}`,
+          );
+          await delay(backoff);
+          continue;
+        }
+        throw err;
+      }
+    }
+    throw lastErr ?? new Error("reasons CAS 재시도 소진");
+  }
+
+  private async runPushReasons(
+    inputs: ReasonInput[],
+    dryRun: boolean,
+    at: number = Date.now(),
+  ): Promise<ReasonsResult> {
+    const remoteManifest = await this.manifestStore.read();
+    const prepared = prepareReasonInputs(inputs, true);
+
+    if (remoteManifest === null) {
+      const missing = [...prepared.wanted.keys()].map((logicalKey) => ({
+        logicalKey,
+        code: "no-entry" as const,
+      }));
+      return {
+        dryRun,
+        recorded: [],
+        unchanged: [],
+        rejected: [...prepared.rejected, ...missing].sort((x, y) =>
+          x.logicalKey < y.logicalKey ? -1 : x.logicalKey > y.logicalKey ? 1 : 0,
+        ),
+        manifestGeneration: null,
+      };
+    }
+
+    const applied = await this.reasonStore.apply(
+      remoteManifest,
+      prepared.wanted,
+      (_key, entry, wanted) => (wanted.contentHash === entry.contentHash ? null : "stale-hash"),
+      !dryRun,
+      at,
+    );
+    const outcome = {
+      recorded: applied.outcome.recorded,
+      unchanged: applied.outcome.unchanged,
+      rejected: [...prepared.rejected, ...applied.outcome.rejected].sort((x, y) =>
+        x.logicalKey < y.logicalKey ? -1 : x.logicalKey > y.logicalKey ? 1 : 0,
+      ),
+    };
+
+    if (dryRun || outcome.recorded.length === 0) {
+      return { dryRun, ...outcome, manifestGeneration: remoteManifest.manifestGeneration };
+    }
+
+    const written = await this.manifestStore.write(
+      remoteManifest,
+      remoteManifest.manifestGeneration,
+      this.machineId,
+    );
+    await this.reasonStore.deleteReplaced(applied.replaced);
+    return { dryRun, ...outcome, manifestGeneration: written.manifestGeneration };
+  }
+
   /** push 1회 시도. CAS 실패 시 ManifestConflictError throw → 재시도 루프가 처리. */
-  private async runPush(): Promise<PushResult> {
+  private async runPush(reasons?: ReasonInput[], reasonsAt: number = Date.now()): Promise<PushResult> {
     const remoteManifest = await this.manifestStore.read();
     const manifest: Manifest =
       remoteManifest ?? ManifestStore.empty(this.machineId);
@@ -588,8 +690,10 @@ export class SyncEngine {
     });
 
     // 삭제(tombstone)는 네트워크 없는 동기 작업 — 순차 처리.
+    const deletedEffective = new Set<LogicalKey>();
     for (const item of deleteItems) {
       const key = item.logicalKey;
+      const generationBefore = manifest.entries[key]?.generation;
       const baseForDiff = await this.readBaseSnapshotBuffer(key);
       const deleteDiff = computeChangeDiff(
         baseForDiff === null ? null : this.normalizeForDiff(key, baseForDiff.toString("utf-8")),
@@ -606,6 +710,7 @@ export class SyncEngine {
         await this.removeBaseSnapshot(key);
       });
       if (entry) {
+        if (entry.generation !== generationBefore) deletedEffective.add(key);
         stateUpdates.push({ key, remove: false, syncedHash: "", syncedGeneration: entry.generation });
       } else {
         stateUpdates.push({ key, remove: true, syncedHash: "", syncedGeneration: 0 });
@@ -622,6 +727,29 @@ export class SyncEngine {
       stateUpdates.push({ key, remove: true, syncedHash: "", syncedGeneration: 0 });
     }
 
+    let reasonsOutcome: ReasonsOutcome | undefined;
+    if (reasons !== undefined && reasons.length > 0) {
+      const prepared = prepareReasonInputs(reasons, false);
+      const effective = new Set<LogicalKey>([...pushed, ...deletedEffective]);
+      const applied = await this.reasonStore.apply(
+        manifest,
+        prepared.wanted,
+        (key) => (effective.has(key) ? null : "not-pushed"),
+        true,
+        reasonsAt,
+      );
+      reasonsOutcome = {
+        recorded: applied.outcome.recorded,
+        unchanged: applied.outcome.unchanged,
+        rejected: [...prepared.rejected, ...applied.outcome.rejected].sort((x, y) =>
+          x.logicalKey < y.logicalKey ? -1 : x.logicalKey > y.logicalKey ? 1 : 0,
+        ),
+      };
+      if (applied.replaced.length > 0) {
+        postCommit.push(() => this.reasonStore.deleteReplaced(applied.replaced));
+      }
+    }
+
     // 변경/삭제/수렴 모두 없으면 매니페스트 쓰기 생략(멱등).
     if (pushed.length === 0 && deleted.length === 0 && convergedItems.length === 0 && descoped.length === 0) {
       return {
@@ -631,6 +759,7 @@ export class SyncEngine {
         skipped,
         manifestGeneration: manifest.manifestGeneration,
         conflicts: status.conflicts,
+        ...(reasonsOutcome ? { reasons: reasonsOutcome } : {}),
       };
     }
 
@@ -668,6 +797,7 @@ export class SyncEngine {
       skipped,
       manifestGeneration: writtenGeneration,
       conflicts: status.conflicts,
+      ...(reasonsOutcome ? { reasons: reasonsOutcome } : {}),
     };
   }
 
@@ -700,11 +830,8 @@ export class SyncEngine {
 
   /** blob 업로드: <base>/blobs/<sha256(logicalKey)>.age (armored 암호문). */
   private async uploadBlob(key: LogicalKey, plaintext: Buffer | string): Promise<void> {
-    const raw = typeof plaintext === "string" ? Buffer.from(plaintext, "utf-8") : plaintext;
     // gzip 압축(비동기, 이벤트루프 양보) 후 버전 매직 prepend → age 암호화. contentHash 는 평문 기준이라 영향 없음.
-    const compressed = await gzipAsync(raw);
-    const tagged = Buffer.concat([BLOB_MAGIC, compressed]);
-    const armored = await this.crypto.encrypt(new Uint8Array(tagged));
+    const armored = await sealBlob(this.crypto, plaintext);
     await this.remote.putAtomic(`blobs/${blobName(key)}`, armored, this.machineId);
   }
 
@@ -712,33 +839,32 @@ export class SyncEngine {
   private async downloadBlob(key: LogicalKey): Promise<Buffer | null> {
     const armored = await this.remote.getTextIfExists(`blobs/${blobName(key)}`);
     if (armored === null) return null;
-    const plain = Buffer.from(await this.crypto.decrypt(armored));
     // CSZ1 매직이면 gzip 압축 blob → 매직 제거 후 해제. 아니면 레거시 비압축 blob 으로 그대로 반환(하위호환).
-    if (
-      plain.length >= BLOB_MAGIC.length &&
-      plain.subarray(0, BLOB_MAGIC.length).equals(BLOB_MAGIC)
-    ) {
-      return Buffer.from(await gunzipAsync(plain.subarray(BLOB_MAGIC.length)));
-    }
-    return plain;
+    return openBlob(this.crypto, armored);
   }
 
   // ── pull ────────────────────────────────────────────────────
 
   /** dryRun pull 계획. */
   private async planPull(): Promise<PullResult> {
-    const status = await this.status();
+    const { status, manifest, state } = await this.statusContext();
     const applied: LogicalKey[] = [
       ...status.summary.remoteAdded,
       ...status.summary.remoteModified,
     ];
     const removed = [...status.summary.remoteDeleted];
+    const reasons = await this.collectReasons(
+      manifest,
+      [...applied, ...removed, ...status.conflicts.map((c) => c.logicalKey)],
+      state,
+    );
     return {
       dryRun: true,
       applied,
       removed,
       conflicts: status.conflicts,
       backupDir: null,
+      ...(reasons ? { reasons } : {}),
     };
   }
 
@@ -784,12 +910,18 @@ export class SyncEngine {
 
     if (toApply.length === 0 && toRemove.length === 0 && convergedItems.length === 0) {
       // 충돌만 있을 수 있음 — 정책 적용은 resolve 가 담당, pull 은 보고만.
+      const conflictReasons = await this.collectReasons(
+        remoteManifest,
+        status.conflicts.map((c) => c.logicalKey),
+        state,
+      );
       return {
         dryRun: false,
         applied: [],
         removed: [],
         conflicts: status.conflicts,
         backupDir: null,
+        ...(conflictReasons ? { reasons: conflictReasons } : {}),
       };
     }
 
@@ -871,12 +1003,18 @@ export class SyncEngine {
     }
 
     const hadBackup = backedUp.some((b) => b.backupPath !== null);
+    const reasons = await this.collectReasons(
+      remoteManifest,
+      [...applied, ...removed, ...status.conflicts.map((c) => c.logicalKey)],
+      state,
+    );
     const result: PullResult = {
       dryRun: false,
       applied,
       removed,
       conflicts: status.conflicts,
       backupDir: hadBackup ? backupRoot : null,
+      ...(reasons ? { reasons } : {}),
     };
 
     if (
@@ -904,12 +1042,14 @@ export class SyncEngine {
       // pass2 가 옛 remote/경로와 일관되게 동작하도록 한다(full-replace 시 baked-path 발산 위험 회피).
       this.config = { ...this.config, targets: reloadedTargets };
       const second = await this.runPull(true);
+      const mergedReasons = { ...second.reasons, ...result.reasons };
       return {
         dryRun: false,
         applied: [...result.applied, ...second.applied],
         removed: [...result.removed, ...second.removed],
         conflicts: second.conflicts,
         backupDir: result.backupDir ?? second.backupDir,
+        ...(Object.keys(mergedReasons).length > 0 ? { reasons: mergedReasons } : {}),
       };
     }
     return result;
@@ -1182,9 +1322,14 @@ export class SyncEngine {
     policy: ResolvePolicy,
     keys?: string[],
   ): Promise<ResolveResult> {
-    const { remoteManifest, status } = await this.loadConflictContext();
+    const { remoteManifest, state, status } = await this.loadConflictContext();
     const targets = this.selectConflicts(status.conflicts, keys);
     const preview: ResolvePreviewItem[] = [];
+    const previewReasons = await this.collectReasons(
+      remoteManifest,
+      targets.map((c) => c.logicalKey),
+      state,
+    );
 
     for (const conflict of targets) {
       const key = conflict.logicalKey;
@@ -1272,6 +1417,7 @@ export class SyncEngine {
         conflictKeys,
         remoteChangeDiff: entry.changeDiff ?? null,
         localChangeDiff: await this.computeLocalChangeDiff(key, absPath),
+        ...(previewReasons?.[key] ? { remoteReasons: previewReasons[key] } : {}),
       });
     }
 
@@ -1715,6 +1861,7 @@ export class SyncEngine {
   private async computeLocalChangeDiff(
     key: LogicalKey,
     absPath: string,
+    maxBytes: number = MAX_DIFF_BYTES_PER_KEY,
   ): Promise<ChangeDiff | null> {
     const base = await this.readBaseSnapshotBuffer(key);
     let nextText: string | null = null;
@@ -1728,7 +1875,7 @@ export class SyncEngine {
     const baseText = base === null ? null : this.normalizeForDiff(key, base.toString("utf-8"));
     const baseHash = baseText === null ? null : sha256(Buffer.from(baseText, "utf-8"));
     return computeChangeDiff(baseText, nextText, {
-      maxBytes: MAX_DIFF_BYTES_PER_KEY,
+      maxBytes,
       baseHash,
       // 삭제는 "그 콘텐츠가 사라짐" 이므로 contentHash 도 base 해시다(tombstone 쪽 규약과 동일).
       contentHash: nextText === null ? (baseHash ?? "") : sha256(Buffer.from(nextText, "utf-8")),
@@ -1907,12 +2054,13 @@ export class SyncEngine {
   async syncAtomic(opts: {
     pluginsDir: string;
     policy?: ResolvePolicy;
+    reasons?: ReasonInput[];
   }): Promise<
     | ({ aborted: true; reason: "missing-plugins"; missing: string[] } & PluginInstallGuidance)
     | { aborted: true; reason: "conflicts"; conflicts: ConflictDetail[] }
     | { aborted: false; pull: PullResult; push: PushResult }
   > {
-    const { pluginsDir, policy } = opts;
+    const { pluginsDir, policy, reasons } = opts;
 
     const { pulledSettings } = await this.fetchRemote();
     const prereqScope = await this.readPrereqScope();
@@ -1947,8 +2095,14 @@ export class SyncEngine {
           resolveResult = await this.runResolve(effective);
         }
 
-        const afterStatus = await this.status();
+        const afterContext = await this.statusContext();
+        const afterStatus = afterContext.status;
         if (afterStatus.conflicts.length > 0) {
+          const conflictReasons = await this.collectReasons(
+            afterContext.manifest,
+            afterStatus.conflicts.map((c) => c.logicalKey),
+            afterContext.state,
+          );
           const copyMap = new Map(
             (resolveResult?.conflictCopies ?? []).map((c) => [c.logicalKey, c.copyPath]),
           );
@@ -1975,12 +2129,15 @@ export class SyncEngine {
               remoteChangeDiff,
               localChangeDiff,
               diffPath,
+              ...(conflictReasons?.[c.logicalKey]
+                ? { remoteReasons: conflictReasons[c.logicalKey] }
+                : {}),
             });
           }
           return { aborted: true as const, reason: "conflicts" as const, conflicts };
         }
 
-        const push = await this.runPushWithRetry();
+        const push = await this.runPushWithRetry(reasons);
         return { aborted: false as const, pull, push };
       }),
     );

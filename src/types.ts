@@ -138,6 +138,60 @@ export interface ChangeDiff {
   text: string;
 }
 
+export interface ReasonItem {
+  generation: number;
+  machineId: MachineId;
+  at: EpochMs;
+  contentHash: Sha256Hex;
+  reason: string;
+}
+
+export interface ReasonsRef {
+  hash: Sha256Hex;
+  count: number;
+  lastGeneration: number;
+}
+
+export interface ReasonInput {
+  logicalKey: LogicalKey;
+  reason: string;
+  contentHash?: Sha256Hex;
+}
+
+export type ReasonRejectCode =
+  | "not-pushed"
+  | "stale-hash"
+  | "hash-required"
+  | "no-entry"
+  | "invalid-key"
+  | "empty"
+  | "too-long"
+  | "duplicate-key"
+  | "log-full";
+
+export interface ReasonsOutcome {
+  recorded: LogicalKey[];
+  unchanged: LogicalKey[];
+  rejected: Array<{ logicalKey: LogicalKey; code: ReasonRejectCode }>;
+}
+
+export interface ReasonView {
+  items: ReasonItem[];
+  omitted: number;
+}
+
+export interface ReasonsResult extends ReasonsOutcome {
+  dryRun: boolean;
+  manifestGeneration: number | null;
+}
+
+export interface PushPendingItem {
+  logicalKey: LogicalKey;
+  kind: "added" | "modified" | "deleted";
+  contentHash: Sha256Hex | null;
+  changeDiff: ChangeDiff | null;
+}
+
 export interface FileEntry {
   /** 평문 콘텐츠 sha256 hex. deleted 면 마지막 알려진 값(또는 빈 문자열). */
   contentHash: Sha256Hex;
@@ -157,6 +211,7 @@ export interface FileEntry {
   scopeExcluded?: boolean;
   /** 이 엔트리를 만든 push 의 변경 diff. advisory — 없을 수 있다(구버전 작성분). */
   changeDiff?: ChangeDiff;
+  reasonsRef?: ReasonsRef;
 }
 
 /** 매니페스트 전체. 암호화 후 armored 로 <base>/manifest.json.age 에 저장. */
@@ -342,6 +397,8 @@ export interface SettingsMergeResult {
 export interface SyncRunOptions {
   /** 실제 변경 없이 계획만 산출. */
   dryRun?: boolean;
+  includePending?: boolean;
+  reasons?: ReasonInput[];
 }
 
 /** push 결과. */
@@ -357,6 +414,8 @@ export interface PushResult {
   manifestGeneration: number | null;
   /** push 중 감지된 충돌(정책상 push 보류). */
   conflicts: ConflictItem[];
+  reasons?: ReasonsOutcome;
+  pending?: PushPendingItem[];
 }
 
 /** pull 결과. */
@@ -370,6 +429,7 @@ export interface PullResult {
   conflicts: ConflictItem[];
   /** 백업 디렉터리 경로(있을 때). */
   backupDir: string | null;
+  reasons?: Record<LogicalKey, ReasonView>;
 }
 
 export type MergeFallbackReason =
@@ -405,6 +465,7 @@ export interface ResolvePreviewItem {
   remoteChangeDiff?: ChangeDiff | null;
   /** base→로컬 변경 diff. 이 자리에서 계산한다(저장 안 함). 계산 불가면 null. */
   localChangeDiff?: ChangeDiff | null;
+  remoteReasons?: ReasonView;
 }
 
 /** resolve 결과. */
@@ -442,6 +503,7 @@ export interface ConflictDetail {
   localChangeDiff?: ChangeDiff | null;
   /** 양쪽 diff 를 담은 사이드카 경로. 기록 못 했으면 null. */
   diffPath?: string | null;
+  remoteReasons?: ReasonView;
 }
 
 // ── 로깅 (logger.ts) ──────────────────────────────────────

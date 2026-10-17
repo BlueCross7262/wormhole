@@ -10,7 +10,8 @@ import type { EngineDeps } from "./sync/engine.js";
 import { AgeCrypto } from "./crypto/age.js";
 import type { Config, MachineId } from "./types.js";
 import { MockWebdavRemote } from "./test-helpers/mock-webdav.js";
-import { runSyncCommand } from "./cli-sync.js";
+import { createHash } from "node:crypto";
+import { runReasonsCommand, runSyncCommand } from "./cli-sync.js";
 
 let sharedIdentity: string;
 let sharedCrypto: AgeCrypto;
@@ -146,6 +147,90 @@ describe("M20: CLI sync 설치 배리어 — installed_plugins.json 이 참조�
 
     assert.equal(exitCode, 0);
     assert.equal(payload.aborted, false);
+  });
+});
+
+describe("이유 전달", () => {
+  const KEY = ".claude/note.md";
+
+  test("runSyncCommand 가 reasons 를 syncAtomic 에 넘기고 push 결과에 기록이 실린다", async () => {
+    const remote = new MockWebdavRemote();
+    const a = makeReplica(remote, "rs-a", "machine-a");
+    await writeHomeFile(a, KEY, "one\n");
+
+    const { payload, exitCode } = await runSyncCommand(a.engine, {
+      policy: "preserve-both",
+      reasons: [{ logicalKey: KEY, reason: "because" }],
+    });
+
+    assert.equal(exitCode, 0);
+    assert.equal(payload.aborted, false);
+    const push = payload.push as { reasons?: { recorded: string[] } };
+    assert.deepEqual(push.reasons?.recorded, [KEY]);
+  });
+
+  test("reasons 가 없으면 syncAtomic 인자에 reasons 키가 없고 결과에도 없다", async () => {
+    let captured: Record<string, unknown> | null = null;
+    const stub = {
+      config: { home: "/h" },
+      async syncAtomic(opts: Record<string, unknown>) {
+        captured = opts;
+        return { aborted: false, pull: {}, push: {} };
+      },
+    };
+
+    await runSyncCommand(stub as never, { policy: "preserve-both" });
+
+    assert.ok(captured);
+    assert.equal("reasons" in captured!, false);
+  });
+
+  test("runReasonsCommand: 기록되면 exitCode 0", async () => {
+    const remote = new MockWebdavRemote();
+    const a = makeReplica(remote, "rc-a", "machine-a");
+    await writeHomeFile(a, KEY, "one\n");
+    await a.engine.push();
+    const hash = createHash("sha256").update("one\n").digest("hex");
+
+    const { payload, exitCode } = await runReasonsCommand(a.engine, {
+      inputs: [{ logicalKey: KEY, reason: "late", contentHash: hash }],
+      dryRun: false,
+    });
+
+    assert.equal(exitCode, 0);
+    assert.deepEqual(payload.recorded, [KEY]);
+  });
+
+  test("runReasonsCommand: 전부 거부되면 exitCode 1", async () => {
+    const remote = new MockWebdavRemote();
+    const a = makeReplica(remote, "rj-a", "machine-a");
+    await writeHomeFile(a, KEY, "one\n");
+    await a.engine.push();
+
+    const { payload, exitCode } = await runReasonsCommand(a.engine, {
+      inputs: [{ logicalKey: KEY, reason: "late" }],
+      dryRun: false,
+    });
+
+    assert.equal(exitCode, 1);
+    assert.deepEqual(payload.rejected, [{ logicalKey: KEY, code: "hash-required" }]);
+  });
+
+  test("runReasonsCommand: dry-run 은 쓰지 않는다", async () => {
+    const remote = new MockWebdavRemote();
+    const a = makeReplica(remote, "rd-a", "machine-a");
+    await writeHomeFile(a, KEY, "one\n");
+    await a.engine.push();
+    const hash = createHash("sha256").update("one\n").digest("hex");
+    const keysBefore = remote.keys();
+
+    const { payload } = await runReasonsCommand(a.engine, {
+      inputs: [{ logicalKey: KEY, reason: "late", contentHash: hash }],
+      dryRun: true,
+    });
+
+    assert.equal(payload.dryRun, true);
+    assert.deepEqual(remote.keys(), keysBefore);
   });
 });
 
