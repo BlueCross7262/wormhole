@@ -114,6 +114,24 @@ node ${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs sync --reasons-file "<경로>" $ARGUMENT
   실행 전 이유 확인 질문(「수정 이유 저장」 절)은 이 규칙의 대상이 아니다.
 - force 모드에서는 아래 `pull.` 을 `forceDownload.` 으로, `push.` 를 `forceUpload.` 으로 읽는다.
 
+### 결과 키
+
+결과 JSON 을 코드로 읽어 요약하면 아래 표의 키 존재를 따른다.
+
+| 키 | 존재 | 값 |
+|---|---|---|
+| `pull.dryRun`·`pull.applied`·`pull.removed`·`pull.conflicts` | 항상 있음 | 배열은 빈 배열일 수 있다 |
+| `pull.backupDir` | 항상 있음 | `null` 일 수 있다 |
+| `push.dryRun`·`push.pushed`·`push.deleted`·`push.skipped`·`push.conflicts` | 항상 있음 | 배열은 빈 배열일 수 있다 |
+| `push.manifestGeneration` | 항상 있음 | `null` 일 수 있다 |
+| `pull.reasons` | 없을 수 있음 | 기록된 이유가 없거나 원격 manifest 가 없거나 dry-run 이 아닌 force-down 이면 키 자체를 생략한다 |
+| `push.reasons` | 없을 수 있음 | `--reasons-file` 로 이유를 1건 이상 넘기지 않으면 키 자체를 생략한다 |
+
+- 「없을 수 있음」 키는 읽기 전에 존재를 확인한다.
+  키가 없을 때 그 키의 하위 필드나 메서드를 부르지 않는다.
+- 키 하나가 없다고 요약을 멈추지 않는다.
+  없는 키의 행만 빼고 나머지 행을 적는다.
+
 ### 첫 줄
 
 첫 줄에 결과 한 줄을 적는다.
@@ -147,7 +165,7 @@ force 모드는 해당 블록 하나만 적는다.
 | `push.skipped` | 항상 | 「변경 없어 건너뜀 <수>」 |
 | `push.conflicts` | 비어 있지 않음 | 「push 보류」 아래에 `logicalKey`·`remoteMachineId`. push 시점에 새로 감지된 충돌이라 이 키들은 올라가지 않았다. sync 재실행을 안내한다 |
 | `push.reasons` | 키가 있음 | 「이유 저장」 아래에 `recorded` 목록. `rejected` 가 비어 있지 않으면 `logicalKey`·`code` 를 함께 적고 위 「결과 처리」 안내를 붙인다 |
-| `pull.reasons` | 키가 있음 | 「원격 수정 이유」 아래에 키마다 최신 항목의 `reason`·`machineId`·`generation` 과 `omitted` 건수. 이 키가 없으면 기록된 이유가 없다는 뜻이다 |
+| `pull.reasons` | 키가 있음 | 「원격 수정 이유」 아래에 키마다 최신 항목의 `reason`·`machineId`·`generation` 과 `omitted` 건수. 이 키가 생략되는 조건은 위 「결과 키」 표를 따른다 |
 
 - 조건이 맞지 않는 행은 적지 않는다.
   빈 배열을 「없음」으로 따로 보고하지 않는다.
