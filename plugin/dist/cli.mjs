@@ -35963,7 +35963,7 @@ import * as nodePath from "node:path";
 import { readFileSync as readFileSync5 } from "node:fs";
 import { fileURLToPath } from "node:url";
 function resolveVersion() {
-  if (true) return "0.5.27";
+  if (true) return "0.5.28";
   try {
     const pkgPath = fileURLToPath(new URL("../package.json", import.meta.url));
     const pkg = JSON.parse(readFileSync5(pkgPath, "utf-8"));
