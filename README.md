@@ -289,6 +289,11 @@ Claude Code 가 직접 호출하는 도구로, 슬래시 커맨드 없이 AI 흐
 
 > **중요:** Claude 는 `confirm: true` 를 **자율적으로 전달하지 않는다.** 사용자가 명시적으로 실행을 확인한 경우에만 `confirm: true` 로 재호출한다. 이 설계는 원격·로컬 데이터의 의도치 않은 변경을 방지한다.
 
+> 예외: `wormhole_reasons` 에 한해, 사용자가 이 대화에서 직접 준 이유의 기록을 요청했고 `wormhole_reasons` 도구 설명이 정한 조건을 모두 채우면 그 요청을 명시적 확인으로 본다.
+> 조건의 충족 여부는 Claude 가 판정하며 도구가 강제하지 않는다.
+> 기록 뒤 Claude 는 응답에 `recorded` 키와 이유를 보이며, 사후 대조는 그 응답과 대화 기록으로 한다.
+> 이 예외는 `wormhole_sync`·`wormhole_resolve` 의 `confirm: true` 에 적용하지 않는다.
+
 일반 흐름:
 
 1. Claude 가 `wormhole_sync` (confirm 생략 = 미리보기) 호출 → 계획 반환
@@ -575,7 +580,7 @@ wormhole doctor
 - `--policy manual` 은 **금지** 다 (sync 안에서는 자동 해소가 전제이므로 에러 — 수동 해소가 필요하면 `/wormhole-resolve` 를 따로 쓴다).
 - 일상 동기화는 이 커맨드 하나면 충분하다.
 - 수정 이유 저장 — `--reasons-file <path>` 로 push 하는 파일마다 왜 고쳤는지를 원격에 함께 저장한다. 다른 머신은 pull·충돌 해소·삭제 반영 때 그 이유를 보고 병합 방향을 정한다.
-  - 슬래시 커맨드는 `wormhole pending` 으로 push 후보와 변경 diff 를 읽기 전용으로 얻어 이유 초안을 만들고, 사용자 확인 뒤 `--reasons-file` 로 실행한다. 일반 `sync --dry-run` 은 미리보기가 아니라 실제 sync 이므로 후보 조회에 쓰지 않는다.
+  - 슬래시 커맨드는 `wormhole pending` 으로 push 후보와 변경 diff 를 읽기 전용으로 얻어 이유 초안을 만들고, 사용자 확인 뒤(사용자가 직접 준 이유면 확인 없이) `--reasons-file` 로 실행한다. 일반 `sync --dry-run` 은 미리보기가 아니라 실제 sync 이므로 후보 조회에 쓰지 않는다.
   - 이유는 파일(`logicalKey`)마다 이력으로 쌓이고 개수 제한이 없다. 이력은 원격 `blobs/r-*` 에 저장되고 매니페스트 엔트리의 `reasonsRef` 가 가리킨다. 항목 하나는 2000자 이하다.
   - pull 결과의 `reasons` 는 이 머신이 아직 못 본 generation 의 이유만 담는다. 키당 최신 5건과 전체 64 KiB 안에서 보이고 넘친 건수는 `omitted` 로 센다.
   - 구버전 wormhole 이 push 하면 `reasonsRef` 가 지워진다. `--force-up` 도 이력을 지운다.
