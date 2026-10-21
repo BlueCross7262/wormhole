@@ -33270,7 +33270,7 @@ var EMPTY_COMPLETION_RESULT = {
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 function resolveVersion() {
-  if (true) return "0.5.29";
+  if (true) return "0.5.30";
   try {
     const pkgPath = fileURLToPath(new URL("../package.json", import.meta.url));
     const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
@@ -33539,6 +33539,7 @@ function registerSyncTool(server, engine) {
               aborted: true,
               reason: "conflicts",
               conflicts: result.conflicts,
+              pull: result.pull,
               note: `\uCDA9\uB3CC ${result.conflicts.length}\uAC74\uC73C\uB85C push \uCC28\uB2E8\uB428. /wormhole-resolve \uB85C \uD0A4\uBCC4 theirs(latest-wins)/ours \uC120\uD0DD \uD6C4 \uC7AC sync \uD558\uC138\uC694.
 
 \uCDA9\uB3CC \uBAA9\uB85D:
@@ -51473,13 +51474,13 @@ var ReasonStore = class {
     try {
       const loaded = await this.loadLog(key, ref);
       if (loaded.kind !== "ok") {
-        this.logger?.warn(`[reasons] \uC774\uB825\uC744 \uC77D\uC9C0 \uBABB\uD574 \uC0DD\uB7B5 ${key} (${loaded.kind})`);
-        return null;
+        this.logger?.warn(`[reasons] \uC774\uB825\uC744 \uC77D\uC9C0 \uBABB\uD574 \uAC74\uC218\uB9CC \uB0A8\uAE40 ${key} (${loaded.kind})`);
+        return { items: [], omitted: this.pendingCount(manifest, key, state) };
       }
       return buildReasonView(loaded.items, base);
     } catch (err) {
-      this.logger?.warn(`[reasons] \uC774\uB825 \uC870\uD68C \uC2E4\uD328\uB85C \uC0DD\uB7B5 ${key}: ${String(err.message)}`);
-      return null;
+      this.logger?.warn(`[reasons] \uC774\uB825 \uC870\uD68C \uC2E4\uD328\uB85C \uAC74\uC218\uB9CC \uB0A8\uAE40 ${key}: ${String(err.message)}`);
+      return { items: [], omitted: this.pendingCount(manifest, key, state) };
     }
   }
 };
@@ -53543,7 +53544,7 @@ var SyncEngine = class {
               ...conflictReasons?.[c.logicalKey] ? { remoteReasons: conflictReasons[c.logicalKey] } : {}
             });
           }
-          return { aborted: true, reason: "conflicts", conflicts };
+          return { aborted: true, reason: "conflicts", conflicts, pull };
         }
         const push = await this.runPushWithRetry(reasons);
         return { aborted: false, pull, push };
