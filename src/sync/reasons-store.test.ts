@@ -352,7 +352,7 @@ describe("ReasonStore.collect", () => {
     for (const k of keys.slice(0, firstEmptied)) assert.equal(out[k]!.items.length, REASON_VIEW_PER_KEY);
   });
 
-  test("한 키의 읽기가 I/O 오류여도 나머지 키는 돌려준다", async () => {
+  test("한 키의 읽기가 I/O 오류면 그 키는 건수만 남기고 나머지 키는 돌려준다", async () => {
     const remote = new MockWebdavRemote();
     const store = makeStore(remote);
     const k1 = ".claude/a.md" as LogicalKey;
@@ -370,11 +370,11 @@ describe("ReasonStore.collect", () => {
 
     const out = await flaky.collect(manifest, [k1, k2], {});
 
-    assert.equal(out[k1], undefined);
+    assert.deepEqual(out[k1], { items: [], omitted: 1 });
     assert.equal(out[k2]!.items.length, 1);
   });
 
-  test("손상된 이력은 그 키만 비운다", async () => {
+  test("손상된 이력은 그 키의 items 를 비우고 건수만 남긴다", async () => {
     const remote = new MockWebdavRemote();
     const store = makeStore(remote);
     const hash = sha256("bad");
@@ -385,7 +385,7 @@ describe("ReasonStore.collect", () => {
 
     const out = await store.collect(manifest, [KEY], {});
 
-    assert.deepEqual(out, {});
+    assert.deepEqual(out, { [KEY]: { items: [], omitted: 1 } });
   });
 });
 

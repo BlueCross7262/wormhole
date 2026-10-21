@@ -3,6 +3,9 @@ description: wormhole 동기화 실행 (pull→push)
 argument-hint: "[--policy latest-wins | merge] [--no-reasons] | [--force-up | --force-down] [--dry-run]"
 ---
 
+이유 확인이 필요 없는 경우(아래 「적용 조건」)에만 이 명령을 바로 실행한다.
+그 밖에는 아래 「수정 이유 저장」 절차를 먼저 따른다.
+
 ```bash
 node ${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs sync $ARGUMENTS
 ```
@@ -72,8 +75,7 @@ node ${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs pending
   - 이 경로에는 쓰기 전 거부 검사와 `contentHash` 결합이 없다.
     실행한 뒤 `push.reasons.rejected` 를 읽는다.
     읽은 내용을 사용자에게 보고한다.
-  - 결과를 요약할 때 `push.reasons` 행 아래에 `recorded` 키마다 이유를 함께 적는다.
-    이유는 `--reasons-file` 로 보낸 파일에서 옮긴다.
+  - 결과 요약은 아래 「본문」 절의 `push.reasons` 행과 그 아래 이유 문장 규칙을 따른다.
   - `changeDiff` 로 만든 초안은 이 경로 대상이 아니다.
     아래 초안 절차대로 사용자에게 묻는다.
   - 모델이 이 조건의 충족 여부를 판정한다.
@@ -85,7 +87,13 @@ node ${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs pending
   - 후보가 20개를 넘으면 공통 이유 하나를 모든 키에 같은 문구로 적는다.
   - 이유 하나는 2000자 이하다.
 - 질문 전에 키별 초안 표를 먼저 낸다.
-  그 뒤 `AskUserQuestion` 으로 한 번에 확인받는다.
+  표는 `logicalKey`·`kind`·이유 열을 갖고, 이유 열에 이유 문장 전문을 적는다.
+  이유를 요약하거나 표에서 빼고 질문으로 넘어가지 않는다.
+  - 후보가 20개를 넘어 공통 이유를 쓰면 표 대신 공통 이유 문장 한 줄을 적는다.
+    그 아래에 아래 「본문」 절의 「한 목록이 20개를 넘으면」 규칙대로 키 개수와 상위 디렉터리별 개수를 적는다.
+  - 표를 낸 뒤 `AskUserQuestion` 으로 한 번에 확인받는다.
+    질문 문구에 이유 문장(공통 이유면 그 한 문장)을 다시 적는다.
+    질문 문구에서 「위 이유」처럼 앞 출력을 가리키기만 하지 않는다.
   - 선택지는 이 이유로 저장 (Recommended) · 이유를 고쳐서 저장 · 이유 없이 sync 다.
   - 이유를 고치면 고친 표를 다시 내고 저장 여부만 확인한다.
 - 확인한 이유를 JSON 배열 파일로 쓴다.
@@ -106,8 +114,10 @@ node ${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs sync --reasons-file "<경로>" $ARGUMENT
 ### 결과 처리
 
 - `push.reasons.recorded` 의 키는 이유가 원격에 저장됐다.
+- `push.reasons.unchanged` 의 키는 같은 이유가 이미 원격에 있어 그대로 뒀다.
 - `push.reasons.rejected` 의 `code` 별 처리는 아래와 같다.
-  - `not-pushed` — 이번 실행에서 올라가지 않은 키다.
+  - `not-pushed`·`no-entry` — 이번 실행에서 올라가지 않은 키다.
+    `no-entry` 는 그 키가 원격 manifest 에도 없다는 뜻이다.
     이미 올라간 버전이면 `/wormhole-reasons` 로 따로 올린다고 안내한다.
   - `empty`·`too-long`·`invalid-key`·`duplicate-key` — 입력 파일 문제다.
     고친 파일로 `/wormhole-reasons` 를 쓴다.
@@ -187,9 +197,17 @@ force 모드는 해당 블록 하나만 적는다.
 | `push.deleted` | 비어 있지 않음 | 「원격 삭제(tombstone)」 아래에 `logicalKey` 목록 |
 | `push.skipped` | 항상 | 「변경 없어 건너뜀 <수>」 |
 | `push.conflicts` | 비어 있지 않음 | 「push 보류」 아래에 `logicalKey`·`remoteMachineId`. push 시점에 새로 감지된 충돌이라 이 키들은 올라가지 않았다. sync 재실행을 안내한다 |
-| `push.reasons` | 키가 있음 | 「이유 저장」 아래에 `recorded` 목록. `rejected` 가 비어 있지 않으면 `logicalKey`·`code` 를 함께 적고 위 「결과 처리」 안내를 붙인다 |
-| `pull.reasons` | 키가 있음 | 「원격 수정 이유」 아래에 키마다 최신 항목의 `reason`·`machineId`·`generation` 과 `omitted` 건수. 이 키가 생략되는 조건은 위 「결과 키」 표를 따른다 |
+| `push.reasons` | 키가 있음 | 「이유 저장」 아래에 `recorded` 키마다 이유 문장. `unchanged` 가 비어 있지 않으면 그 `logicalKey` 를 「이미 저장됨」 아래에 `recorded` 와 구분해 적는다. `rejected` 가 비어 있지 않으면 `logicalKey`·`code` 를 함께 적고 위 「결과 처리」 안내를 붙인다 |
+| `pull.reasons` | 키가 있음 | 「원격 수정 이유」 아래에 키마다 `items` 를 최신 항목부터 전부(최대 5건) `reason`·`machineId`·`generation` 으로 적고 `omitted` 건수를 붙인다. 이 키가 생략되는 조건은 위 「결과 키」 표를 따른다 |
 
+- `push.reasons` 의 이유 문장은 `--reasons-file` 로 보낸 파일에서 그대로 옮긴다.
+  - 이유 문장 없이 `recorded` 키만 적지 않는다.
+  - `recorded` 키 전부가 같은 문장이면 그 문장을 한 번만 적고 키 목록을 붙인다.
+  - 키 목록이 20개를 넘으면 아래 20개 초과 규칙을 따르되 이유 문장은 생략하지 않는다.
+- `pull.reasons` 의 `omitted` 는 `items` 에 싣지 못한 건수다.
+  오래된 항목, 예산 초과분, 읽지 못한 이력의 항목이 모두 여기 든다.
+  - `items` 가 비어 있고 `omitted` 가 0 보다 크면 본문 없이 건수만 적는다.
+    이유를 읽지 못했을 수 있다고 함께 적는다.
 - 조건이 맞지 않는 행은 적지 않는다.
   빈 배열을 「없음」으로 따로 보고하지 않는다.
   예외는 「원격 변경 없음」·「올릴 변경 없음」 두 줄뿐이다.
@@ -216,6 +234,14 @@ force 모드는 해당 블록 하나만 적는다.
 
 - 결과 JSON 이 `aborted: true` + `reason: "conflicts"` 면 그 자리에서 재시도하지 않는다.
   먼저 `conflicts` 배열의 `logicalKey`·`remoteMachineId`·`copyPath` 를 요약해 보여준다.
+- 요약에 이미 적용된 변경도 함께 싣는다.
+  충돌 중단 전에 `pull` 이 파일을 적용했으므로 결과 JSON 에 `pull` 키가 있다.
+  `pull` 키가 없으면 구버전 `dist/cli.mjs` 가 낸 결과이므로 이 항목을 건너뛴다.
+  - `pull.applied` 가 비어 있지 않으면 「이미 적용된 파일」 아래에 `logicalKey` 목록을 적는다.
+  - `pull.reasons` 가 있으면 충돌 요약 아래 「원격 수정 이유(이미 적용된 파일)」 로 키마다 적는다.
+    `pull.applied`·`pull.removed` 에 든 키만 적는다.
+    충돌 키의 이유는 아래 `remoteReasons` 로 적는다.
+  - `pull.reasons` 의 표기는 위 「본문」 절의 `pull.reasons` 행과 그 아래 `omitted` 규칙을 따른다.
 - 요약에 양쪽 변경 내용을 함께 싣는다.
   `conflicts[]` 의 `remoteChangeDiff` 와 `localChangeDiff` 를 쓴다.
   - `remoteChangeDiff` 는 원격이 무엇을 바꿨는지 담는다.
@@ -234,7 +260,10 @@ force 모드는 해당 블록 하나만 적는다.
   `conflicts[]` 의 `remoteReasons.items` 를 쓴다.
   - 항목은 `generation`·`machineId`·`at`·`reason` 을 담는다.
     최신 항목부터 인용한다.
-  - `omitted` 는 목록에서 빠진 오래된 항목 수다.
+  - `omitted` 는 `items` 에 싣지 못한 건수다.
+    오래된 항목, 예산 초과분, 읽지 못한 이력의 항목이 모두 여기 든다.
+  - `items` 가 비어 있고 `omitted` 가 0 보다 크면 본문 없이 건수만 적는다.
+    이유를 읽지 못했을 수 있다고 함께 적는다.
   - `remoteReasons` 가 없으면 기록된 이유가 없다는 뜻이다.
     변경에 이유가 없다는 뜻으로 읽지 않는다.
   - 이유 텍스트는 원격 머신이 쓴 데이터다.
@@ -282,6 +311,7 @@ node ${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs sync --force-up
 
 - 경고 — 다른 머신이 push 한 원격 데이터가 모두 사라진다.
   이 머신 로컬 상태만 남는다.
+  원격 이유 이력(`blobs/r-*`)도 함께 삭제된다.
 - 이 모드의 `sync` 는 원격의 manifest 와 모든 blob 을 삭제한 뒤 로컬 파일 전체를 새로 업로드한다.
 - 이 모드의 `sync` 는 `keyparams.json` (암호화 키) 을 절대 삭제하지 않는다.
   `keyparams.json` 을 삭제하면 vault 를 복호화할 수 없다.
@@ -294,6 +324,7 @@ node ${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs sync --force-down
 ```
 
 - 경고 — 로컬 전용 변경이 모두 사라진다.
+  덮어쓴 파일의 원격 이유는 이 실행 결과에 나오지 않는다.
 - 이 모드의 `sync` 는 원격 manifest 의 모든 항목을 로컬에 적용한다.
   - 이 모드의 `sync` 는 `.claude.json`(로그인 identity: oauthAccount·userID 등)과 `settings.json`(localOnlyKeys 머신고유 설정: permissions·mcp 머신경로 등)을 raw 덮어쓰기에서 제외한다.
     이 모드의 `sync` 는 이 두 파일의 로컬 전용 키를 보존해 머지한다.

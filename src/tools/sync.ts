@@ -91,6 +91,7 @@ export function registerSyncTool(server: McpServer, engine: SyncEngine): void {
               aborted: true,
               reason: "conflicts",
               conflicts: result.conflicts,
+              pull: result.pull,
               note: `충돌 ${result.conflicts.length}건으로 push 차단됨. /wormhole-resolve 로 키별 theirs(latest-wins)/ours 선택 후 재 sync 하세요.\n\n충돌 목록:\n${conflictLines}`,
             };
             return {

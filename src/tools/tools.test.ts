@@ -103,7 +103,7 @@ interface FakeEngineOpts {
         installCommands: string[];
         unresolvedMarketplaces: string[];
       }
-    | { aborted: true; reason: "conflicts"; conflicts: ConflictDetail[] }
+    | { aborted: true; reason: "conflicts"; conflicts: ConflictDetail[]; pull: PullResult }
     | { aborted: false; pull: PullResult; push: PushResult }
   >;
 }
@@ -716,6 +716,7 @@ describe("wormhole_sync — handler confirm-gate", () => {
           aborted: true as const,
           reason: "conflicts" as const,
           conflicts: [fakeConflict],
+          pull: fixturePull(),
         }),
     });
     registerSyncTool(server as unknown as McpServer, engine);
@@ -726,9 +727,11 @@ describe("wormhole_sync — handler confirm-gate", () => {
       aborted: boolean;
       reason: string;
       conflicts: ConflictDetail[];
+      pull: PullResult;
       note: string;
     }>(res);
     assert.equal(out.aborted, true, "tool output aborted must be true");
+    assert.deepEqual(out.pull, fixturePull(), "tool output must relay the engine pull result");
     assert.equal(out.reason, "conflicts", "tool output reason must be 'conflicts'");
     assert.equal(out.conflicts.length, 1, "conflicts array length must be 1");
     assert.equal(out.conflicts[0].logicalKey, "c.txt", "conflict logicalKey must match");

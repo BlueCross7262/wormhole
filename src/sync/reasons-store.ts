@@ -228,13 +228,13 @@ export class ReasonStore {
     try {
       const loaded = await this.loadLog(key, ref);
       if (loaded.kind !== "ok") {
-        this.logger?.warn(`[reasons] 이력을 읽지 못해 생략 ${key} (${loaded.kind})`);
-        return null;
+        this.logger?.warn(`[reasons] 이력을 읽지 못해 건수만 남김 ${key} (${loaded.kind})`);
+        return { items: [], omitted: this.pendingCount(manifest, key, state) };
       }
       return buildReasonView(loaded.items, base);
     } catch (err) {
-      this.logger?.warn(`[reasons] 이력 조회 실패로 생략 ${key}: ${String((err as Error).message)}`);
-      return null;
+      this.logger?.warn(`[reasons] 이력 조회 실패로 건수만 남김 ${key}: ${String((err as Error).message)}`);
+      return { items: [], omitted: this.pendingCount(manifest, key, state) };
     }
   }
 }

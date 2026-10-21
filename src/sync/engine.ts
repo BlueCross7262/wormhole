@@ -2057,7 +2057,7 @@ export class SyncEngine {
     reasons?: ReasonInput[];
   }): Promise<
     | ({ aborted: true; reason: "missing-plugins"; missing: string[] } & PluginInstallGuidance)
-    | { aborted: true; reason: "conflicts"; conflicts: ConflictDetail[] }
+    | { aborted: true; reason: "conflicts"; conflicts: ConflictDetail[]; pull: PullResult }
     | { aborted: false; pull: PullResult; push: PushResult }
   > {
     const { pluginsDir, policy, reasons } = opts;
@@ -2134,7 +2134,7 @@ export class SyncEngine {
                 : {}),
             });
           }
-          return { aborted: true as const, reason: "conflicts" as const, conflicts };
+          return { aborted: true as const, reason: "conflicts" as const, conflicts, pull };
         }
 
         const push = await this.runPushWithRetry(reasons);

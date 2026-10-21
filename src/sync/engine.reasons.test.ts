@@ -255,7 +255,7 @@ describe("pull — 이유 노출", () => {
     assert.equal(pull.reasons![KEY]!.items[0]!.reason, "obsolete");
   });
 
-  test("손상된 이력 blob 이어도 pull 은 계속되고 이유만 빠진다", async () => {
+  test("손상된 이력 blob 이어도 pull 은 계속되고 이유는 본문 없이 건수만 남는다", async () => {
     const remote = new MockWebdavRemote();
     const a = makeReplica(remote.asRemoteStore(), "ca", "machine-a");
     const b = makeReplica(remote.asRemoteStore(), "cb", "machine-b");
@@ -266,7 +266,7 @@ describe("pull — 이유 노출", () => {
     const pull = await b.engine.pull();
 
     assert.deepEqual(pull.applied, [KEY]);
-    assert.equal("reasons" in pull, false);
+    assert.deepEqual(pull.reasons![KEY], { items: [], omitted: 1 });
   });
 });
 
@@ -304,6 +304,32 @@ describe("충돌 — 원격 이유 노출", () => {
     if (result.aborted && result.reason === "conflicts") {
       assert.equal(result.conflicts[0]!.remoteReasons!.items[0]!.reason, "RA");
     }
+  });
+
+  test("충돌로 중단된 sync 가 이미 적용된 키의 pull.applied 와 pull.reasons 를 싣는다", async () => {
+    const OTHER = ".claude/other.md" as LogicalKey;
+    const remote = new MockWebdavRemote();
+    const a = makeReplica(remote.asRemoteStore(), "abpa", "machine-a");
+    const b = makeReplica(remote.asRemoteStore(), "abpb", "machine-b");
+    await writeHomeFile(a, KEY, "base\n");
+    await writeHomeFile(a, OTHER, "o1\n");
+    await a.engine.push();
+    await b.engine.pull();
+    await writeHomeFile(a, KEY, "from-a\n");
+    await writeHomeFile(a, OTHER, "o2\n");
+    await a.engine.push({
+      reasons: [
+        { logicalKey: KEY, reason: "RA" },
+        { logicalKey: OTHER, reason: "RO" },
+      ],
+    });
+    await writeHomeFile(b, KEY, "from-b\n");
+
+    const result = await b.engine.syncAtomic({ pluginsDir: plugins(b), policy: "preserve-both" });
+
+    assert.ok(result.aborted && result.reason === "conflicts");
+    assert.deepEqual(result.pull.applied, [OTHER]);
+    assert.equal(result.pull.reasons![OTHER]!.items[0]!.reason, "RO");
   });
 
   test("resolve 미리보기에 remoteReasons 가 있다", async () => {
