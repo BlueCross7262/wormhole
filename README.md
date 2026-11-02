@@ -580,16 +580,17 @@ wormhole doctor
 - `--policy manual` 은 **금지** 다 (sync 안에서는 자동 해소가 전제이므로 에러 — 수동 해소가 필요하면 `/wormhole-resolve` 를 따로 쓴다).
 - 일상 동기화는 이 커맨드 하나면 충분하다.
 - 수정 이유 저장 — `--reasons-file <path>` 로 push 하는 파일마다 왜 고쳤는지를 원격에 함께 저장한다. 다른 머신은 pull·충돌 해소·삭제 반영 때 그 이유를 보고 병합 방향을 정한다.
-  - 슬래시 커맨드는 `wormhole pending` 으로 push 후보와 변경 diff 를 읽기 전용으로 얻어 이유 초안을 만들고, 사용자 확인 뒤(사용자가 직접 준 이유면 확인 없이) `--reasons-file` 로 실행한다. 일반 `sync --dry-run` 은 미리보기가 아니라 실제 sync 이므로 후보 조회에 쓰지 않는다.
+  - 슬래시 커맨드는 `wormhole pending` 으로 push 후보와 변경 diff 를 읽기 전용으로 얻어 이유 초안을 만들고, 확인 없이(사용자가 직접 준 이유가 있으면 그 이유로) `--reasons-file` 로 실행한다. 일반 `sync --dry-run` 은 미리보기가 아니라 실제 sync 이므로 후보 조회에 쓰지 않는다.
   - 이유는 파일(`logicalKey`)마다 이력으로 쌓이고 개수 제한이 없다. 이력은 원격 `blobs/r-*` 에 저장되고 매니페스트 엔트리의 `reasonsRef` 가 가리킨다. 항목 하나는 2000자 이하다.
   - pull 결과의 `reasons` 는 이 머신이 아직 못 본 generation 의 이유만 담는다. 키당 최신 5건과 전체 64 KiB 안에서 보이고 넘친 건수는 `omitted` 로 센다.
   - 구버전 wormhole 이 push 하면 `reasonsRef` 가 지워진다. `--force-up` 도 이력을 지운다.
 
-### `/wormhole-reasons` (`reasons --file <path> [--dry-run]`)
+### `/wormhole-reasons` (`reasons [--file <path>] [--dry-run]`)
 
 이미 원격에 올라간 버전에 수정 이유만 덧붙인다. 로컬 파일을 바꾸지 않고 pull 도 하지 않는다.
 
 - 입력은 `{logicalKey, reason, contentHash}` 배열이다. `contentHash` 는 `status` 의 `remoteHash` 이며 원격 엔트리와 다르면 `stale-hash` 로 거부한다.
+- 슬래시 커맨드를 `--file` 없이 부르면 이 세션이 고친 키로 입력을 만든다. 로컬 해시가 원격 해시와 다른 키는 빼고 sync 를 안내한다.
 - `--dry-run` 은 원격에 쓰지 않고 수락·거부 예정만 반환한다.
 - 같은 이유를 다시 올리면 `unchanged` 로 건너뛴다.
 - 기록되거나 변경 없는 항목이 없고 거부만 있으면 종료 코드 1 이다.
