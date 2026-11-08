@@ -886,7 +886,7 @@ export class SyncEngine {
     });
 
     const homeRootKeys = new Set(Object.keys(this.config.homeRootTargets ?? {}));
-    const toApply = status.items.filter(
+    const scopedApply = status.items.filter(
       (i) =>
         (i.kind === "remoteAdded" || i.kind === "remoteModified") &&
         !(remoteManifest?.entries[i.logicalKey]?.scopeExcluded) &&
@@ -895,6 +895,13 @@ export class SyncEngine {
           (Boolean(this.config.skills_keyword) &&
             isSkillSubscribeKey(i.logicalKey, this.config.targets))),
     );
+    const deferSettings =
+      !secondPass &&
+      this.reloadConfig !== undefined &&
+      scopedApply.some((i) => isConfigJsonKey(i.logicalKey));
+    const toApply = deferSettings
+      ? scopedApply.filter((i) => !isSettingsKey(i.logicalKey))
+      : scopedApply;
     const toRemove = status.items.filter((i) => i.kind === "remoteDeleted");
     const convergedItems = status.items.filter((i) => i.kind === "converged");
 
@@ -1026,9 +1033,9 @@ export class SyncEngine {
           (Boolean(this.config.skills_keyword) && k.startsWith(".claude/skills/")),
       )
     ) {
-      let reloadedTargets: Config["targets"];
+      let reloaded: Config;
       try {
-        reloadedTargets = (await this.reloadConfig()).targets;
+        reloaded = await this.reloadConfig();
       } catch (err) {
         // 방금 pull 한 config 가 malformed(JSON/스키마 위반)면 reload 가 throw 한다.
         // pass1 은 이미 커밋됐으므로 throw 로 전체를 실패시키지 말고, 2-pass 를 건너뛰고
@@ -1038,9 +1045,13 @@ export class SyncEngine {
         );
         return result;
       }
-      // targets 만 채택한다. home/stateDir/remote 등 머신 로컬·생성자 baked 경로는 그대로 두어
+      // targets 와 settingsExclude 만 채택한다. home/stateDir/remote 등 머신 로컬·생성자 baked 경로는 그대로 두어
       // pass2 가 옛 remote/경로와 일관되게 동작하도록 한다(full-replace 시 baked-path 발산 위험 회피).
-      this.config = { ...this.config, targets: reloadedTargets };
+      this.config = {
+        ...this.config,
+        targets: reloaded.targets,
+        settingsExclude: reloaded.settingsExclude,
+      };
       const second = await this.runPull(true);
       const mergedReasons = { ...second.reasons, ...result.reasons };
       return {
@@ -1094,7 +1105,7 @@ export class SyncEngine {
               isKeyInScope(k, this.config.targets) ||
               (Boolean(this.config.skills_keyword) && isSkillSubscribeKey(k, this.config.targets))),
         );
-        await mapLimit(entries, IO_CONCURRENCY, async ([key, entry]) => {
+        const applyEntry = async ([key, entry]: [string, FileEntry]): Promise<void> => {
           remoteKeys.add(key as LogicalKey);
           const absPath = this.safeAbsPath(key as LogicalKey);
           if (absPath === null) return;
@@ -1120,7 +1131,27 @@ export class SyncEngine {
             };
           }
           applied.push(key as LogicalKey);
-        });
+        };
+        const isSettingsEntry = ([k]: [string, FileEntry]): boolean => isSettingsKey(k as LogicalKey);
+        await mapLimit(entries.filter((e) => !isSettingsEntry(e)), IO_CONCURRENCY, applyEntry);
+        let keepLocalSettings = false;
+        if (this.reloadConfig && applied.some((k) => isConfigJsonKey(k))) {
+          try {
+            const reloaded = await this.reloadConfig();
+            this.config = { ...this.config, settingsExclude: reloaded.settingsExclude };
+          } catch (err) {
+            keepLocalSettings = true;
+            this.logger?.warn(
+              `[engine] force-down: config reload 실패 — settings.json 적용 건너뜀 err=${String((err as Error).message)}`,
+            );
+          }
+        }
+        const settingsEntries = entries.filter(isSettingsEntry);
+        if (keepLocalSettings) {
+          for (const [k] of settingsEntries) remoteKeys.add(k as LogicalKey);
+        } else {
+          await mapLimit(settingsEntries, IO_CONCURRENCY, applyEntry);
+        }
       }
 
       // 미러 삭제: 원격에 없는 로컬 관리 파일 제거.

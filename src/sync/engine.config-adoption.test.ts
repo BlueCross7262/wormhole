@@ -245,3 +245,147 @@ describe("config key adoption — per-key latest-wins override", () => {
     assert.equal(await readHomeFile(b, ".claude/skills/new-skill/SKILL.md"), "new skill body\n");
   });
 });
+
+describe("settingsExclude same-cycle adoption — 원격 config 가 제외 키를 새로 더할 때", () => {
+  const SETTINGS_KEY = ".claude/settings.json";
+  const OLD_EX = ["model", "effortLevel", "modelSettings"];
+  const NEW_EX = [...OLD_EX, "env.ANTHROPIC_MODEL"];
+
+  function excludeEngine(
+    remote: MockWebdavRemote,
+    home: string,
+    machineId: string,
+    excludes: string[],
+    reload?: () => Promise<Config>,
+  ): SyncEngine {
+    const config = { ...buildConfig(home, path.join(home, ".claude-sync")), settingsExclude: excludes };
+    return new SyncEngine({
+      config,
+      crypto: sharedCrypto,
+      remote: remote.asRemoteStore(),
+      machineId: machineId as MachineId,
+      ...(reload ? { reloadConfig: reload } : {}),
+    });
+  }
+
+  function diskReload(home: string): () => Promise<Config> {
+    return async () => {
+      const raw = JSON.parse(await fs.readFile(path.join(home, ".claude", "wormhole-config.json"), "utf-8"));
+      return { ...buildConfig(home, path.join(home, ".claude-sync")), settingsExclude: raw.settingsExclude };
+    };
+  }
+
+  const failingReload = async (): Promise<Config> => {
+    throw new Error("reload boom");
+  };
+
+  async function writeJson(home: string, key: string, value: unknown): Promise<void> {
+    const abs = path.join(home, ...key.split("/"));
+    await fs.mkdir(path.dirname(abs), { recursive: true });
+    await fs.writeFile(abs, JSON.stringify(value, null, 2), "utf-8");
+  }
+
+  async function readJson(home: string, key: string): Promise<{ env?: Record<string, string> }> {
+    return JSON.parse(await fs.readFile(path.join(home, ...key.split("/")), "utf-8"));
+  }
+
+  async function arrange(remote: MockWebdavRemote): Promise<{ aHome: string; bHome: string }> {
+    const aHome = mkTmp("ex-a-home");
+    const bHome = mkTmp("ex-b-home");
+    await writeJson(aHome, CONFIG_KEY, { settingsExclude: OLD_EX });
+    await writeJson(aHome, SETTINGS_KEY, { env: { ANTHROPIC_MODEL: "opus", X: "1" } });
+    const a1 = excludeEngine(remote, aHome, "machine-a", OLD_EX);
+    await a1.pull();
+    await a1.push();
+    await excludeEngine(remote, bHome, "machine-b", OLD_EX).pull();
+    await writeJson(bHome, CONFIG_KEY, { settingsExclude: NEW_EX });
+    const b2 = excludeEngine(remote, bHome, "machine-b", NEW_EX);
+    await b2.pull();
+    await b2.push();
+    return { aHome, bHome };
+  }
+
+  test("pull: config 와 settings 가 같은 사이클에 와도 제외 키 로컬 값이 남는다", async () => {
+    const remote = new MockWebdavRemote();
+    const { aHome } = await arrange(remote);
+
+    const result = await excludeEngine(remote, aHome, "machine-a", OLD_EX, diskReload(aHome)).pull();
+
+    assert.ok(result.applied.includes(CONFIG_KEY));
+    assert.equal((await readJson(aHome, SETTINGS_KEY)).env?.["ANTHROPIC_MODEL"], "opus");
+    assert.equal((await readJson(aHome, SETTINGS_KEY)).env?.["X"], "1");
+  });
+
+  test("pull 대조: 새 제외 목록을 이미 가진 엔진은 값을 유지한다", async () => {
+    const remote = new MockWebdavRemote();
+    const { aHome } = await arrange(remote);
+
+    await excludeEngine(remote, aHome, "machine-a", NEW_EX, diskReload(aHome)).pull();
+
+    assert.equal((await readJson(aHome, SETTINGS_KEY)).env?.["ANTHROPIC_MODEL"], "opus");
+  });
+
+  test("pull: reload 실패면 settings 를 적용하지 않고 다음 sync 에서도 값이 남는다", async () => {
+    const remote = new MockWebdavRemote();
+    const { aHome } = await arrange(remote);
+
+    const first = await excludeEngine(remote, aHome, "machine-a", OLD_EX, failingReload).pull();
+
+    assert.ok(!first.applied.includes(SETTINGS_KEY));
+    assert.equal((await readJson(aHome, SETTINGS_KEY)).env?.["ANTHROPIC_MODEL"], "opus");
+
+    await excludeEngine(remote, aHome, "machine-a", NEW_EX, diskReload(aHome)).pull();
+
+    assert.equal((await readJson(aHome, SETTINGS_KEY)).env?.["ANTHROPIC_MODEL"], "opus");
+  });
+
+  test("syncAtomic: 값이 남고 원격 settings 에 제외 키가 올라가지 않는다", async () => {
+    const remote = new MockWebdavRemote();
+    const { aHome } = await arrange(remote);
+    const engine = excludeEngine(remote, aHome, "machine-a", OLD_EX, diskReload(aHome));
+
+    const result = await engine.syncAtomic({ pluginsDir: mkTmp("ex-plugins") });
+
+    assert.equal((result as { aborted: boolean }).aborted, false);
+    assert.equal((await readJson(aHome, SETTINGS_KEY)).env?.["ANTHROPIC_MODEL"], "opus");
+    const remotePlain = await (engine as unknown as { downloadBlob(k: string): Promise<Buffer | null> }).downloadBlob(SETTINGS_KEY);
+    assert.ok(remotePlain !== null);
+    assert.deepEqual(JSON.parse(remotePlain.toString("utf-8")).env, { X: "1" });
+  });
+
+  test("reload 콜백이 없는 엔진은 config 와 settings 를 한 pull 에 적용한다", async () => {
+    const remote = new MockWebdavRemote();
+    const { aHome } = await arrange(remote);
+
+    const result = await excludeEngine(remote, aHome, "machine-a", OLD_EX).pull();
+
+    assert.ok(result.applied.includes(CONFIG_KEY));
+    assert.ok(result.applied.includes(SETTINGS_KEY));
+  });
+
+  test("force-down: 원격 config 가 제외 키를 더해도 로컬 값이 남는다", async () => {
+    const remote = new MockWebdavRemote();
+    const { aHome } = await arrange(remote);
+
+    await excludeEngine(remote, aHome, "machine-a", OLD_EX, diskReload(aHome)).forceDownload();
+
+    assert.equal((await readJson(aHome, SETTINGS_KEY)).env?.["ANTHROPIC_MODEL"], "opus");
+    assert.equal((await readJson(aHome, SETTINGS_KEY)).env?.["X"], "1");
+  });
+
+  test("force-down: reload 실패면 settings 파일을 쓰지도 지우지도 않는다", async () => {
+    const remote = new MockWebdavRemote();
+    const { aHome } = await arrange(remote);
+
+    const result = await excludeEngine(remote, aHome, "machine-a", OLD_EX, failingReload).forceDownload();
+
+    assert.ok(!result.applied.includes(SETTINGS_KEY));
+    assert.ok(!result.removed.includes(SETTINGS_KEY));
+    assert.equal((await readJson(aHome, SETTINGS_KEY)).env?.["ANTHROPIC_MODEL"], "opus");
+    const next = await excludeEngine(remote, aHome, "machine-a", NEW_EX, diskReload(aHome)).status();
+    assert.deepEqual(
+      next.items.filter((i) => i.logicalKey === SETTINGS_KEY).map((i) => i.kind),
+      ["converged"],
+    );
+  });
+});
