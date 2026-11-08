@@ -34758,9 +34758,11 @@ var SyncEngine = class {
       machineId: this.machineId
     });
     const homeRootKeys = new Set(Object.keys(this.config.homeRootTargets ?? {}));
-    const toApply = status.items.filter(
+    const scopedApply = status.items.filter(
       (i2) => (i2.kind === "remoteAdded" || i2.kind === "remoteModified") && !remoteManifest?.entries[i2.logicalKey]?.scopeExcluded && (homeRootKeys.has(i2.logicalKey) || isKeyInScope(i2.logicalKey, this.config.targets) || Boolean(this.config.skills_keyword) && isSkillSubscribeKey(i2.logicalKey, this.config.targets))
     );
+    const deferSettings = !secondPass && this.reloadConfig !== void 0 && scopedApply.some((i2) => isConfigJsonKey(i2.logicalKey));
+    const toApply = deferSettings ? scopedApply.filter((i2) => !isSettingsKey(i2.logicalKey)) : scopedApply;
     const toRemove = status.items.filter((i2) => i2.kind === "remoteDeleted");
     const convergedItems = status.items.filter((i2) => i2.kind === "converged");
     const missingKeys = status.summary.remoteMissing;
@@ -34865,16 +34867,20 @@ var SyncEngine = class {
     if (!secondPass && this.reloadConfig && applied.some(
       (k) => isConfigJsonKey(k) || Boolean(this.config.skills_keyword) && k.startsWith(".claude/skills/")
     )) {
-      let reloadedTargets;
+      let reloaded;
       try {
-        reloadedTargets = (await this.reloadConfig()).targets;
+        reloaded = await this.reloadConfig();
       } catch (err) {
         this.logger?.warn(
           `[engine] config reload \uC2E4\uD328 \u2014 same-cycle adoption \uAC74\uB108\uB700(\uB2E4\uC74C sync \uC5D0\uC11C \uBC18\uC601): ${String(err.message)}`
         );
         return result;
       }
-      this.config = { ...this.config, targets: reloadedTargets };
+      this.config = {
+        ...this.config,
+        targets: reloaded.targets,
+        settingsExclude: reloaded.settingsExclude
+      };
       const second = await this.runPull(true);
       const mergedReasons = { ...second.reasons, ...result.reasons };
       return {
@@ -34918,7 +34924,7 @@ var SyncEngine = class {
         const entries = Object.entries(remoteManifest.entries).filter(
           ([k, e2]) => !e2.deleted && !e2.scopeExcluded && (homeRootKeysForce.has(k) || isKeyInScope(k, this.config.targets) || Boolean(this.config.skills_keyword) && isSkillSubscribeKey(k, this.config.targets))
         );
-        await mapLimit(entries, IO_CONCURRENCY, async ([key, entry]) => {
+        const applyEntry = async ([key, entry]) => {
           remoteKeys.add(key);
           const absPath = this.safeAbsPath(key);
           if (absPath === null) return;
@@ -34942,7 +34948,27 @@ var SyncEngine = class {
             };
           }
           applied.push(key);
-        });
+        };
+        const isSettingsEntry = ([k]) => isSettingsKey(k);
+        await mapLimit(entries.filter((e2) => !isSettingsEntry(e2)), IO_CONCURRENCY, applyEntry);
+        let keepLocalSettings = false;
+        if (this.reloadConfig && applied.some((k) => isConfigJsonKey(k))) {
+          try {
+            const reloaded = await this.reloadConfig();
+            this.config = { ...this.config, settingsExclude: reloaded.settingsExclude };
+          } catch (err) {
+            keepLocalSettings = true;
+            this.logger?.warn(
+              `[engine] force-down: config reload \uC2E4\uD328 \u2014 settings.json \uC801\uC6A9 \uAC74\uB108\uB700 err=${String(err.message)}`
+            );
+          }
+        }
+        const settingsEntries = entries.filter(isSettingsEntry);
+        if (keepLocalSettings) {
+          for (const [k] of settingsEntries) remoteKeys.add(k);
+        } else {
+          await mapLimit(settingsEntries, IO_CONCURRENCY, applyEntry);
+        }
       }
       const toDelete = local.filter((f3) => !remoteKeys.has(f3.logicalKey));
       await mapLimit(toDelete, IO_CONCURRENCY, async (f3) => {
@@ -35963,7 +35989,7 @@ import * as nodePath from "node:path";
 import { readFileSync as readFileSync5 } from "node:fs";
 import { fileURLToPath } from "node:url";
 function resolveVersion() {
-  if (true) return "0.5.32";
+  if (true) return "0.5.33";
   try {
     const pkgPath = fileURLToPath(new URL("../package.json", import.meta.url));
     const pkg = JSON.parse(readFileSync5(pkgPath, "utf-8"));
