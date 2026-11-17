@@ -3662,49 +3662,49 @@ var require_fast_uri = __commonJS({
       schemelessOptions.skipEscape = true;
       return serialize(resolved, schemelessOptions);
     }
-    function resolveComponent(base, relative3, options, skipNormalization) {
+    function resolveComponent(base, relative4, options, skipNormalization) {
       const target = {};
       if (!skipNormalization) {
         base = parse3(serialize(base, options), options);
-        relative3 = parse3(serialize(relative3, options), options);
+        relative4 = parse3(serialize(relative4, options), options);
       }
       options = options || {};
-      if (!options.tolerant && relative3.scheme) {
-        target.scheme = relative3.scheme;
-        target.userinfo = relative3.userinfo;
-        target.host = relative3.host;
-        target.port = relative3.port;
-        target.path = removeDotSegments(relative3.path || "");
-        target.query = relative3.query;
+      if (!options.tolerant && relative4.scheme) {
+        target.scheme = relative4.scheme;
+        target.userinfo = relative4.userinfo;
+        target.host = relative4.host;
+        target.port = relative4.port;
+        target.path = removeDotSegments(relative4.path || "");
+        target.query = relative4.query;
       } else {
-        if (relative3.userinfo !== void 0 || relative3.host !== void 0 || relative3.port !== void 0) {
-          target.userinfo = relative3.userinfo;
-          target.host = relative3.host;
-          target.port = relative3.port;
-          target.path = removeDotSegments(relative3.path || "");
-          target.query = relative3.query;
+        if (relative4.userinfo !== void 0 || relative4.host !== void 0 || relative4.port !== void 0) {
+          target.userinfo = relative4.userinfo;
+          target.host = relative4.host;
+          target.port = relative4.port;
+          target.path = removeDotSegments(relative4.path || "");
+          target.query = relative4.query;
         } else {
-          if (!relative3.path) {
+          if (!relative4.path) {
             target.path = base.path;
-            if (relative3.query !== void 0) {
-              target.query = relative3.query;
+            if (relative4.query !== void 0) {
+              target.query = relative4.query;
             } else {
               target.query = base.query;
             }
           } else {
-            if (relative3.path[0] === "/") {
-              target.path = removeDotSegments(relative3.path);
+            if (relative4.path[0] === "/") {
+              target.path = removeDotSegments(relative4.path);
             } else {
               if ((base.userinfo !== void 0 || base.host !== void 0 || base.port !== void 0) && !base.path) {
-                target.path = "/" + relative3.path;
+                target.path = "/" + relative4.path;
               } else if (!base.path) {
-                target.path = relative3.path;
+                target.path = relative4.path;
               } else {
-                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative3.path;
+                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative4.path;
               }
               target.path = removeDotSegments(target.path);
             }
-            target.query = relative3.query;
+            target.query = relative4.query;
           }
           target.userinfo = base.userinfo;
           target.host = base.host;
@@ -3712,7 +3712,7 @@ var require_fast_uri = __commonJS({
         }
         target.scheme = base.scheme;
       }
-      target.fragment = relative3.fragment;
+      target.fragment = relative4.fragment;
       return target;
     }
     function equal(uriA, uriB, options) {
@@ -7091,9 +7091,9 @@ var require_url_parse = __commonJS({
         rest
       };
     }
-    function resolve2(relative3, base) {
-      if (relative3 === "") return base;
-      var path13 = (base || "/").split("/").slice(0, -1).concat(relative3.split("/")), i2 = path13.length, last = path13[i2 - 1], unshift = false, up = 0;
+    function resolve2(relative4, base) {
+      if (relative4 === "") return base;
+      var path13 = (base || "/").split("/").slice(0, -1).concat(relative4.split("/")), i2 = path13.length, last = path13[i2 - 1], unshift = false, up = 0;
       while (i2--) {
         if (path13[i2] === ".") {
           path13.splice(i2, 1);
@@ -7116,7 +7116,7 @@ var require_url_parse = __commonJS({
       if (!(this instanceof Url)) {
         return new Url(address, location, parser);
       }
-      var relative3, extracted, parse3, instruction, index, key, instructions = rules.slice(), type = typeof location, url = this, i2 = 0;
+      var relative4, extracted, parse3, instruction, index, key, instructions = rules.slice(), type = typeof location, url = this, i2 = 0;
       if ("object" !== type && "string" !== type) {
         parser = location;
         location = null;
@@ -7124,8 +7124,8 @@ var require_url_parse = __commonJS({
       if (parser && "function" !== typeof parser) parser = qs.parse;
       location = lolcation(location);
       extracted = extractProtocol(address || "", location);
-      relative3 = !extracted.protocol && !extracted.slashes;
-      url.slashes = extracted.slashes || relative3 && location.slashes;
+      relative4 = !extracted.protocol && !extracted.slashes;
+      url.slashes = extracted.slashes || relative4 && location.slashes;
       url.protocol = extracted.protocol || location.protocol || "";
       address = extracted.rest;
       if (extracted.protocol === "file:" && (extracted.slashesCount !== 2 || windowsDriveLetter.test(address)) || !extracted.slashes && (extracted.protocol || extracted.slashesCount < 2 || !isSpecial(url.protocol))) {
@@ -7156,11 +7156,11 @@ var require_url_parse = __commonJS({
           url[key] = index[1];
           address = address.slice(0, index.index);
         }
-        url[key] = url[key] || (relative3 && instruction[3] ? location[key] || "" : "");
+        url[key] = url[key] || (relative4 && instruction[3] ? location[key] || "" : "");
         if (instruction[4]) url[key] = url[key].toLowerCase();
       }
       if (parser) url.query = parser(url.query);
-      if (relative3 && location.slashes && url.pathname.charAt(0) !== "/" && (url.pathname !== "" || location.pathname !== "")) {
+      if (relative4 && location.slashes && url.pathname.charAt(0) !== "/" && (url.pathname !== "" || location.pathname !== "")) {
         url.pathname = resolve2(url.pathname, location.pathname);
       }
       if (url.pathname.charAt(0) !== "/" && isSpecial(url.protocol)) {
@@ -7317,11 +7317,11 @@ var require_path_posix = __commonJS({
       return res;
     }
     var splitPathRe = /^(\/?|)([\s\S]*?)((?:\.{1,2}|[^\/]+?|)(\.[^.\/]*|))(?:[\/]*)$/;
-    var posix = {};
+    var posix2 = {};
     function posixSplitPath(filename) {
       return splitPathRe.exec(filename).slice(1);
     }
-    posix.resolve = function() {
+    posix2.resolve = function() {
       var resolvedPath = "", resolvedAbsolute = false;
       for (var i2 = arguments.length - 1; i2 >= -1 && !resolvedAbsolute; i2--) {
         var path13 = i2 >= 0 ? arguments[i2] : process.cwd();
@@ -7339,21 +7339,21 @@ var require_path_posix = __commonJS({
       ).join("/");
       return (resolvedAbsolute ? "/" : "") + resolvedPath || ".";
     };
-    posix.normalize = function(path13) {
-      var isAbsolute4 = posix.isAbsolute(path13), trailingSlash = path13.substr(-1) === "/";
-      path13 = normalizeArray(path13.split("/"), !isAbsolute4).join("/");
-      if (!path13 && !isAbsolute4) {
+    posix2.normalize = function(path13) {
+      var isAbsolute5 = posix2.isAbsolute(path13), trailingSlash = path13.substr(-1) === "/";
+      path13 = normalizeArray(path13.split("/"), !isAbsolute5).join("/");
+      if (!path13 && !isAbsolute5) {
         path13 = ".";
       }
       if (path13 && trailingSlash) {
         path13 += "/";
       }
-      return (isAbsolute4 ? "/" : "") + path13;
+      return (isAbsolute5 ? "/" : "") + path13;
     };
-    posix.isAbsolute = function(path13) {
+    posix2.isAbsolute = function(path13) {
       return path13.charAt(0) === "/";
     };
-    posix.join = function() {
+    posix2.join = function() {
       var path13 = "";
       for (var i2 = 0; i2 < arguments.length; i2++) {
         var segment = arguments[i2];
@@ -7368,11 +7368,11 @@ var require_path_posix = __commonJS({
           }
         }
       }
-      return posix.normalize(path13);
+      return posix2.normalize(path13);
     };
-    posix.relative = function(from, to) {
-      from = posix.resolve(from).substr(1);
-      to = posix.resolve(to).substr(1);
+    posix2.relative = function(from, to) {
+      from = posix2.resolve(from).substr(1);
+      to = posix2.resolve(to).substr(1);
       function trim(arr) {
         var start = 0;
         for (; start < arr.length; start++) {
@@ -7402,10 +7402,10 @@ var require_path_posix = __commonJS({
       outputParts = outputParts.concat(toParts.slice(samePartsLength));
       return outputParts.join("/");
     };
-    posix._makeLong = function(path13) {
+    posix2._makeLong = function(path13) {
       return path13;
     };
-    posix.dirname = function(path13) {
+    posix2.dirname = function(path13) {
       var result = posixSplitPath(path13), root = result[0], dir = result[1];
       if (!root && !dir) {
         return ".";
@@ -7415,17 +7415,17 @@ var require_path_posix = __commonJS({
       }
       return root + dir;
     };
-    posix.basename = function(path13, ext2) {
+    posix2.basename = function(path13, ext2) {
       var f3 = posixSplitPath(path13)[2];
       if (ext2 && f3.substr(-1 * ext2.length) === ext2) {
         f3 = f3.substr(0, f3.length - ext2.length);
       }
       return f3;
     };
-    posix.extname = function(path13) {
+    posix2.extname = function(path13) {
       return posixSplitPath(path13)[3];
     };
-    posix.format = function(pathObject) {
+    posix2.format = function(pathObject) {
       if (!util2.isObject(pathObject)) {
         throw new TypeError(
           "Parameter 'pathObject' must be an object, not " + typeof pathObject
@@ -7437,11 +7437,11 @@ var require_path_posix = __commonJS({
           "'pathObject.root' must be a string or undefined, not " + typeof pathObject.root
         );
       }
-      var dir = pathObject.dir ? pathObject.dir + posix.sep : "";
+      var dir = pathObject.dir ? pathObject.dir + posix2.sep : "";
       var base = pathObject.base || "";
       return dir + base;
     };
-    posix.parse = function(pathString) {
+    posix2.parse = function(pathString) {
       if (!isString(pathString)) {
         throw new TypeError(
           "Parameter 'pathString' must be a string, not " + typeof pathString
@@ -7462,9 +7462,9 @@ var require_path_posix = __commonJS({
         name: allParts[2].slice(0, allParts[2].length - allParts[3].length)
       };
     };
-    posix.sep = "/";
-    posix.delimiter = ":";
-    module.exports = posix;
+    posix2.sep = "/";
+    posix2.delimiter = ":";
+    module.exports = posix2;
   }
 });
 
@@ -15876,9 +15876,9 @@ var require_parse2 = __commonJS({
                 const idx = prev.value.lastIndexOf("[");
                 const pre = prev.value.slice(0, idx);
                 const rest2 = prev.value.slice(idx + 2);
-                const posix = POSIX_REGEX_SOURCE[rest2];
-                if (posix) {
-                  prev.value = pre + posix;
+                const posix2 = POSIX_REGEX_SOURCE[rest2];
+                if (posix2) {
+                  prev.value = pre + posix2;
                   state.backtrack = true;
                   advance();
                   if (!bos.output && tokens.indexOf(prev) === 1) {
@@ -16399,7 +16399,7 @@ var require_picomatch = __commonJS({
         throw new TypeError("Expected pattern to be a non-empty string");
       }
       const opts = options || {};
-      const posix = utils.isWindows(options);
+      const posix2 = utils.isWindows(options);
       const regex = isState ? picomatch.compileRe(glob, options) : picomatch.makeRe(glob, options, false, true);
       const state = regex.state;
       delete regex.state;
@@ -16409,8 +16409,8 @@ var require_picomatch = __commonJS({
         isIgnored = picomatch(opts.ignore, ignoreOpts, returnState);
       }
       const matcher = (input, returnObject = false) => {
-        const { isMatch, match: match2, output } = picomatch.test(input, regex, options, { glob, posix });
-        const result = { glob, state, regex, posix, input, output, match: match2, isMatch };
+        const { isMatch, match: match2, output } = picomatch.test(input, regex, options, { glob, posix: posix2 });
+        const result = { glob, state, regex, posix: posix2, input, output, match: match2, isMatch };
         if (typeof opts.onResult === "function") {
           opts.onResult(result);
         }
@@ -16435,7 +16435,7 @@ var require_picomatch = __commonJS({
       }
       return matcher;
     };
-    picomatch.test = (input, regex, options, { glob, posix } = {}) => {
+    picomatch.test = (input, regex, options, { glob, posix: posix2 } = {}) => {
       if (typeof input !== "string") {
         throw new TypeError("Expected input to be a string");
       }
@@ -16443,7 +16443,7 @@ var require_picomatch = __commonJS({
         return { isMatch: false, output: "" };
       }
       const opts = options || {};
-      const format = opts.format || (posix ? utils.toPosixSlashes : null);
+      const format = opts.format || (posix2 ? utils.toPosixSlashes : null);
       let match2 = input === glob;
       let output = match2 && format ? format(input) : input;
       if (match2 === false) {
@@ -16452,14 +16452,14 @@ var require_picomatch = __commonJS({
       }
       if (match2 === false || opts.capture === true) {
         if (opts.matchBase === true || opts.basename === true) {
-          match2 = picomatch.matchBase(input, regex, options, posix);
+          match2 = picomatch.matchBase(input, regex, options, posix2);
         } else {
           match2 = regex.exec(output);
         }
       }
       return { isMatch: Boolean(match2), match: match2, output };
     };
-    picomatch.matchBase = (input, glob, options, posix = utils.isWindows(options)) => {
+    picomatch.matchBase = (input, glob, options, posix2 = utils.isWindows(options)) => {
       const regex = glob instanceof RegExp ? glob : picomatch.makeRe(glob, options);
       return regex.test(path13.basename(input));
     };
@@ -16648,9 +16648,9 @@ var require_micromatch = __commonJS({
       return [].concat(patterns).every((p) => picomatch(p, options)(str));
     };
     micromatch.capture = (glob, input, options) => {
-      let posix = utils.isWindows(options);
+      let posix2 = utils.isWindows(options);
       let regex = picomatch.makeRe(String(glob), { ...options, capture: true });
-      let match2 = regex.exec(posix ? utils.toPosixSlashes(input) : input);
+      let match2 = regex.exec(posix2 ? utils.toPosixSlashes(input) : input);
       if (match2) {
         return match2.slice(1).map((v) => v === void 0 ? "" : v);
       }
@@ -16829,21 +16829,21 @@ var require_pattern2 = __commonJS({
     exports2.removeDuplicateSlashes = removeDuplicateSlashes;
     function partitionAbsoluteAndRelative(patterns) {
       const absolute = [];
-      const relative3 = [];
+      const relative4 = [];
       for (const pattern of patterns) {
-        if (isAbsolute4(pattern)) {
+        if (isAbsolute5(pattern)) {
           absolute.push(pattern);
         } else {
-          relative3.push(pattern);
+          relative4.push(pattern);
         }
       }
-      return [absolute, relative3];
+      return [absolute, relative4];
     }
     exports2.partitionAbsoluteAndRelative = partitionAbsoluteAndRelative;
-    function isAbsolute4(pattern) {
+    function isAbsolute5(pattern) {
       return path13.isAbsolute(pattern);
     }
-    exports2.isAbsolute = isAbsolute4;
+    exports2.isAbsolute = isAbsolute5;
   }
 });
 
@@ -19101,19 +19101,19 @@ var require_out4 = __commonJS({
         return utils.path.convertPathToPattern(source);
       }
       FastGlob2.convertPathToPattern = convertPathToPattern;
-      let posix;
-      (function(posix2) {
+      let posix2;
+      (function(posix3) {
         function escapePath2(source) {
           assertPatternsInput(source);
           return utils.path.escapePosixPath(source);
         }
-        posix2.escapePath = escapePath2;
+        posix3.escapePath = escapePath2;
         function convertPathToPattern2(source) {
           assertPatternsInput(source);
           return utils.path.convertPosixPathToPattern(source);
         }
-        posix2.convertPathToPattern = convertPathToPattern2;
-      })(posix = FastGlob2.posix || (FastGlob2.posix = {}));
+        posix3.convertPathToPattern = convertPathToPattern2;
+      })(posix2 = FastGlob2.posix || (FastGlob2.posix = {}));
       let win32;
       (function(win322) {
         function escapePath2(source) {
@@ -33270,7 +33270,7 @@ var EMPTY_COMPLETION_RESULT = {
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 function resolveVersion() {
-  if (true) return "0.5.33";
+  if (true) return "0.5.34";
   try {
     const pkgPath = fileURLToPath(new URL("../package.json", import.meta.url));
     const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
@@ -51996,6 +51996,7 @@ var SyncEngine = class {
   baseDir;
   /** backups 루트 디렉터리. */
   backupsDir;
+  createdDirs = /* @__PURE__ */ new Set();
   constructor(deps) {
     this.config = deps.config;
     this.crypto = deps.crypto;
@@ -52535,6 +52536,7 @@ var SyncEngine = class {
   }
   /** pull 1회 — fast-forward 적용 + tombstone 삭제 + 충돌 정책. 백업/롤백. */
   async runPull(secondPass = false) {
+    if (!secondPass) this.createdDirs.clear();
     const remoteManifest = await this.manifestStore.read();
     if (remoteManifest === null) {
       return { dryRun: false, applied: [], removed: [], conflicts: [], backupDir: null };
@@ -52640,6 +52642,7 @@ var SyncEngine = class {
       await this.rollback(backedUp);
       throw err;
     }
+    await this.removeEmptyParents(removed);
     const hadBackup = backedUp.some((b) => b.backupPath !== null);
     const reasons = await this.collectReasons(
       remoteManifest,
@@ -52699,6 +52702,7 @@ var SyncEngine = class {
     await fs8.rm(this.baseDir, { recursive: true, force: true });
   }
   async runForceDownload() {
+    this.createdDirs.clear();
     const remoteManifest = await this.manifestStore.read();
     const local = await this.scanWithHashes();
     const runTs = this.makeRunTs();
@@ -52778,6 +52782,7 @@ var SyncEngine = class {
       await this.rollback(backedUp);
       throw err;
     }
+    await this.removeEmptyParents(removed);
     const hadBackup = backedUp.some((b) => b.backupPath !== null);
     return {
       dryRun: false,
@@ -53028,6 +53033,7 @@ var SyncEngine = class {
     const nextState = { ...state };
     let hadBackup = false;
     let anyAdopted = false;
+    const latestWinsDeleted = [];
     for (const conflict of targets) {
       const key = conflict.logicalKey;
       const entry = remoteManifest.entries[key];
@@ -53166,6 +53172,7 @@ var SyncEngine = class {
         await this.deleteLocalFile(absPath);
         await this.removeBaseSnapshot(key);
         nextState[key] = { syncedHash: "", syncedGeneration: entry.generation };
+        latestWinsDeleted.push(key);
       } else {
         const remotePlain = await this.downloadBlob(key);
         if (remotePlain === null) {
@@ -53191,6 +53198,7 @@ var SyncEngine = class {
     if (policy === "latest-wins" || policy === "ours" || anyAdopted) {
       await this.writeState(nextState);
     }
+    await this.removeEmptyParents(latestWinsDeleted);
     return {
       policy,
       resolved,
@@ -53209,7 +53217,14 @@ var SyncEngine = class {
   /** 로컬 원자적 쓰기: 같은 디렉터리에 tmp 작성 → rename. 부모 mkdir -p. */
   async atomicWriteFile(absPath, data) {
     const dir = path12.dirname(absPath);
+    let missing = null;
+    for (let d = dir; ; d = path12.dirname(d)) {
+      if (await fs8.stat(d).then(() => true, () => false)) break;
+      missing = d;
+      if (path12.dirname(d) === d) break;
+    }
     await fs8.mkdir(dir, { recursive: true });
+    if (missing !== null) this.createdDirs.add(missing);
     const tmpPath = path12.join(
       dir,
       `.${path12.basename(absPath)}.tmp.${this.machineId}.${process.pid}.${atomicWriteSeq++}`
@@ -53238,6 +53253,50 @@ var SyncEngine = class {
       await fs8.unlink(absPath);
     } catch (err) {
       if (err.code !== "ENOENT") throw err;
+    }
+  }
+  cleanupRoots() {
+    const skillsRoot = ".claude/skills";
+    const marker = Boolean(this.config.skills_keyword);
+    const roots = /* @__PURE__ */ new Set();
+    for (const pattern of this.config.targets.include) {
+      const segs = pattern.split("/");
+      const globAt = segs.findIndex((seg) => /[*?[\]{}()!]/.test(seg));
+      let base = (globAt < 0 ? segs.slice(0, -1) : segs.slice(0, globAt)).join("/");
+      if (marker && (base === skillsRoot || base.startsWith(`${skillsRoot}/`))) base = skillsRoot;
+      if (base !== "") roots.add(base);
+    }
+    if (marker) roots.add(skillsRoot);
+    return roots;
+  }
+  async removeEmptyParents(keys, limitTo) {
+    try {
+      if (keys.length === 0) return;
+      const roots = this.cleanupRoots();
+      const insideRoot = (d) => [...roots].some((r2) => d.startsWith(`${r2}/`));
+      const underCreated = (abs) => [...limitTo ?? []].some((c) => {
+        const rel = path12.relative(c, abs);
+        return !rel.startsWith("..") && !path12.isAbsolute(rel);
+      });
+      const dirs = [...new Set(keys.map((k) => path12.posix.dirname(k)))].sort(
+        (a, b) => b.split("/").length - a.split("/").length
+      );
+      for (let d of dirs) {
+        while (d !== "." && !roots.has(d) && insideRoot(d)) {
+          const abs = this.safeAbsPath(d);
+          if (abs === null) break;
+          if (limitTo && !underCreated(abs)) break;
+          const st = await fs8.lstat(abs).catch(() => null);
+          if (st === null || !st.isDirectory() || st.isSymbolicLink()) break;
+          if (!await fs8.rmdir(abs).then(() => true, () => false)) break;
+          this.logger?.info(`[engine] SyncEngine.removeEmptyParents \uBE48 \uD3F4\uB354 \uC0AD\uC81C dir=${d}`);
+          d = path12.posix.dirname(d);
+        }
+      }
+    } catch (err) {
+      this.logger?.warn(
+        `[engine] SyncEngine.removeEmptyParents \uBE48 \uD3F4\uB354 \uC815\uB9AC \uC2E4\uD328 err=${String(err.message)}`
+      );
     }
   }
   // 원격 매니페스트에서 온 논리키를 검증하고 OS 절대경로로 변환한다(경로 탈출 방어).
@@ -53433,10 +53492,12 @@ var SyncEngine = class {
   }
   /** 롤백: 백업본을 원위치로 복원. 백업 없던(=새로 생성된) 파일은 삭제. */
   async rollback(backedUp) {
+    const removedNew = [];
     for (const b of backedUp) {
       try {
         if (b.backupPath === null) {
           await this.deleteLocalFile(b.absPath);
+          removedNew.push(b.key);
         } else {
           const data = await fs8.readFile(b.backupPath);
           await this.atomicWriteFile(b.absPath, data);
@@ -53445,6 +53506,7 @@ var SyncEngine = class {
         this.logger?.error(`[engine] \uB864\uBC31 \uC2E4\uD328 ${b.key}: ${String(err.message)}`);
       }
     }
+    await this.removeEmptyParents(removedNew, this.createdDirs);
   }
   async writeConflictSidecar(key, absPath, entry, conflict, remotePlain) {
     const mid = sanitizeToken(conflict.remoteMachineId);
