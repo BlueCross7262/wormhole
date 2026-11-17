@@ -220,6 +220,7 @@ export class SyncEngine {
   private readonly baseDir: string;
   /** backups 루트 디렉터리. */
   private readonly backupsDir: string;
+  private readonly createdDirs = new Set<string>();
 
   constructor(deps: EngineDeps) {
     this.config = deps.config;
@@ -870,6 +871,7 @@ export class SyncEngine {
 
   /** pull 1회 — fast-forward 적용 + tombstone 삭제 + 충돌 정책. 백업/롤백. */
   private async runPull(secondPass = false): Promise<PullResult> {
+    if (!secondPass) this.createdDirs.clear();
     const remoteManifest = await this.manifestStore.read();
     if (remoteManifest === null) {
       // 원격 매니페스트 부재 → 적용할 것 없음.
@@ -1008,6 +1010,7 @@ export class SyncEngine {
       await this.rollback(backedUp);
       throw err;
     }
+    await this.removeEmptyParents(removed);
 
     const hadBackup = backedUp.some((b) => b.backupPath !== null);
     const reasons = await this.collectReasons(
@@ -1084,6 +1087,7 @@ export class SyncEngine {
   }
 
   private async runForceDownload(): Promise<PullResult> {
+    this.createdDirs.clear();
     const remoteManifest = await this.manifestStore.read();
     const local = await this.scanWithHashes();
     const runTs = this.makeRunTs();
@@ -1174,6 +1178,7 @@ export class SyncEngine {
       await this.rollback(backedUp);
       throw err;
     }
+    await this.removeEmptyParents(removed);
 
     const hadBackup = backedUp.some((b) => b.backupPath !== null);
     return {
@@ -1503,6 +1508,7 @@ export class SyncEngine {
     const nextState: SyncState = { ...state };
     let hadBackup = false;
     let anyAdopted = false;
+    const latestWinsDeleted: LogicalKey[] = [];
 
     for (const conflict of targets) {
       const key = conflict.logicalKey;
@@ -1672,6 +1678,7 @@ export class SyncEngine {
         await this.deleteLocalFile(absPath);
         await this.removeBaseSnapshot(key);
         nextState[key] = { syncedHash: "", syncedGeneration: entry.generation };
+        latestWinsDeleted.push(key);
       } else {
         const remotePlain = await this.downloadBlob(key);
         if (remotePlain === null) {
@@ -1700,6 +1707,7 @@ export class SyncEngine {
     if (policy === "latest-wins" || policy === "ours" || anyAdopted) {
       await this.writeState(nextState);
     }
+    await this.removeEmptyParents(latestWinsDeleted);
 
     return {
       policy,
@@ -1722,7 +1730,14 @@ export class SyncEngine {
   /** 로컬 원자적 쓰기: 같은 디렉터리에 tmp 작성 → rename. 부모 mkdir -p. */
   private async atomicWriteFile(absPath: string, data: Buffer | string): Promise<void> {
     const dir = path.dirname(absPath);
+    let missing: string | null = null;
+    for (let d = dir; ; d = path.dirname(d)) {
+      if (await fs.stat(d).then(() => true, () => false)) break;
+      missing = d;
+      if (path.dirname(d) === d) break;
+    }
     await fs.mkdir(dir, { recursive: true });
+    if (missing !== null) this.createdDirs.add(missing);
     const tmpPath = path.join(
       dir,
       `.${path.basename(absPath)}.tmp.${this.machineId}.${process.pid}.${atomicWriteSeq++}`,
@@ -1755,6 +1770,53 @@ export class SyncEngine {
       await fs.unlink(absPath);
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+    }
+  }
+
+  private cleanupRoots(): Set<string> {
+    const skillsRoot = ".claude/skills";
+    const marker = Boolean(this.config.skills_keyword);
+    const roots = new Set<string>();
+    for (const pattern of this.config.targets.include) {
+      const segs = pattern.split("/");
+      const globAt = segs.findIndex((seg) => /[*?[\]{}()!]/.test(seg));
+      let base = (globAt < 0 ? segs.slice(0, -1) : segs.slice(0, globAt)).join("/");
+      if (marker && (base === skillsRoot || base.startsWith(`${skillsRoot}/`))) base = skillsRoot;
+      if (base !== "") roots.add(base);
+    }
+    if (marker) roots.add(skillsRoot);
+    return roots;
+  }
+
+  private async removeEmptyParents(keys: LogicalKey[], limitTo?: Set<string>): Promise<void> {
+    try {
+      if (keys.length === 0) return;
+      const roots = this.cleanupRoots();
+      const insideRoot = (d: string) => [...roots].some((r) => d.startsWith(`${r}/`));
+      const underCreated = (abs: string) =>
+        [...(limitTo ?? [])].some((c) => {
+          const rel = path.relative(c, abs);
+          return !rel.startsWith("..") && !path.isAbsolute(rel);
+        });
+      const dirs = [...new Set(keys.map((k) => path.posix.dirname(k)))].sort(
+        (a, b) => b.split("/").length - a.split("/").length,
+      );
+      for (let d of dirs) {
+        while (d !== "." && !roots.has(d) && insideRoot(d)) {
+          const abs = this.safeAbsPath(d as LogicalKey);
+          if (abs === null) break;
+          if (limitTo && !underCreated(abs)) break;
+          const st = await fs.lstat(abs).catch(() => null);
+          if (st === null || !st.isDirectory() || st.isSymbolicLink()) break;
+          if (!(await fs.rmdir(abs).then(() => true, () => false))) break;
+          this.logger?.info(`[engine] SyncEngine.removeEmptyParents 빈 폴더 삭제 dir=${d}`);
+          d = path.posix.dirname(d);
+        }
+      }
+    } catch (err) {
+      this.logger?.warn(
+        `[engine] SyncEngine.removeEmptyParents 빈 폴더 정리 실패 err=${String((err as Error).message)}`,
+      );
     }
   }
 
@@ -1994,11 +2056,13 @@ export class SyncEngine {
   private async rollback(
     backedUp: Array<{ key: LogicalKey; absPath: string; backupPath: string | null }>,
   ): Promise<void> {
+    const removedNew: LogicalKey[] = [];
     for (const b of backedUp) {
       try {
         if (b.backupPath === null) {
           // 적용 전 부재 → 적용으로 생긴 파일 제거.
           await this.deleteLocalFile(b.absPath);
+          removedNew.push(b.key);
         } else {
           const data = await fs.readFile(b.backupPath);
           await this.atomicWriteFile(b.absPath, data);
@@ -2007,6 +2071,7 @@ export class SyncEngine {
         this.logger?.error(`[engine] 롤백 실패 ${b.key}: ${String((err as Error).message)}`);
       }
     }
+    await this.removeEmptyParents(removedNew, this.createdDirs);
   }
 
   private async writeConflictSidecar(
