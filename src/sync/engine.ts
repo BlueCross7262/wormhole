@@ -170,6 +170,11 @@ export function checkInstallPrereqs(
       continue;
     }
 
+    if (entries.some((e) => typeof (e as { installPath?: unknown })?.installPath === "string"
+      && existsSync((e as { installPath: string }).installPath))) {
+      continue;
+    }
+
     // marketplace-level: "plugin@marketplace" 에서 marketplace 파싱,
     // known_marketplaces.json 에 키 존재 AND installLocation 디렉터리 존재.
     const atIdx = key.lastIndexOf("@");
