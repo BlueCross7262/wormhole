@@ -32078,7 +32078,7 @@ async function readMachineIdIfExists(stateDir) {
 }
 
 // src/sync/engine.ts
-import { promises as fs7, readFileSync as readFileSync4 } from "node:fs";
+import { promises as fs7, readFileSync as readFileSync4, existsSync as existsSync4 } from "node:fs";
 import * as path11 from "node:path";
 
 // node_modules/diff/libesm/diff/base.js
@@ -34170,6 +34170,9 @@ function checkInstallPrereqs(pulledSettings, pluginsDir, opts) {
       missing.push(key);
       continue;
     }
+    if (entries.some((e2) => typeof e2?.installPath === "string" && existsSync4(e2.installPath))) {
+      continue;
+    }
     const atIdx = key.lastIndexOf("@");
     if (atIdx > 0) {
       const marketplace = key.slice(atIdx + 1);
@@ -36051,7 +36054,7 @@ import * as nodePath from "node:path";
 import { readFileSync as readFileSync5 } from "node:fs";
 import { fileURLToPath } from "node:url";
 function resolveVersion() {
-  if (true) return "0.5.34";
+  if (true) return "0.5.35";
   try {
     const pkgPath = fileURLToPath(new URL("../package.json", import.meta.url));
     const pkg = JSON.parse(readFileSync5(pkgPath, "utf-8"));

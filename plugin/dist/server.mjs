@@ -33270,7 +33270,7 @@ var EMPTY_COMPLETION_RESULT = {
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 function resolveVersion() {
-  if (true) return "0.5.34";
+  if (true) return "0.5.35";
   try {
     const pkgPath = fileURLToPath(new URL("../package.json", import.meta.url));
     const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
@@ -51024,7 +51024,7 @@ async function maybeMigrateLegacyConfig(opts) {
 }
 
 // src/sync/engine.ts
-import { promises as fs8, readFileSync as readFileSync5 } from "node:fs";
+import { promises as fs8, readFileSync as readFileSync5, existsSync as existsSync4 } from "node:fs";
 import * as path12 from "node:path";
 
 // src/sync/diff.ts
@@ -51958,6 +51958,9 @@ function checkInstallPrereqs(pulledSettings, pluginsDir, opts) {
     const entries = installedPlugins[key];
     if (!Array.isArray(entries) || entries.length === 0) {
       missing.push(key);
+      continue;
+    }
+    if (entries.some((e2) => typeof e2?.installPath === "string" && existsSync4(e2.installPath))) {
       continue;
     }
     const atIdx = key.lastIndexOf("@");
